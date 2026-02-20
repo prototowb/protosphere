@@ -10,6 +10,7 @@ import UserAvatar from '@/components/user/UserAvatar.vue'
 import CreateServerDialog from '@/components/server/CreateServerDialog.vue'
 import JoinServerDialog from '@/components/server/JoinServerDialog.vue'
 import { usePresence } from '@/composables/usePresence'
+import { useMentionsStore } from '@/stores/mentions'
 
 const router = useRouter()
 const route = useRoute()
@@ -20,6 +21,7 @@ const { profile, fetchProfile } = useProfile()
 const { fetchServers, createServer, joinServer } = useServers()
 
 const { currentStatus } = usePresence()
+const mentionsStore = useMentionsStore()
 
 const showCreateServer = ref(false)
 const showJoinServer = ref(false)
@@ -92,16 +94,23 @@ function getServerInitial(name: string) {
         <div class="my-1 h-px w-8 bg-bg-tertiary" />
 
         <!-- Server list -->
-        <router-link
-          v-for="server in serversStore.servers"
-          :key="server.id"
-          :to="`/channels/${server.id}/${server.id}`"
-          class="flex h-12 w-12 items-center justify-center rounded-2xl bg-bg-tertiary text-xs font-bold text-text-primary transition-all hover:rounded-xl hover:bg-accent"
-          :class="{ 'rounded-xl bg-accent': serversStore.activeServerId === server.id }"
-          :title="server.name"
-        >
-          {{ getServerInitial(server.name) }}
-        </router-link>
+        <div v-for="server in serversStore.servers" :key="server.id" class="relative">
+          <router-link
+            :to="`/channels/${server.id}/${server.id}`"
+            class="flex h-12 w-12 items-center justify-center rounded-2xl bg-bg-tertiary text-xs font-bold text-text-primary transition-all hover:rounded-xl hover:bg-accent"
+            :class="{ 'rounded-xl bg-accent': serversStore.activeServerId === server.id }"
+            :title="server.name"
+          >
+            {{ getServerInitial(server.name) }}
+          </router-link>
+          <!-- Mention badge -->
+          <span
+            v-if="mentionsStore.mentionsByServer[server.id]"
+            class="absolute -bottom-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-danger px-1 text-[10px] font-bold text-white"
+          >
+            {{ (mentionsStore.mentionsByServer[server.id] ?? 0) > 99 ? '99+' : mentionsStore.mentionsByServer[server.id] }}
+          </span>
+        </div>
       </div>
 
       <!-- Add server button (outside scroll container so dropdown isn't clipped) -->
