@@ -5,13 +5,13 @@
 ## Current State
 
 ```yaml
-project_phase: "M7 Complete"
+project_phase: "M8 Complete"
 protogear_enabled: true
 framework: "Vue 3 + TypeScript + Supabase"
 project_type: "Real-time Communication Platform"
 initialization_date: "2026-02-20"
 current_sprint: null
-current_milestone: "M8 - Channel Polish"
+current_milestone: "M9 - Moderation & Roles"
 local_mode: true
 ```
 
@@ -36,9 +36,9 @@ Backend adapter auto-detects mode via `VITE_SUPABASE_URL` env var. Local mode us
 
 | Ticket | Title | Status | Description |
 |--------|-------|--------|-------------|
-| PTSPH-026 | Channel categories | Not Started | Group channels under collapsible category headers |
-| PTSPH-027 | Channel reordering | Not Started | Drag-and-drop to reorder channels within a category |
-| PTSPH-028 | Slowmode enforcement | Not Started | Enforce `slowmode_seconds` in the input — countdown timer on send button |
+| PTSPH-026 | Channel categories | Complete | Group channels under collapsible category headers |
+| PTSPH-027 | Channel reordering | Complete | Drag-and-drop to reorder channels within a category |
+| PTSPH-028 | Slowmode enforcement | Complete | Enforce `slowmode_seconds` in the input — countdown timer on send button |
 
 ### M9 — Moderation & Roles (local-first)
 
@@ -174,6 +174,7 @@ supabase/migrations/
 
 ## Recent Updates
 
+- 2026-02-20: PTSPH-026/027/028 — M8: channel categories (collapsible), drag-to-reorder, slowmode countdown.
 - 2026-02-20: PTSPH-024/025 — M7: emoji reactions with quick picker + pill counts, message pinning with pinned panel.
 - 2026-02-20: PTSPH-021/022/023 — M6: @mention highlighting, server badge counts, browser notifications.
 - 2026-02-20: PTSPH-018/019/020 — M5: full DM system (conversation list, user search, message view with edit/delete).
