@@ -1,0 +1,39 @@
+@import "tailwindcss";
+
+@theme {
+  /* Colors — dark theme base */
+  --color-bg-primary: oklch(0.129 0.042 264.695);    /* slate-950 */
+  --color-bg-secondary: oklch(0.208 0.042 265.755);  /* slate-900 */
+  --color-bg-tertiary: oklch(0.279 0.041 260.031);   /* slate-800 */
+  --color-text-primary: oklch(0.968 0.007 264.542);   /* slate-50 */
+  --color-text-secondary: oklch(0.704 0.04 256.788);  /* slate-400 */
+  --color-text-muted: oklch(0.551 0.027 264.364);     /* slate-500 */
+
+  /* Presence */
+  --color-presence-online: oklch(0.723 0.219 149.579);  /* green-500 */
+  --color-presence-idle: oklch(0.795 0.184 86.047);     /* yellow-500 */
+  --color-presence-dnd: oklch(0.637 0.237 25.331);      /* red-500 */
+  --color-presence-offline: oklch(0.551 0.027 264.364); /* slate-500 */
+
+  /* Accent */
+  --color-accent: oklch(0.623 0.214 259.815);          /* indigo-500 */
+  --color-accent-hover: oklch(0.546 0.245 262.881);    /* indigo-600 */
+
+  /* Interactive */
+  --color-bg-hover: oklch(0.237 0.041 265.755);        /* between secondary and tertiary */
+
+  /* Feedback */
+  --color-danger: oklch(0.637 0.237 25.331);           /* red-500 */
+  --color-success: oklch(0.723 0.219 149.579);         /* green-500 */
+
+  /* Font */
+  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+}
+
+body {
+  background-color: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  margin: 0;
+  min-height: 100vh;
+}
