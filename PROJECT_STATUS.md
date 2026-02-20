@@ -5,13 +5,13 @@
 ## Current State
 
 ```yaml
-project_phase: "M8 Complete"
+project_phase: "M9 Complete"
 protogear_enabled: true
 framework: "Vue 3 + TypeScript + Supabase"
 project_type: "Real-time Communication Platform"
 initialization_date: "2026-02-20"
 current_sprint: null
-current_milestone: "M9 - Moderation & Roles"
+current_milestone: "M10 - Supabase Integration"
 local_mode: true
 ```
 
@@ -44,9 +44,9 @@ Backend adapter auto-detects mode via `VITE_SUPABASE_URL` env var. Local mode us
 
 | Ticket | Title | Status | Description |
 |--------|-------|--------|-------------|
-| PTSPH-029 | Role-based permissions | Not Started | Enforce channel create/delete and message moderation by member role |
-| PTSPH-030 | Member context menu | Not Started | Click member to view profile, change role, kick |
-| PTSPH-031 | Kick & ban | Not Started | Owner/admin can kick or ban users; ban check on join via invite |
+| PTSPH-029 | Role-based permissions | Complete | Enforce channel create/delete and message moderation by member role |
+| PTSPH-030 | Member context menu | Complete | Click member to view profile, change role, kick |
+| PTSPH-031 | Kick & ban | Complete | Owner/admin can kick or ban users; ban check on join via invite |
 
 ### M10 — Supabase Integration (post-MVP)
 
@@ -174,6 +174,7 @@ supabase/migrations/
 
 ## Recent Updates
 
+- 2026-02-20: PTSPH-029/030/031 — M9: role-based permissions, member profile modal, kick & ban with ban list.
 - 2026-02-20: PTSPH-026/027/028 — M8: channel categories (collapsible), drag-to-reorder, slowmode countdown.
 - 2026-02-20: PTSPH-024/025 — M7: emoji reactions with quick picker + pill counts, message pinning with pinned panel.
 - 2026-02-20: PTSPH-021/022/023 — M6: @mention highlighting, server badge counts, browser notifications.
