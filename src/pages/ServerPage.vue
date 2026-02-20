@@ -6,7 +6,9 @@ import UserAvatar from '@/components/user/UserAvatar.vue'
 import { useServersStore } from '@/stores/servers'
 import { useChannelsStore } from '@/stores/channels'
 import { useMessagesStore } from '@/stores/messages'
+import { useCategoriesStore } from '@/stores/categories'
 import { useChannels } from '@/composables/useChannels'
+import { useCategories } from '@/composables/useCategories'
 import { useMembers } from '@/composables/useMembers'
 import { useServers } from '@/composables/useServers'
 import { useMessages } from '@/composables/useMessages'
@@ -26,6 +28,8 @@ const channelsStore = useChannelsStore()
 const messagesStore = useMessagesStore()
 const authStore = useAuthStore()
 const { fetchChannels, createChannel } = useChannels()
+const { fetchCategories, createCategory, deleteCategory } = useCategories()
+const categoriesStore = useCategoriesStore()
 const { members, fetchMembers } = useMembers()
 const { leaveServer, deleteServer, regenerateInviteCode } = useServers()
 const { fetchMessages, sendMessage, editMessage, deleteMessage, pinMessage, unpinMessage, fetchPinnedMessages } = useMessages()
@@ -39,6 +43,10 @@ const myUsername = ref<string | null>(null)
 
 const showCreateChannel = ref(false)
 const newChannelName = ref('')
+const newChannelCategoryId = ref<string | null>(null)
+const showCreateCategory = ref(false)
+const newCategoryName = ref('')
+const collapsedCategories = ref<Set<string>>(new Set())
 const inviteCode = ref('')
 const showInvite = ref(false)
 const showServerActions = ref(false)
@@ -70,6 +78,7 @@ function loadServer() {
 
   if (serverId.value) {
     fetchChannels(serverId.value)
+    fetchCategories(serverId.value)
     fetchMembers(serverId.value)
   }
 }
@@ -246,10 +255,34 @@ const groupedMessages = computed((): GroupedMessage[] => {
 
 async function handleCreateChannel() {
   if (!newChannelName.value.trim() || !serverId.value) return
-  await createChannel(serverId.value, newChannelName.value.trim())
+  await createChannel(serverId.value, newChannelName.value.trim(), undefined, newChannelCategoryId.value)
   newChannelName.value = ''
+  newChannelCategoryId.value = null
   showCreateChannel.value = false
 }
+
+async function handleCreateCategory() {
+  if (!newCategoryName.value.trim() || !serverId.value) return
+  await createCategory(serverId.value, newCategoryName.value.trim())
+  newCategoryName.value = ''
+  showCreateCategory.value = false
+}
+
+async function handleDeleteCategory(categoryId: string) {
+  if (!confirm('Delete this category? Channels inside will become uncategorized.')) return
+  await deleteCategory(categoryId)
+  // Refresh channels so category_id nulls are reflected
+  fetchChannels(serverId.value)
+}
+
+function toggleCategory(categoryId: string) {
+  if (collapsedCategories.value.has(categoryId)) {
+    collapsedCategories.value.delete(categoryId)
+  } else {
+    collapsedCategories.value.add(categoryId)
+  }
+}
+
 
 async function handleLeaveServer() {
   await leaveServer(serverId.value)
@@ -343,6 +376,12 @@ async function togglePinnedPanel() {
             >
               Create Channel
             </button>
+            <button
+              @click="showCreateCategory = true; showServerActions = false"
+              class="flex w-full items-center gap-2 rounded px-3 py-2 text-sm text-text-primary hover:bg-bg-hover"
+            >
+              Create Category
+            </button>
             <template v-if="isOwner">
               <button
                 @click="router.push(`/servers/${serverId}/settings`); showServerActions = false"
@@ -376,8 +415,9 @@ async function togglePinnedPanel() {
 
     <template #sidebar-content>
       <div class="space-y-0.5">
+        <!-- Uncategorized channels (category_id = null) -->
         <router-link
-          v-for="channel in channelsStore.channels"
+          v-for="channel in channelsStore.channels.filter(c => c.category_id === null)"
           :key="channel.id"
           :to="`/channels/${serverId}/${channel.id}`"
           class="flex w-full items-center gap-1.5 rounded px-2 py-1.5 text-sm hover:bg-bg-hover"
@@ -390,6 +430,53 @@ async function togglePinnedPanel() {
             class="ml-auto h-2 w-2 flex-shrink-0 rounded-full bg-white"
           />
         </router-link>
+
+        <!-- Categories -->
+        <div v-for="cat in categoriesStore.categories" :key="cat.id" class="mt-2">
+          <!-- Category header -->
+          <div class="group flex items-center gap-1 px-1 py-0.5">
+            <button
+              @click="toggleCategory(cat.id)"
+              class="flex flex-1 items-center gap-1 rounded px-1 py-0.5 text-xs font-semibold uppercase tracking-wide text-text-muted hover:text-text-primary"
+            >
+              <svg
+                class="h-2.5 w-2.5 flex-shrink-0 transition-transform"
+                :class="collapsedCategories.has(cat.id) ? '-rotate-90' : ''"
+                viewBox="0 0 24 24" fill="currentColor"
+              >
+                <path d="M7 10l5 5 5-5z"/>
+              </svg>
+              {{ cat.name }}
+            </button>
+            <button
+              v-if="isOwner"
+              @click="handleDeleteCategory(cat.id)"
+              class="hidden rounded p-0.5 text-text-muted hover:text-danger group-hover:block"
+              title="Delete category"
+            >
+              <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
+          </div>
+          <!-- Channels in this category -->
+          <template v-if="!collapsedCategories.has(cat.id)">
+            <router-link
+              v-for="channel in channelsStore.channels.filter(c => c.category_id === cat.id)"
+              :key="channel.id"
+              :to="`/channels/${serverId}/${channel.id}`"
+              class="flex w-full items-center gap-1.5 rounded px-2 py-1.5 text-sm hover:bg-bg-hover"
+              :class="channelsStore.activeChannelId === channel.id ? 'bg-bg-hover text-text-primary font-medium' : 'text-text-secondary'"
+            >
+              <span class="text-text-muted">#</span>
+              <span class="truncate flex-1">{{ channel.name }}</span>
+              <span
+                v-if="unreadChannelIds.has(channel.id)"
+                class="ml-auto h-2 w-2 flex-shrink-0 rounded-full bg-white"
+              />
+            </router-link>
+          </template>
+        </div>
       </div>
     </template>
 
@@ -734,9 +821,47 @@ async function togglePinnedPanel() {
             placeholder="new-channel"
           />
         </div>
+        <div v-if="categoriesStore.categories.length > 0">
+          <label for="channel-category" class="mb-1 block text-sm text-text-secondary">Category (optional)</label>
+          <select
+            id="channel-category"
+            v-model="newChannelCategoryId"
+            class="w-full rounded border border-bg-tertiary bg-bg-primary px-3 py-2 text-text-primary outline-none focus:border-accent"
+          >
+            <option :value="null">No category</option>
+            <option v-for="cat in categoriesStore.categories" :key="cat.id" :value="cat.id">
+              {{ cat.name }}
+            </option>
+          </select>
+        </div>
         <div class="flex justify-end gap-2">
           <button type="button" @click="showCreateChannel = false" class="rounded px-4 py-2 text-sm text-text-secondary hover:text-text-primary">Cancel</button>
           <button type="submit" :disabled="!newChannelName.trim()" class="rounded bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50">Create</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Create Category Dialog -->
+  <div v-if="showCreateCategory" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60" @click.self="showCreateCategory = false">
+    <div class="w-full max-w-md rounded-lg bg-bg-secondary p-6">
+      <h2 class="mb-4 text-xl font-bold">Create Category</h2>
+      <form @submit.prevent="handleCreateCategory" class="space-y-4">
+        <div>
+          <label for="category-name" class="mb-1 block text-sm text-text-secondary">Category Name</label>
+          <input
+            id="category-name"
+            v-model="newCategoryName"
+            type="text"
+            required
+            maxlength="50"
+            class="w-full rounded border border-bg-tertiary bg-bg-primary px-3 py-2 text-text-primary outline-none focus:border-accent"
+            placeholder="TEXT CHANNELS"
+          />
+        </div>
+        <div class="flex justify-end gap-2">
+          <button type="button" @click="showCreateCategory = false" class="rounded px-4 py-2 text-sm text-text-secondary hover:text-text-primary">Cancel</button>
+          <button type="submit" :disabled="!newCategoryName.trim()" class="rounded bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50">Create</button>
         </div>
       </form>
     </div>
