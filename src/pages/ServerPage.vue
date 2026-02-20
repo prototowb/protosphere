@@ -27,7 +27,7 @@ const serversStore = useServersStore()
 const channelsStore = useChannelsStore()
 const messagesStore = useMessagesStore()
 const authStore = useAuthStore()
-const { fetchChannels, createChannel } = useChannels()
+const { fetchChannels, createChannel, updateChannel } = useChannels()
 const { fetchCategories, createCategory, deleteCategory } = useCategories()
 const categoriesStore = useCategoriesStore()
 const { members, fetchMembers } = useMembers()
@@ -47,6 +47,8 @@ const newChannelCategoryId = ref<string | null>(null)
 const showCreateCategory = ref(false)
 const newCategoryName = ref('')
 const collapsedCategories = ref<Set<string>>(new Set())
+const draggedChannelId = ref<string | null>(null)
+const dragOverChannelId = ref<string | null>(null)
 const inviteCode = ref('')
 const showInvite = ref(false)
 const showServerActions = ref(false)
@@ -275,6 +277,58 @@ async function handleDeleteCategory(categoryId: string) {
   fetchChannels(serverId.value)
 }
 
+// ── Channel drag-and-drop reordering (owner only) ────────
+function onChannelDragStart(channelId: string) {
+  draggedChannelId.value = channelId
+}
+
+function onChannelDragOver(channelId: string) {
+  if (draggedChannelId.value && draggedChannelId.value !== channelId) {
+    dragOverChannelId.value = channelId
+  }
+}
+
+function onChannelDragLeave() {
+  dragOverChannelId.value = null
+}
+
+async function onChannelDrop(targetChannelId: string) {
+  const fromId = draggedChannelId.value
+  draggedChannelId.value = null
+  dragOverChannelId.value = null
+  if (!fromId || fromId === targetChannelId) return
+
+  const from = channelsStore.channels.find((c) => c.id === fromId)
+  const to = channelsStore.channels.find((c) => c.id === targetChannelId)
+  if (!from || !to || from.category_id !== to.category_id) return
+
+  // Reorder within the group
+  const group = channelsStore.channels
+    .filter((c) => c.category_id === from.category_id)
+    .sort((a, b) => a.position - b.position)
+
+  const fromIdx = group.findIndex((c) => c.id === fromId)
+  const toIdx = group.findIndex((c) => c.id === targetChannelId)
+  if (fromIdx === -1 || toIdx === -1) return
+
+  // Splice
+  group.splice(fromIdx, 1)
+  group.splice(toIdx, 0, from)
+
+  // Assign new positions and persist
+  for (let i = 0; i < group.length; i++) {
+    const ch = group[i]
+    if (ch && ch.position !== i) {
+      await updateChannel(ch.id, { position: i })
+    }
+  }
+}
+
+function onChannelDragEnd() {
+  draggedChannelId.value = null
+  dragOverChannelId.value = null
+}
+
 function toggleCategory(categoryId: string) {
   if (collapsedCategories.value.has(categoryId)) {
     collapsedCategories.value.delete(categoryId)
@@ -417,11 +471,21 @@ async function togglePinnedPanel() {
       <div class="space-y-0.5">
         <!-- Uncategorized channels (category_id = null) -->
         <router-link
-          v-for="channel in channelsStore.channels.filter(c => c.category_id === null)"
+          v-for="channel in channelsStore.channels.filter(c => c.category_id === null).sort((a,b) => a.position - b.position)"
           :key="channel.id"
           :to="`/channels/${serverId}/${channel.id}`"
+          :draggable="isOwner"
+          @dragstart.stop="onChannelDragStart(channel.id)"
+          @dragover.prevent.stop="onChannelDragOver(channel.id)"
+          @dragleave.stop="onChannelDragLeave"
+          @drop.prevent.stop="onChannelDrop(channel.id)"
+          @dragend.stop="onChannelDragEnd"
           class="flex w-full items-center gap-1.5 rounded px-2 py-1.5 text-sm hover:bg-bg-hover"
-          :class="channelsStore.activeChannelId === channel.id ? 'bg-bg-hover text-text-primary font-medium' : 'text-text-secondary'"
+          :class="[
+            channelsStore.activeChannelId === channel.id ? 'bg-bg-hover text-text-primary font-medium' : 'text-text-secondary',
+            dragOverChannelId === channel.id ? 'border-t-2 border-accent' : '',
+            isOwner ? 'cursor-grab' : '',
+          ]"
         >
           <span class="text-text-muted">#</span>
           <span class="truncate flex-1">{{ channel.name }}</span>
@@ -462,11 +526,21 @@ async function togglePinnedPanel() {
           <!-- Channels in this category -->
           <template v-if="!collapsedCategories.has(cat.id)">
             <router-link
-              v-for="channel in channelsStore.channels.filter(c => c.category_id === cat.id)"
+              v-for="channel in channelsStore.channels.filter(c => c.category_id === cat.id).sort((a,b) => a.position - b.position)"
               :key="channel.id"
               :to="`/channels/${serverId}/${channel.id}`"
+              :draggable="isOwner"
+              @dragstart.stop="onChannelDragStart(channel.id)"
+              @dragover.prevent.stop="onChannelDragOver(channel.id)"
+              @dragleave.stop="onChannelDragLeave"
+              @drop.prevent.stop="onChannelDrop(channel.id)"
+              @dragend.stop="onChannelDragEnd"
               class="flex w-full items-center gap-1.5 rounded px-2 py-1.5 text-sm hover:bg-bg-hover"
-              :class="channelsStore.activeChannelId === channel.id ? 'bg-bg-hover text-text-primary font-medium' : 'text-text-secondary'"
+              :class="[
+                channelsStore.activeChannelId === channel.id ? 'bg-bg-hover text-text-primary font-medium' : 'text-text-secondary',
+                dragOverChannelId === channel.id ? 'border-t-2 border-accent' : '',
+                isOwner ? 'cursor-grab' : '',
+              ]"
             >
               <span class="text-text-muted">#</span>
               <span class="truncate flex-1">{{ channel.name }}</span>
