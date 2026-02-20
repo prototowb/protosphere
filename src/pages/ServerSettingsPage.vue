@@ -3,11 +3,13 @@ import { ref, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useServersStore } from '@/stores/servers'
 import { useServers } from '@/composables/useServers'
+import { backend } from '@/lib/backend'
+import type { Ban, Profile } from '@/lib/types'
 
 const route = useRoute()
 const router = useRouter()
 const serversStore = useServersStore()
-const { fetchServers, updateServer, deleteServer } = useServers()
+const { fetchServers, updateServer, deleteServer, unbanMember } = useServers()
 
 const serverId = ref(route.params.serverId as string)
 const name = ref('')
@@ -16,11 +18,23 @@ const saving = ref(false)
 const saveSuccess = ref(false)
 const error = ref('')
 
+const bans = ref<(Ban & { profile: Profile })[]>([])
+
+async function fetchBans() {
+  bans.value = await backend.bans.list(serverId.value)
+}
+
+async function handleUnban(userId: string) {
+  await unbanMember(serverId.value, userId)
+  await fetchBans()
+}
+
 onMounted(async () => {
   if (serversStore.servers.length === 0) {
     await fetchServers()
   }
   loadServer()
+  fetchBans()
 })
 
 watch(() => route.params.serverId, () => {
@@ -123,6 +137,31 @@ async function handleDelete() {
           </button>
         </div>
       </form>
+
+      <!-- Ban list -->
+      <div class="mt-8 border-t border-bg-tertiary pt-6">
+        <h2 class="mb-4 text-lg font-semibold">Banned Members</h2>
+        <p v-if="bans.length === 0" class="text-sm text-text-muted">No banned members.</p>
+        <div v-else class="space-y-2">
+          <div
+            v-for="ban in bans"
+            :key="ban.user_id"
+            class="flex items-center gap-3 rounded-lg bg-bg-primary px-4 py-3"
+          >
+            <div class="min-w-0 flex-1">
+              <p class="font-medium">{{ ban.profile.display_name }}</p>
+              <p class="text-xs text-text-muted">@{{ ban.profile.username }}</p>
+              <p v-if="ban.reason" class="mt-0.5 text-xs text-text-secondary">Reason: {{ ban.reason }}</p>
+            </div>
+            <button
+              @click="handleUnban(ban.user_id)"
+              class="flex-shrink-0 rounded px-3 py-1.5 text-xs font-medium text-text-secondary hover:bg-bg-hover hover:text-text-primary"
+            >
+              Unban
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </template>

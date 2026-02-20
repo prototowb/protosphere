@@ -1,4 +1,4 @@
-import type { Profile, Server, Channel, ChannelCategory, Member, Message, Reaction, DirectMessageGroup, DirectMessage } from '@/lib/types'
+import type { Profile, Server, Channel, ChannelCategory, Member, Message, Reaction, Ban, DirectMessageGroup, DirectMessage } from '@/lib/types'
 import type { Backend } from './types'
 import { supabase } from '@/lib/supabase'
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -392,6 +392,47 @@ export function createSupabaseBackend(): Backend {
           .eq('user_id', userId)
           .eq('emoji', emoji)
         if (error) throw error
+      },
+    },
+
+    bans: {
+      async list(serverId: string) {
+        const { data, error } = await client
+          .from('bans')
+          .select('*, profile:profiles(*)')
+          .eq('server_id', serverId)
+        if (error) throw error
+        return data as (Ban & { profile: Profile })[]
+      },
+
+      async add(serverId: string, userId: string, bannedBy: string, reason = '') {
+        await client.from('members').delete().eq('server_id', serverId).eq('user_id', userId)
+        const { data, error } = await client
+          .from('bans')
+          .insert({ server_id: serverId, user_id: userId, banned_by: bannedBy, reason })
+          .select()
+          .single()
+        if (error) throw error
+        return data as Ban
+      },
+
+      async remove(serverId: string, userId: string) {
+        const { error } = await client
+          .from('bans')
+          .delete()
+          .eq('server_id', serverId)
+          .eq('user_id', userId)
+        if (error) throw error
+      },
+
+      async check(serverId: string, userId: string) {
+        const { data } = await client
+          .from('bans')
+          .select('user_id')
+          .eq('server_id', serverId)
+          .eq('user_id', userId)
+          .maybeSingle()
+        return !!data
       },
     },
 

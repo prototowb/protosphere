@@ -1,4 +1,4 @@
-import type { Profile, Server, Channel, ChannelCategory, Member, Message, Reaction, DirectMessageGroup, DirectMessageMember, DirectMessage } from '@/lib/types'
+import type { Profile, Server, Channel, ChannelCategory, Member, Message, Reaction, Ban, DirectMessageGroup, DirectMessageMember, DirectMessage } from '@/lib/types'
 import type { AuthSession, Backend } from './types'
 
 const KEYS = {
@@ -11,6 +11,7 @@ const KEYS = {
   messages: 'protocode_messages',
   reactions: 'protocode_reactions',
   categories: 'protocode_categories',
+  bans: 'protocode_bans',
   dm_groups: 'protocode_dm_groups',
   dm_members: 'protocode_dm_members',
   dm_messages: 'protocode_dm_messages',
@@ -336,6 +337,10 @@ export function createLocalBackend(): Backend {
       },
 
       async join(serverId: string, userId: string) {
+        const bans = readJson<Ban[]>(KEYS.bans, [])
+        if (bans.some((b) => b.server_id === serverId && b.user_id === userId)) {
+          throw new Error('You are banned from this server')
+        }
         const members = readJson<Member[]>(KEYS.members, [])
         const existing = members.find(
           (m) => m.server_id === serverId && m.user_id === userId,
@@ -553,6 +558,53 @@ export function createLocalBackend(): Backend {
           (r) => !(r.message_id === messageId && r.user_id === userId && r.emoji === emoji),
         )
         writeJson(KEYS.reactions, reactions)
+      },
+    },
+
+    bans: {
+      async list(serverId: string) {
+        const bans = readJson<Ban[]>(KEYS.bans, [])
+        const profiles = readJson<Record<string, Profile>>(KEYS.profiles, {})
+        const result: (Ban & { profile: Profile })[] = []
+        for (const b of bans) {
+          if (b.server_id !== serverId) continue
+          const profile = profiles[b.user_id]
+          if (profile) result.push({ ...b, profile })
+        }
+        return result
+      },
+
+      async add(serverId: string, userId: string, bannedBy: string, reason = '') {
+        // Kick from server first
+        let members = readJson<Member[]>(KEYS.members, [])
+        members = members.filter((m) => !(m.server_id === serverId && m.user_id === userId))
+        writeJson(KEYS.members, members)
+
+        const bans = readJson<Ban[]>(KEYS.bans, [])
+        const existing = bans.find((b) => b.server_id === serverId && b.user_id === userId)
+        if (existing) return existing
+
+        const ban: Ban = {
+          server_id: serverId,
+          user_id: userId,
+          banned_by: bannedBy,
+          reason,
+          created_at: new Date().toISOString(),
+        }
+        bans.push(ban)
+        writeJson(KEYS.bans, bans)
+        return ban
+      },
+
+      async remove(serverId: string, userId: string) {
+        let bans = readJson<Ban[]>(KEYS.bans, [])
+        bans = bans.filter((b) => !(b.server_id === serverId && b.user_id === userId))
+        writeJson(KEYS.bans, bans)
+      },
+
+      async check(serverId: string, userId: string) {
+        const bans = readJson<Ban[]>(KEYS.bans, [])
+        return bans.some((b) => b.server_id === serverId && b.user_id === userId)
       },
     },
 

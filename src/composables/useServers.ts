@@ -56,6 +56,15 @@ export function useServers() {
     await backend.members.leave(serverId, userId)
   }
 
+  async function banMember(serverId: string, userId: string, reason?: string) {
+    if (!authStore.user?.id) return
+    await backend.bans.add(serverId, userId, authStore.user.id, reason)
+  }
+
+  async function unbanMember(serverId: string, userId: string) {
+    await backend.bans.remove(serverId, userId)
+  }
+
   async function regenerateInviteCode(serverId: string) {
     return await backend.servers.regenerateInviteCode(serverId)
   }
@@ -68,6 +77,8 @@ export function useServers() {
     joinServer,
     leaveServer,
     kickMember,
+    banMember,
+    unbanMember,
     regenerateInviteCode,
   }
 }

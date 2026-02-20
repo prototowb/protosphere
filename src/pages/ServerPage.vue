@@ -31,7 +31,7 @@ const { fetchChannels, createChannel, updateChannel } = useChannels()
 const { fetchCategories, createCategory, deleteCategory } = useCategories()
 const categoriesStore = useCategoriesStore()
 const { members, fetchMembers, updateRole } = useMembers()
-const { leaveServer, deleteServer, kickMember, regenerateInviteCode } = useServers()
+const { leaveServer, deleteServer, kickMember, banMember, regenerateInviteCode } = useServers()
 const { fetchMessages, sendMessage, editMessage, deleteMessage, pinMessage, unpinMessage, fetchPinnedMessages } = useMessages()
 const { fetchReactionsForChannel, toggleReaction } = useReactions()
 const reactionsStore = useReactionsStore()
@@ -408,6 +408,13 @@ async function handleRoleChange(userId: string, role: MemberRole) {
 async function handleKick(userId: string) {
   if (!confirm('Kick this member from the server?')) return
   await kickMember(serverId.value, userId)
+  await fetchMembers(serverId.value)
+  selectedMember.value = null
+}
+
+async function handleBan(userId: string) {
+  if (!confirm('Ban this member? They will be kicked and cannot rejoin.')) return
+  await banMember(serverId.value, userId)
   await fetchMembers(serverId.value)
   selectedMember.value = null
 }
@@ -998,13 +1005,19 @@ async function togglePinnedPanel() {
           </select>
         </div>
 
-        <!-- Kick button (canManageChannels = owner/admin, not for self) -->
-        <div v-if="canManageChannels && selectedMember.user_id !== authStore.user?.id" class="mt-3">
+        <!-- Kick / Ban buttons (owner/admin only, not for self) -->
+        <div v-if="canManageChannels && selectedMember.user_id !== authStore.user?.id" class="mt-3 flex gap-2">
           <button
             @click="handleKick(selectedMember!.user_id)"
-            class="w-full rounded bg-danger/10 px-3 py-2 text-sm font-medium text-danger hover:bg-danger/20"
+            class="flex-1 rounded bg-bg-tertiary px-3 py-2 text-sm font-medium text-text-secondary hover:bg-bg-hover"
           >
-            Kick from Server
+            Kick
+          </button>
+          <button
+            @click="handleBan(selectedMember!.user_id)"
+            class="flex-1 rounded bg-danger/10 px-3 py-2 text-sm font-medium text-danger hover:bg-danger/20"
+          >
+            Ban
           </button>
         </div>
       </div>
