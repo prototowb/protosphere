@@ -5,7 +5,7 @@ import { backend } from '@/lib/backend'
 import { extractMentionedUsernames } from '@/lib/mentions'
 import type { Message, Profile } from '@/lib/types'
 
-const READ_STATE_KEY = 'protocode_read_state'
+const READ_STATE_KEY = 'protosphere_read_state'
 
 // Module-level cache so multiple composable instances share one fetch
 let cachedUsername: string | null = null

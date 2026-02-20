@@ -2,7 +2,7 @@ import { ref } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useMessagesStore } from '@/stores/messages'
 
-const READ_STATE_KEY = 'protocode_read_state'
+const READ_STATE_KEY = 'protosphere_read_state'
 
 type ReadState = Record<string, Record<string, string>> // userId → channelId → ISO timestamp
 

@@ -1,5 +1,5 @@
 -- 001_initial_schema.sql
--- Initial database schema for protocode-chat
+-- Initial database schema for protosphere
 -- Run against Supabase via Dashboard SQL editor or CLI
 
 -- =============================================================================
