@@ -1,4 +1,4 @@
-import type { Profile, Server, Channel, Member, Message, DirectMessageGroup, DirectMessage } from '@/lib/types'
+import type { Profile, Server, Channel, Member, Message, Reaction, DirectMessageGroup, DirectMessage } from '@/lib/types'
 
 export interface AuthUser {
   id: string
@@ -57,6 +57,14 @@ export interface Backend {
     send(channelId: string, authorId: string, content: string, replyToId?: string | null): Promise<Message & { profile: Profile }>
     edit(id: string, content: string): Promise<Message>
     delete(id: string): Promise<void>
+    pin(id: string): Promise<Message>
+    unpin(id: string): Promise<Message>
+    listPinned(channelId: string): Promise<(Message & { profile: Profile })[]>
+  }
+  reactions: {
+    listByChannel(channelId: string): Promise<Reaction[]>
+    add(messageId: string, userId: string, emoji: string): Promise<Reaction>
+    remove(messageId: string, userId: string, emoji: string): Promise<void>
   }
   dm: {
     listGroups(userId: string): Promise<DmGroupWithMeta[]>

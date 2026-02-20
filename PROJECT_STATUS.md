@@ -5,13 +5,13 @@
 ## Current State
 
 ```yaml
-project_phase: "M5 Complete"
+project_phase: "M7 Complete"
 protogear_enabled: true
 framework: "Vue 3 + TypeScript + Supabase"
 project_type: "Real-time Communication Platform"
 initialization_date: "2026-02-20"
 current_sprint: null
-current_milestone: "M6 - Mentions & Notifications"
+current_milestone: "M8 - Channel Polish"
 local_mode: true
 ```
 
@@ -25,20 +25,12 @@ Backend adapter auto-detects mode via `VITE_SUPABASE_URL` env var. Local mode us
 
 ## Active Tickets
 
-### M6 — Mentions & Notifications (local-first)
-
-| Ticket | Title | Status | Description |
-|--------|-------|--------|-------------|
-| PTSPH-021 | @mention parsing | Not Started | Parse @username in messages, highlight mentions in message text |
-| PTSPH-022 | Mention unread tracking | Not Started | Separate mention count from unread dot; red badge on server icon |
-| PTSPH-023 | Browser notifications | Not Started | Notification API push for @mentions when tab is not focused |
-
 ### M7 — Reactions & Pinning (local-first)
 
 | Ticket | Title | Status | Description |
 |--------|-------|--------|-------------|
-| PTSPH-024 | Emoji reactions | Not Started | Add/remove emoji reactions on messages, reaction pill counts, `reactions` table |
-| PTSPH-025 | Pin messages | Not Started | Pin messages in a channel, pinned messages panel from channel header |
+| PTSPH-024 | Emoji reactions | Complete | Add/remove emoji reactions on messages, reaction pill counts, `reactions` table |
+| PTSPH-025 | Pin messages | Complete | Pin messages in a channel, pinned messages panel from channel header |
 
 ### M8 — Channel Polish (local-first)
 
@@ -114,6 +106,14 @@ Backend adapter auto-detects mode via `VITE_SUPABASE_URL` env var. Local mode us
 | PTSPH-019 | DM conversation list (sidebar, new DM dialog with user search) | 2026-02-20 |
 | PTSPH-020 | DM message view (full chat UI, edit/delete, other user profile panel) | 2026-02-20 |
 
+### M6 — Mentions & Notifications
+
+| Ticket | Title | Completed |
+|--------|-------|-----------|
+| PTSPH-021 | @mention parsing (renderWithMentions, HTML-safe, highlight self vs others) | 2026-02-20 |
+| PTSPH-022 | Mention badge on server icon (red count badge, clears on open) | 2026-02-20 |
+| PTSPH-023 | Browser notifications (Notification API, fires on @mention when unfocused) | 2026-02-20 |
+
 ## Key Files
 
 ```
@@ -129,7 +129,8 @@ src/composables/
   useServers.ts         — CRUD, join/leave, invite codes
   useChannels.ts        — CRUD, list by server
   useMembers.ts         — list, role updates
-  useMessages.ts        — fetch, send, edit, delete
+  useMessages.ts        — fetch, send, edit, delete, pin, unpin, fetchPinned
+  useReactions.ts       — fetchReactionsForChannel, toggleReaction
   usePresence.ts        — online/idle/offline lifecycle
   useTyping.ts          — cross-tab typing state via StorageEvent
   useUnread.ts          — unread tracking, mark-as-read
@@ -137,7 +138,7 @@ src/composables/
 
 src/stores/
   auth.ts               — user, session, isAuthenticated (backend-agnostic types)
-  servers.ts, channels.ts, messages.ts, dms.ts, ui.ts
+  servers.ts, channels.ts, messages.ts, dms.ts, ui.ts, reactions.ts, mentions.ts
 
 src/pages/
   LoginPage.vue         — email/password form, OAuth (hidden in local mode)
@@ -162,8 +163,19 @@ supabase/migrations/
   003_profile_trigger.sql — auto-create profile on signup
 ```
 
+## Completed Tickets (continued)
+
+### M7 — Reactions & Pinning
+
+| Ticket | Title | Completed |
+|--------|-------|-----------|
+| PTSPH-024 | Emoji reactions (quick picker, pill counts, toggle) | 2026-02-20 |
+| PTSPH-025 | Pin messages (pin/unpin hover action, pinned panel in header) | 2026-02-20 |
+
 ## Recent Updates
 
+- 2026-02-20: PTSPH-024/025 — M7: emoji reactions with quick picker + pill counts, message pinning with pinned panel.
+- 2026-02-20: PTSPH-021/022/023 — M6: @mention highlighting, server badge counts, browser notifications.
 - 2026-02-20: PTSPH-018/019/020 — M5: full DM system (conversation list, user search, message view with edit/delete).
 - 2026-02-20: PTSPH-015/016/017 — M4: presence (idle/offline), typing indicators (cross-tab), unread channel dots.
 - 2026-02-20: PTSPH-012/013/014 — Full messaging: send/receive, grouping, inline edit, delete, reply system.

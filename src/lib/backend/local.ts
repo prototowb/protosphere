@@ -1,4 +1,4 @@
-import type { Profile, Server, Channel, Member, Message, DirectMessageGroup, DirectMessageMember, DirectMessage } from '@/lib/types'
+import type { Profile, Server, Channel, Member, Message, Reaction, DirectMessageGroup, DirectMessageMember, DirectMessage } from '@/lib/types'
 import type { AuthSession, Backend } from './types'
 
 const KEYS = {
@@ -9,6 +9,7 @@ const KEYS = {
   channels: 'protocode_channels',
   members: 'protocode_members',
   messages: 'protocode_messages',
+  reactions: 'protocode_reactions',
   dm_groups: 'protocode_dm_groups',
   dm_members: 'protocode_dm_members',
   dm_messages: 'protocode_dm_messages',
@@ -437,6 +438,72 @@ export function createLocalBackend(): Backend {
         let messages = readJson<Message[]>(KEYS.messages, [])
         messages = messages.filter((m) => m.id !== id)
         writeJson(KEYS.messages, messages)
+      },
+
+      async pin(id: string) {
+        const messages = readJson<Message[]>(KEYS.messages, [])
+        const message = messages.find((m) => m.id === id)
+        if (!message) throw new Error('Message not found')
+        message.is_pinned = true
+        writeJson(KEYS.messages, messages)
+        return message
+      },
+
+      async unpin(id: string) {
+        const messages = readJson<Message[]>(KEYS.messages, [])
+        const message = messages.find((m) => m.id === id)
+        if (!message) throw new Error('Message not found')
+        message.is_pinned = false
+        writeJson(KEYS.messages, messages)
+        return message
+      },
+
+      async listPinned(channelId: string) {
+        const messages = readJson<Message[]>(KEYS.messages, [])
+        const profiles = readJson<Record<string, Profile>>(KEYS.profiles, {})
+        const result: (Message & { profile: Profile })[] = []
+        for (const m of messages) {
+          if (m.channel_id !== channelId || !m.is_pinned) continue
+          const profile = profiles[m.author_id]
+          if (profile) result.push({ ...m, profile })
+        }
+        return result
+      },
+    },
+
+    reactions: {
+      async listByChannel(channelId: string) {
+        const messages = readJson<Message[]>(KEYS.messages, [])
+        const messageIds = new Set(
+          messages.filter((m) => m.channel_id === channelId).map((m) => m.id),
+        )
+        const reactions = readJson<Reaction[]>(KEYS.reactions, [])
+        return reactions.filter((r) => messageIds.has(r.message_id))
+      },
+
+      async add(messageId: string, userId: string, emoji: string) {
+        const reactions = readJson<Reaction[]>(KEYS.reactions, [])
+        const existing = reactions.find(
+          (r) => r.message_id === messageId && r.user_id === userId && r.emoji === emoji,
+        )
+        if (existing) return existing
+        const reaction: Reaction = {
+          message_id: messageId,
+          user_id: userId,
+          emoji,
+          created_at: new Date().toISOString(),
+        }
+        reactions.push(reaction)
+        writeJson(KEYS.reactions, reactions)
+        return reaction
+      },
+
+      async remove(messageId: string, userId: string, emoji: string) {
+        let reactions = readJson<Reaction[]>(KEYS.reactions, [])
+        reactions = reactions.filter(
+          (r) => !(r.message_id === messageId && r.user_id === userId && r.emoji === emoji),
+        )
+        writeJson(KEYS.reactions, reactions)
       },
     },
 

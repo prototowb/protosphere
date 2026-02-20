@@ -1,4 +1,4 @@
-import type { Profile, Server, Channel, Member, Message, DirectMessageGroup, DirectMessage } from '@/lib/types'
+import type { Profile, Server, Channel, Member, Message, Reaction, DirectMessageGroup, DirectMessage } from '@/lib/types'
 import type { Backend } from './types'
 import { supabase } from '@/lib/supabase'
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -287,6 +287,70 @@ export function createSupabaseBackend(): Backend {
 
       async delete(id: string) {
         const { error } = await client.from('messages').delete().eq('id', id)
+        if (error) throw error
+      },
+
+      async pin(id: string) {
+        const { data, error } = await client
+          .from('messages')
+          .update({ is_pinned: true })
+          .eq('id', id)
+          .select()
+          .single()
+        if (error) throw error
+        return data as Message
+      },
+
+      async unpin(id: string) {
+        const { data, error } = await client
+          .from('messages')
+          .update({ is_pinned: false })
+          .eq('id', id)
+          .select()
+          .single()
+        if (error) throw error
+        return data as Message
+      },
+
+      async listPinned(channelId: string) {
+        const { data, error } = await client
+          .from('messages')
+          .select('*, profile:profiles(*)')
+          .eq('channel_id', channelId)
+          .eq('is_pinned', true)
+          .order('created_at')
+        if (error) throw error
+        return data as (Message & { profile: Profile })[]
+      },
+    },
+
+    reactions: {
+      async listByChannel(channelId: string) {
+        const { data, error } = await client
+          .from('reactions')
+          .select('*, messages!inner(channel_id)')
+          .eq('messages.channel_id', channelId)
+        if (error) throw error
+        return data as Reaction[]
+      },
+
+      async add(messageId: string, userId: string, emoji: string) {
+        const { data, error } = await client
+          .from('reactions')
+          .insert({ message_id: messageId, user_id: userId, emoji })
+          .select()
+          .single()
+        if (error) throw error
+        return data as Reaction
+      },
+
+      async remove(messageId: string, userId: string, emoji: string) {
+        const { error } = await client
+          .from('reactions')
+          .delete()
+          .eq('message_id', messageId)
+          .eq('user_id', userId)
+          .eq('emoji', emoji)
         if (error) throw error
       },
     },

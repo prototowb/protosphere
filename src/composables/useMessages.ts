@@ -45,11 +45,42 @@ export function useMessages() {
     }
   }
 
+  async function pinMessage(channelId: string, messageId: string) {
+    const updated = await backend.messages.pin(messageId)
+    const list = messagesStore.messagesByChannel[channelId]
+    if (list) {
+      const idx = list.findIndex((m) => m.id === messageId)
+      if (idx !== -1) {
+        const existing = list[idx] as Message & { profile: Profile }
+        list[idx] = { ...existing, is_pinned: updated.is_pinned }
+      }
+    }
+  }
+
+  async function unpinMessage(channelId: string, messageId: string) {
+    const updated = await backend.messages.unpin(messageId)
+    const list = messagesStore.messagesByChannel[channelId]
+    if (list) {
+      const idx = list.findIndex((m) => m.id === messageId)
+      if (idx !== -1) {
+        const existing = list[idx] as Message & { profile: Profile }
+        list[idx] = { ...existing, is_pinned: updated.is_pinned }
+      }
+    }
+  }
+
+  async function fetchPinnedMessages(channelId: string) {
+    return backend.messages.listPinned(channelId)
+  }
+
   return {
     loading,
     fetchMessages,
     sendMessage,
     editMessage,
     deleteMessage,
+    pinMessage,
+    unpinMessage,
+    fetchPinnedMessages,
   }
 }
