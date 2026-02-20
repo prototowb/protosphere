@@ -25,21 +25,52 @@ Backend adapter auto-detects mode via `VITE_SUPABASE_URL` env var. Local mode us
 
 ## Active Tickets
 
-### M3 — Real-time Messaging (local-first)
+### M5 — Direct Messages
 
 | Ticket | Title | Status | Description |
 |--------|-------|--------|-------------|
-| PTSPH-012 | Message input + display | Done | Send messages in channels, message list, message grouping, timestamps |
-| PTSPH-013 | Message editing/deletion | Done | Edit own messages, delete own (owner can delete any) |
-| PTSPH-014 | Reply system | Done | Reply to messages, reply bar above input, quoted preview in message |
+| PTSPH-018 | DM backend | Not Started | Extend Backend interface + local/supabase impl for DM groups, members, messages |
+| PTSPH-019 | DM conversation list | Not Started | Sidebar list of open DM conversations, start new DM by username |
+| PTSPH-020 | DM message view | Not Started | Full message UI (same as channels) for DMs, reuse message components |
 
-### M4 — Presence, Typing & Unread
+### M6 — Supabase Real-time
 
 | Ticket | Title | Status | Description |
 |--------|-------|--------|-------------|
-| PTSPH-015 | User presence | Done | Online/idle/offline, auto-idle after 5min, offline on tab close |
-| PTSPH-016 | Typing indicators | Done | Cross-tab typing state via localStorage events, "X is typing..." display |
-| PTSPH-017 | Unread indicators | Done | Unread dot on channel names, mark-as-read on navigation |
+| PTSPH-021 | Supabase end-to-end validation | Not Started | Test auth, profile, servers, channels, messages against real Supabase instance |
+| PTSPH-022 | Real-time message subscriptions | Not Started | Supabase Realtime channel subscriptions for live message delivery |
+| PTSPH-023 | Real-time presence via Supabase | Not Started | Replace localStorage presence with Supabase Realtime presence tracking |
+
+### M7 — Mentions & Notifications
+
+| Ticket | Title | Status | Description |
+|--------|-------|--------|-------------|
+| PTSPH-024 | @mention parsing | Not Started | Parse @username in messages, highlight mentions, notify mentioned user |
+| PTSPH-025 | Mention badge on server icon | Not Started | Red badge count on server sidebar icon when mentioned |
+| PTSPH-026 | Browser notifications | Not Started | Notification API push for mentions when tab is not focused |
+
+### M8 — Reactions & Pinning
+
+| Ticket | Title | Status | Description |
+|--------|-------|--------|-------------|
+| PTSPH-027 | Emoji reactions | Not Started | Add/remove emoji reactions on messages, reaction counts, `reactions` table |
+| PTSPH-028 | Pin messages | Not Started | Pin messages in a channel, pinned messages panel accessible from header |
+
+### M9 — Channel Polish
+
+| Ticket | Title | Status | Description |
+|--------|-------|--------|-------------|
+| PTSPH-029 | Channel categories | Not Started | Group channels under collapsible category headers (like Discord) |
+| PTSPH-030 | Channel reordering | Not Started | Drag-and-drop to reorder channels within a server |
+| PTSPH-031 | Slowmode enforcement | Not Started | Enforce `slowmode_seconds` in the input — disable send button with countdown |
+
+### M10 — Moderation & Roles
+
+| Ticket | Title | Status | Description |
+|--------|-------|--------|-------------|
+| PTSPH-032 | Kick & ban members | Not Started | Owner/admin can kick or ban users, `bans` table, ban check on join |
+| PTSPH-033 | Role-based permissions | Not Started | Enforce message delete/channel create permissions by member role |
+| PTSPH-034 | Member context menu | Not Started | Right-click/long-press member to view profile, change role, kick, ban |
 
 ## Completed Tickets
 
