@@ -3,6 +3,7 @@ import { ref, watch, onMounted, nextTick, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppShell from '@/components/layout/AppShell.vue'
 import UserAvatar from '@/components/user/UserAvatar.vue'
+import EmojiPicker from '@/components/chat/EmojiPicker.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useDmsStore } from '@/stores/dms'
 import { useDMs } from '@/composables/useDMs'
@@ -15,8 +16,40 @@ const store = useDmsStore()
 const { fetchGroups, openDM, fetchMessages, sendMessage, editMessage, deleteMessage, searchUsers } = useDMs()
 
 const messageInput = ref('')
+const messageInputEl = ref<HTMLInputElement | null>(null)
 const sending = ref(false)
 const messageListEl = ref<HTMLElement | null>(null)
+
+// Emoji drawer
+const emojiDrawerOpen = ref(false)
+const emojiDrawerAnchor = ref<{ bottom: number; right: number } | null>(null)
+
+function openEmojiDrawer(event: MouseEvent) {
+  if (emojiDrawerOpen.value) {
+    emojiDrawerOpen.value = false
+    return
+  }
+  const btn = event.currentTarget as HTMLElement
+  const rect = btn.getBoundingClientRect()
+  emojiDrawerAnchor.value = { bottom: window.innerHeight - rect.top + 8, right: window.innerWidth - rect.right }
+  emojiDrawerOpen.value = true
+}
+
+function insertEmoji(emoji: string) {
+  const input = messageInputEl.value
+  if (!input) {
+    messageInput.value += emoji
+    return
+  }
+  const start = input.selectionStart ?? messageInput.value.length
+  const end = input.selectionEnd ?? messageInput.value.length
+  messageInput.value = messageInput.value.slice(0, start) + emoji + messageInput.value.slice(end)
+  nextTick(() => {
+    input.focus()
+    const pos = start + [...emoji].length
+    input.setSelectionRange(pos, pos)
+  })
+}
 
 const editingId = ref<string | null>(null)
 const editingContent = ref('')
@@ -349,7 +382,23 @@ function formatLastMessage(msg: DirectMessage | null): string {
     <template v-if="dmGroupId" #input>
       <div class="px-4 pb-4">
         <form @submit.prevent="handleSend" class="flex items-center gap-2 rounded-lg bg-bg-tertiary px-4 py-3">
+          <!-- Emoji drawer button -->
+          <button
+            type="button"
+            @click="openEmojiDrawer($event)"
+            :class="emojiDrawerOpen ? 'text-accent' : 'text-text-muted hover:text-text-primary'"
+            class="flex-shrink-0 rounded p-1 transition-colors"
+            title="Emoji"
+          >
+            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
+              <circle cx="12" cy="12" r="10"/>
+              <path d="M8 14s1.5 2 4 2 4-2 4-2"/>
+              <line x1="9" y1="9" x2="9.01" y2="9" stroke-linecap="round" stroke-width="2.5"/>
+              <line x1="15" y1="9" x2="15.01" y2="9" stroke-linecap="round" stroke-width="2.5"/>
+            </svg>
+          </button>
           <input
+            ref="messageInputEl"
             v-model="messageInput"
             type="text"
             :placeholder="`Message ${activeGroup?.otherUser.display_name ?? ''}`"
@@ -433,4 +482,21 @@ function formatLastMessage(msg: DirectMessage | null): string {
       </div>
     </div>
   </div>
+
+  <!-- Emoji drawer -->
+  <Teleport to="body">
+    <div
+      v-if="emojiDrawerOpen"
+      class="fixed z-[9997]"
+      :style="{ bottom: emojiDrawerAnchor ? emojiDrawerAnchor.bottom + 'px' : '80px', right: emojiDrawerAnchor ? emojiDrawerAnchor.right + 'px' : '16px' }"
+      @click.stop
+    >
+      <EmojiPicker @select="insertEmoji" />
+    </div>
+    <div
+      v-if="emojiDrawerOpen"
+      class="fixed inset-0 z-[9996]"
+      @click="emojiDrawerOpen = false"
+    />
+  </Teleport>
 </template>
