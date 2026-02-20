@@ -19,7 +19,7 @@ import { useMentions } from '@/composables/useMentions'
 import { renderWithMentions } from '@/lib/mentions'
 import { useAuthStore } from '@/stores/auth'
 import { useReactionsStore } from '@/stores/reactions'
-import type { Message, Profile } from '@/lib/types'
+import type { Message, Profile, Member, MemberRole } from '@/lib/types'
 
 const route = useRoute()
 const router = useRouter()
@@ -30,8 +30,8 @@ const authStore = useAuthStore()
 const { fetchChannels, createChannel, updateChannel } = useChannels()
 const { fetchCategories, createCategory, deleteCategory } = useCategories()
 const categoriesStore = useCategoriesStore()
-const { members, fetchMembers } = useMembers()
-const { leaveServer, deleteServer, regenerateInviteCode } = useServers()
+const { members, fetchMembers, updateRole } = useMembers()
+const { leaveServer, deleteServer, kickMember, regenerateInviteCode } = useServers()
 const { fetchMessages, sendMessage, editMessage, deleteMessage, pinMessage, unpinMessage, fetchPinnedMessages } = useMessages()
 const { fetchReactionsForChannel, toggleReaction } = useReactions()
 const reactionsStore = useReactionsStore()
@@ -76,6 +76,9 @@ const emojiPickerForMsg = ref<string | null>(null)
 // Pinned messages panel
 const showPinnedPanel = ref(false)
 const pinnedMessages = ref<(Message & { profile: Profile })[]>([])
+
+// Member profile panel
+const selectedMember = ref<(Member & { profile: Profile }) | null>(null)
 
 function loadServer() {
   serverId.value = route.params.serverId as string
@@ -383,6 +386,30 @@ async function handleRegenerateInvite() {
 
 function copyInviteCode() {
   navigator.clipboard.writeText(inviteCode.value)
+}
+
+// ── Member context menu ───────────────────────────────────
+function canChangeRole(target: Member & { profile: Profile }) {
+  // Owners can change anyone (except themselves to non-owner for safety)
+  // Admins can change members/moderators but not owners or other admins
+  if (target.user_id === authStore.user?.id) return false
+  if (myRole.value === 'owner') return true
+  if (myRole.value === 'admin') return target.role === 'member' || target.role === 'moderator'
+  return false
+}
+
+async function handleRoleChange(userId: string, role: MemberRole) {
+  await updateRole(serverId.value, userId, role)
+  if (selectedMember.value?.user_id === userId) {
+    selectedMember.value = members.value.find((m) => m.user_id === userId) ?? null
+  }
+}
+
+async function handleKick(userId: string) {
+  if (!confirm('Kick this member from the server?')) return
+  await kickMember(serverId.value, userId)
+  await fetchMembers(serverId.value)
+  selectedMember.value = null
 }
 
 // ── Reactions ─────────────────────────────────────────────
@@ -881,10 +908,12 @@ async function togglePinnedPanel() {
           Members — {{ members.length }}
         </h3>
         <div class="space-y-1">
-          <div
+          <button
             v-for="member in members"
             :key="member.user_id"
-            class="flex items-center gap-2 rounded px-2 py-1.5 hover:bg-bg-hover"
+            @click="selectedMember = member"
+            class="flex w-full items-center gap-2 rounded px-2 py-1.5 hover:bg-bg-hover text-left"
+            :class="selectedMember?.user_id === member.user_id ? 'bg-bg-hover' : ''"
           >
             <UserAvatar
               :src="member.profile.avatar_url"
@@ -896,7 +925,7 @@ async function togglePinnedPanel() {
               <p class="truncate text-sm font-medium">{{ member.profile.display_name }}</p>
               <p v-if="member.role !== 'member'" class="text-xs text-accent">{{ member.role }}</p>
             </div>
-          </div>
+          </button>
         </div>
       </div>
     </template>
@@ -908,6 +937,79 @@ async function togglePinnedPanel() {
     class="fixed inset-0 z-40"
     @click="emojiPickerForMsg = null"
   />
+
+  <!-- Member profile modal -->
+  <div
+    v-if="selectedMember"
+    class="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+    @click.self="selectedMember = null"
+  >
+    <div class="w-full max-w-sm rounded-lg bg-bg-secondary shadow-xl overflow-hidden">
+      <!-- Header band -->
+      <div class="h-16 bg-accent/30" />
+      <!-- Avatar overlapping the band -->
+      <div class="relative px-5 pb-5">
+        <div class="-mt-8 mb-3 flex items-end justify-between">
+          <UserAvatar
+            :src="selectedMember.profile.avatar_url"
+            :alt="selectedMember.profile.display_name"
+            :status="selectedMember.profile.status"
+            size="lg"
+          />
+          <button @click="selectedMember = null" class="mb-1 rounded p-1 text-text-muted hover:text-text-primary">
+            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        </div>
+
+        <p class="text-lg font-bold">{{ selectedMember.profile.display_name }}</p>
+        <p class="mb-1 text-sm text-text-muted">@{{ selectedMember.profile.username }}</p>
+        <span class="inline-block rounded px-2 py-0.5 text-xs font-medium"
+          :class="{
+            'bg-accent/20 text-accent': selectedMember.role === 'owner',
+            'bg-success/20 text-success': selectedMember.role === 'admin',
+            'bg-presence-idle/20 text-presence-idle': selectedMember.role === 'moderator',
+            'bg-bg-tertiary text-text-muted': selectedMember.role === 'member',
+          }"
+        >{{ selectedMember.role }}</span>
+
+        <div v-if="selectedMember.profile.bio" class="mt-3 border-t border-bg-tertiary pt-3">
+          <p class="text-xs font-semibold uppercase text-text-muted">About Me</p>
+          <p class="mt-1 text-sm text-text-secondary">{{ selectedMember.profile.bio }}</p>
+        </div>
+
+        <div v-if="selectedMember.profile.status_text" class="mt-2">
+          <p class="text-xs text-text-muted">{{ selectedMember.profile.status_text }}</p>
+        </div>
+
+        <!-- Role management (owner/admin only, not for self) -->
+        <div v-if="canChangeRole(selectedMember)" class="mt-4 border-t border-bg-tertiary pt-4">
+          <label class="mb-1 block text-xs font-semibold uppercase text-text-muted">Role</label>
+          <select
+            :value="selectedMember.role"
+            @change="handleRoleChange(selectedMember!.user_id, ($event.target as HTMLSelectElement).value as MemberRole)"
+            class="w-full rounded border border-bg-tertiary bg-bg-primary px-3 py-1.5 text-sm text-text-primary outline-none focus:border-accent"
+          >
+            <option value="member">Member</option>
+            <option value="moderator">Moderator</option>
+            <option value="admin">Admin</option>
+            <option v-if="myRole === 'owner'" value="owner">Owner</option>
+          </select>
+        </div>
+
+        <!-- Kick button (canManageChannels = owner/admin, not for self) -->
+        <div v-if="canManageChannels && selectedMember.user_id !== authStore.user?.id" class="mt-3">
+          <button
+            @click="handleKick(selectedMember!.user_id)"
+            class="w-full rounded bg-danger/10 px-3 py-2 text-sm font-medium text-danger hover:bg-danger/20"
+          >
+            Kick from Server
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <!-- Create Channel Dialog -->
   <div v-if="showCreateChannel" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60" @click.self="showCreateChannel = false">

@@ -52,6 +52,10 @@ export function useServers() {
     }
   }
 
+  async function kickMember(serverId: string, userId: string) {
+    await backend.members.leave(serverId, userId)
+  }
+
   async function regenerateInviteCode(serverId: string) {
     return await backend.servers.regenerateInviteCode(serverId)
   }
@@ -63,6 +67,7 @@ export function useServers() {
     deleteServer,
     joinServer,
     leaveServer,
+    kickMember,
     regenerateInviteCode,
   }
 }
