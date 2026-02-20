@@ -2,19 +2,19 @@ import type { Profile, Server, Channel, ChannelCategory, Member, Message, Reacti
 import type { AuthSession, Backend } from './types'
 
 const KEYS = {
-  users: 'protocode_users',
-  session: 'protocode_session',
-  profiles: 'protocode_profiles',
-  servers: 'protocode_servers',
-  channels: 'protocode_channels',
-  members: 'protocode_members',
-  messages: 'protocode_messages',
-  reactions: 'protocode_reactions',
-  categories: 'protocode_categories',
-  bans: 'protocode_bans',
-  dm_groups: 'protocode_dm_groups',
-  dm_members: 'protocode_dm_members',
-  dm_messages: 'protocode_dm_messages',
+  users: 'protosphere_users',
+  session: 'protosphere_session',
+  profiles: 'protosphere_profiles',
+  servers: 'protosphere_servers',
+  channels: 'protosphere_channels',
+  members: 'protosphere_members',
+  messages: 'protosphere_messages',
+  reactions: 'protosphere_reactions',
+  categories: 'protosphere_categories',
+  bans: 'protosphere_bans',
+  dm_groups: 'protosphere_dm_groups',
+  dm_members: 'protosphere_dm_members',
+  dm_messages: 'protosphere_dm_messages',
 } as const
 
 interface StoredUser {

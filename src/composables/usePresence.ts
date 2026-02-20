@@ -44,11 +44,11 @@ export function usePresence() {
     const id = authStore.user?.id
     if (!id) return
     try {
-      const raw = localStorage.getItem('protocode_profiles')
+      const raw = localStorage.getItem('protosphere_profiles')
       const profiles = raw ? JSON.parse(raw) : {}
       if (profiles[id]) {
         profiles[id].status = 'offline'
-        localStorage.setItem('protocode_profiles', JSON.stringify(profiles))
+        localStorage.setItem('protosphere_profiles', JSON.stringify(profiles))
       }
     } catch { /* ignore */ }
   }

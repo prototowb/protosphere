@@ -1,5 +1,5 @@
 -- 002_rls_policies.sql
--- Row Level Security policies for protocode-chat
+-- Row Level Security policies for protosphere
 -- Run after 001_initial_schema.sql
 
 -- =============================================================================

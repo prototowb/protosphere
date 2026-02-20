@@ -1,7 +1,7 @@
 import { ref, onUnmounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 
-const TYPING_KEY = 'protocode_typing'
+const TYPING_KEY = 'protosphere_typing'
 const TYPING_EXPIRE_MS = 4000
 const STOP_AFTER_MS = 3000
 
