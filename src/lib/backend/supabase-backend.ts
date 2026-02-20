@@ -1,4 +1,4 @@
-import type { Profile, Server, Channel, Member, Message } from '@/lib/types'
+import type { Profile, Server, Channel, Member, Message, Reaction, DirectMessageGroup, DirectMessage } from '@/lib/types'
 import type { Backend } from './types'
 import { supabase } from '@/lib/supabase'
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -94,6 +94,17 @@ export function createSupabaseBackend(): Backend {
         if (uploadError) throw uploadError
         const { data } = client.storage.from('avatars').getPublicUrl(filePath)
         return data.publicUrl
+      },
+
+      async search(query: string, excludeUserId: string) {
+        const { data, error } = await client
+          .from('profiles')
+          .select('*')
+          .neq('id', excludeUserId)
+          .or(`username.ilike.%${query}%,display_name.ilike.%${query}%`)
+          .limit(20)
+        if (error) throw error
+        return data as Profile[]
       },
     },
 
@@ -276,6 +287,184 @@ export function createSupabaseBackend(): Backend {
 
       async delete(id: string) {
         const { error } = await client.from('messages').delete().eq('id', id)
+        if (error) throw error
+      },
+
+      async pin(id: string) {
+        const { data, error } = await client
+          .from('messages')
+          .update({ is_pinned: true })
+          .eq('id', id)
+          .select()
+          .single()
+        if (error) throw error
+        return data as Message
+      },
+
+      async unpin(id: string) {
+        const { data, error } = await client
+          .from('messages')
+          .update({ is_pinned: false })
+          .eq('id', id)
+          .select()
+          .single()
+        if (error) throw error
+        return data as Message
+      },
+
+      async listPinned(channelId: string) {
+        const { data, error } = await client
+          .from('messages')
+          .select('*, profile:profiles(*)')
+          .eq('channel_id', channelId)
+          .eq('is_pinned', true)
+          .order('created_at')
+        if (error) throw error
+        return data as (Message & { profile: Profile })[]
+      },
+    },
+
+    reactions: {
+      async listByChannel(channelId: string) {
+        const { data, error } = await client
+          .from('reactions')
+          .select('*, messages!inner(channel_id)')
+          .eq('messages.channel_id', channelId)
+        if (error) throw error
+        return data as Reaction[]
+      },
+
+      async add(messageId: string, userId: string, emoji: string) {
+        const { data, error } = await client
+          .from('reactions')
+          .insert({ message_id: messageId, user_id: userId, emoji })
+          .select()
+          .single()
+        if (error) throw error
+        return data as Reaction
+      },
+
+      async remove(messageId: string, userId: string, emoji: string) {
+        const { error } = await client
+          .from('reactions')
+          .delete()
+          .eq('message_id', messageId)
+          .eq('user_id', userId)
+          .eq('emoji', emoji)
+        if (error) throw error
+      },
+    },
+
+    dm: {
+      async listGroups(userId: string) {
+        const { data, error } = await client
+          .from('direct_message_members')
+          .select('dm_group_id, direct_message_groups(*)')
+          .eq('user_id', userId)
+        if (error) throw error
+        // For each group, fetch other member's profile and last message
+        const result = []
+        for (const row of (data ?? [])) {
+          const group = (row as Record<string, unknown>).direct_message_groups as DirectMessageGroup
+          const { data: members } = await client
+            .from('direct_message_members')
+            .select('user_id, profiles(*)')
+            .eq('dm_group_id', group.id)
+            .neq('user_id', userId)
+            .single()
+          const { data: lastMsg } = await client
+            .from('direct_messages')
+            .select('*')
+            .eq('dm_group_id', group.id)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+          if (members) {
+            result.push({
+              ...group,
+              otherUser: (members as Record<string, unknown>).profiles as Profile,
+              lastMessage: lastMsg as DirectMessage | null,
+            })
+          }
+        }
+        return result
+      },
+
+      async getOrCreate(userId: string, otherUserId: string) {
+        // Find existing group
+        const { data: myGroups } = await client
+          .from('direct_message_members')
+          .select('dm_group_id')
+          .eq('user_id', userId)
+        const myGroupIds = (myGroups ?? []).map((r: Record<string, unknown>) => r.dm_group_id as string)
+
+        if (myGroupIds.length > 0) {
+          const { data: shared } = await client
+            .from('direct_message_members')
+            .select('dm_group_id, direct_message_groups!inner(is_group)')
+            .eq('user_id', otherUserId)
+            .in('dm_group_id', myGroupIds)
+          const existing = (shared ?? []).find(
+            (r: Record<string, unknown>) =>
+              !(r.direct_message_groups as DirectMessageGroup).is_group,
+          )
+          if (existing) {
+            const { data: group } = await client
+              .from('direct_message_groups')
+              .select('*')
+              .eq('id', (existing as Record<string, unknown>).dm_group_id)
+              .single()
+            return group as DirectMessageGroup
+          }
+        }
+
+        // Create new group
+        const { data: group, error } = await client
+          .from('direct_message_groups')
+          .insert({ is_group: false })
+          .select()
+          .single()
+        if (error) throw error
+        await client.from('direct_message_members').insert([
+          { dm_group_id: group.id, user_id: userId },
+          { dm_group_id: group.id, user_id: otherUserId },
+        ])
+        return group as DirectMessageGroup
+      },
+
+      async listMessages(dmGroupId: string) {
+        const { data, error } = await client
+          .from('direct_messages')
+          .select('*, profile:profiles(*)')
+          .eq('dm_group_id', dmGroupId)
+          .order('created_at')
+        if (error) throw error
+        return data as (DirectMessage & { profile: Profile })[]
+      },
+
+      async sendMessage(dmGroupId: string, authorId: string, content: string) {
+        const { data, error } = await client
+          .from('direct_messages')
+          .insert({ dm_group_id: dmGroupId, author_id: authorId, content })
+          .select('*, profile:profiles(*)')
+          .single()
+        if (error) throw error
+        return data as DirectMessage & { profile: Profile }
+      },
+
+      async editMessage(id: string, content: string) {
+        const { data, error } = await client
+          .from('direct_messages')
+          .update({ content, edited_at: new Date().toISOString() })
+          .eq('id', id)
+          .select()
+          .single()
+        if (error) throw error
+        return data as DirectMessage
+      },
+
+      async deleteMessage(id: string) {
+        const { error } = await client.from('direct_messages').delete().eq('id', id)
         if (error) throw error
       },
     },

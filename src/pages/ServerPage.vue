@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, onMounted, nextTick, computed } from 'vue'
+import { ref, watch, onMounted, onUnmounted, nextTick, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppShell from '@/components/layout/AppShell.vue'
 import UserAvatar from '@/components/user/UserAvatar.vue'
@@ -10,7 +10,13 @@ import { useChannels } from '@/composables/useChannels'
 import { useMembers } from '@/composables/useMembers'
 import { useServers } from '@/composables/useServers'
 import { useMessages } from '@/composables/useMessages'
+import { useReactions } from '@/composables/useReactions'
+import { useTyping } from '@/composables/useTyping'
+import { useUnread } from '@/composables/useUnread'
+import { useMentions } from '@/composables/useMentions'
+import { renderWithMentions } from '@/lib/mentions'
 import { useAuthStore } from '@/stores/auth'
+import { useReactionsStore } from '@/stores/reactions'
 import type { Message, Profile } from '@/lib/types'
 
 const route = useRoute()
@@ -22,7 +28,14 @@ const authStore = useAuthStore()
 const { fetchChannels, createChannel } = useChannels()
 const { members, fetchMembers } = useMembers()
 const { leaveServer, deleteServer, regenerateInviteCode } = useServers()
-const { fetchMessages, sendMessage, editMessage, deleteMessage } = useMessages()
+const { fetchMessages, sendMessage, editMessage, deleteMessage, pinMessage, unpinMessage, fetchPinnedMessages } = useMessages()
+const { fetchReactionsForChannel, toggleReaction } = useReactions()
+const reactionsStore = useReactionsStore()
+const { typingUsers, onTyping, onSent, startListening, stopListening } = useTyping(() => channelsStore.activeChannelId)
+const { unreadChannelIds, markRead, refreshUnread } = useUnread()
+const { scanForMentions, clearServerMentions, requestPermission, getUsername } = useMentions()
+
+const myUsername = ref<string | null>(null)
 
 const showCreateChannel = ref(false)
 const newChannelName = ref('')
@@ -42,6 +55,14 @@ const editingContent = ref('')
 
 const replyingTo = ref<(Message & { profile: Profile }) | null>(null)
 
+// Emoji picker
+const QUICK_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '😡', '🎉', '🔥']
+const emojiPickerForMsg = ref<string | null>(null)
+
+// Pinned messages panel
+const showPinnedPanel = ref(false)
+const pinnedMessages = ref<(Message & { profile: Profile })[]>([])
+
 function loadServer() {
   serverId.value = route.params.serverId as string
   channelId.value = route.params.channelId as string
@@ -53,7 +74,14 @@ function loadServer() {
   }
 }
 
-onMounted(loadServer)
+onMounted(async () => {
+  loadServer()
+  startListening()
+  myUsername.value = await getUsername()
+  clearServerMentions(serverId.value)
+  await requestPermission()
+})
+onUnmounted(stopListening)
 watch(() => route.params.serverId, loadServer)
 
 watch(() => channelsStore.channels, (channels) => {
@@ -75,12 +103,24 @@ watch(() => route.params.channelId, (id) => {
   }
 })
 
-// Load messages when active channel changes
+// Load messages and mark as read when active channel changes
 watch(() => channelsStore.activeChannelId, (id) => {
   if (id && id !== serverId.value) {
-    fetchMessages(id).then(() => scrollToBottom())
+    showPinnedPanel.value = false
+    fetchMessages(id).then(() => {
+      scrollToBottom()
+      scanForMentions(serverId.value, id)
+      markRead(id)
+      refreshUnread(channelsStore.channels.map((c) => c.id))
+    })
+    fetchReactionsForChannel(id)
   }
 }, { immediate: true })
+
+// Refresh unread whenever the channel list changes (new channels loaded)
+watch(() => channelsStore.channels, (channels) => {
+  refreshUnread(channels.map((c) => c.id))
+})
 
 const currentServer = ref<typeof serversStore.servers[0] | undefined>()
 watch(
@@ -133,6 +173,7 @@ async function handleSendMessage() {
   sending.value = true
   try {
     messageInput.value = ''
+    onSent()
     await sendMessage(channelsStore.activeChannelId, authStore.user.id, content, replyingTo.value?.id)
     replyingTo.value = null
   } finally {
@@ -228,6 +269,47 @@ async function handleRegenerateInvite() {
 function copyInviteCode() {
   navigator.clipboard.writeText(inviteCode.value)
 }
+
+// ── Reactions ─────────────────────────────────────────────
+function getReactionGroups(messageId: string): { emoji: string; count: number; iMine: boolean }[] {
+  const reactions = reactionsStore.reactionsByMessage[messageId] ?? []
+  const map = new Map<string, { count: number; iMine: boolean }>()
+  for (const r of reactions) {
+    const entry = map.get(r.emoji) ?? { count: 0, iMine: false }
+    entry.count++
+    if (r.user_id === authStore.user?.id) entry.iMine = true
+    map.set(r.emoji, entry)
+  }
+  return Array.from(map.entries()).map(([emoji, v]) => ({ emoji, ...v }))
+}
+
+async function handleToggleReaction(messageId: string, emoji: string) {
+  emojiPickerForMsg.value = null
+  await toggleReaction(messageId, emoji)
+}
+
+// ── Pinning ───────────────────────────────────────────────
+async function handlePinMessage(messageId: string) {
+  if (!channelsStore.activeChannelId) return
+  await pinMessage(channelsStore.activeChannelId, messageId)
+  if (showPinnedPanel.value) await refreshPinnedPanel()
+}
+
+async function handleUnpinMessage(messageId: string) {
+  if (!channelsStore.activeChannelId) return
+  await unpinMessage(channelsStore.activeChannelId, messageId)
+  if (showPinnedPanel.value) await refreshPinnedPanel()
+}
+
+async function refreshPinnedPanel() {
+  if (!channelsStore.activeChannelId) return
+  pinnedMessages.value = await fetchPinnedMessages(channelsStore.activeChannelId)
+}
+
+async function togglePinnedPanel() {
+  showPinnedPanel.value = !showPinnedPanel.value
+  if (showPinnedPanel.value) await refreshPinnedPanel()
+}
 </script>
 
 <template>
@@ -302,7 +384,11 @@ function copyInviteCode() {
           :class="channelsStore.activeChannelId === channel.id ? 'bg-bg-hover text-text-primary font-medium' : 'text-text-secondary'"
         >
           <span class="text-text-muted">#</span>
-          <span class="truncate">{{ channel.name }}</span>
+          <span class="truncate flex-1">{{ channel.name }}</span>
+          <span
+            v-if="unreadChannelIds.has(channel.id)"
+            class="ml-auto h-2 w-2 flex-shrink-0 rounded-full bg-white"
+          />
         </router-link>
       </div>
     </template>
@@ -314,6 +400,18 @@ function copyInviteCode() {
         <span v-if="activeChannel?.description" class="ml-2 truncate text-sm text-text-muted">
           {{ activeChannel.description }}
         </span>
+        <div class="ml-auto flex items-center gap-1">
+          <button
+            @click="togglePinnedPanel"
+            :class="showPinnedPanel ? 'text-text-primary bg-bg-hover' : 'text-text-muted hover:text-text-primary hover:bg-bg-hover'"
+            class="rounded p-1.5"
+            title="Pinned Messages"
+          >
+            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2l-2-2z"/>
+            </svg>
+          </button>
+        </div>
       </header>
     </template>
 
@@ -389,10 +487,30 @@ function copyInviteCode() {
               </div>
 
               <!-- Content -->
-              <p v-else class="break-words text-sm text-text-primary leading-relaxed">
-                {{ msg.content }}
-                <span v-if="msg.edited_at" class="ml-1 text-xs text-text-muted">(edited)</span>
-              </p>
+              <p
+                v-else
+                class="break-words text-sm text-text-primary leading-relaxed"
+                v-html="renderWithMentions(msg.content, myUsername) + (msg.edited_at ? ' <span class=\'text-xs text-text-muted\'>(edited)</span>' : '')"
+              />
+
+              <!-- Reaction pills -->
+              <div
+                v-if="getReactionGroups(msg.id).length > 0"
+                class="mt-1 flex flex-wrap gap-1"
+              >
+                <button
+                  v-for="group in getReactionGroups(msg.id)"
+                  :key="group.emoji"
+                  @click="handleToggleReaction(msg.id, group.emoji)"
+                  class="flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs transition-colors"
+                  :class="group.iMine
+                    ? 'border-accent bg-accent/20 text-accent'
+                    : 'border-bg-tertiary bg-bg-secondary text-text-secondary hover:border-accent/50'"
+                >
+                  <span>{{ group.emoji }}</span>
+                  <span>{{ group.count }}</span>
+                </button>
+              </div>
             </div>
 
             <!-- Hover actions -->
@@ -400,6 +518,32 @@ function copyInviteCode() {
               v-if="editingId !== msg.id"
               class="absolute right-2 top-0 hidden -translate-y-1/2 items-center gap-1 rounded border border-bg-tertiary bg-bg-primary p-0.5 shadow group-hover:flex"
             >
+              <!-- Emoji picker trigger -->
+              <div class="relative">
+                <button
+                  @click.stop="emojiPickerForMsg = emojiPickerForMsg === msg.id ? null : msg.id"
+                  class="rounded p-1 text-text-muted hover:bg-bg-hover hover:text-text-primary"
+                  title="Add Reaction"
+                >
+                  <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/>
+                  </svg>
+                </button>
+                <!-- Quick emoji picker -->
+                <div
+                  v-if="emojiPickerForMsg === msg.id"
+                  class="absolute right-0 top-7 z-50 flex gap-1 rounded-lg border border-bg-tertiary bg-bg-primary p-1.5 shadow-lg"
+                  @click.stop
+                >
+                  <button
+                    v-for="emoji in QUICK_EMOJIS"
+                    :key="emoji"
+                    @click="handleToggleReaction(msg.id, emoji)"
+                    class="rounded p-1 text-base hover:bg-bg-hover"
+                    :title="emoji"
+                  >{{ emoji }}</button>
+                </div>
+              </div>
               <button
                 @click="startReply(msg)"
                 class="rounded p-1 text-text-muted hover:bg-bg-hover hover:text-text-primary"
@@ -407,6 +551,17 @@ function copyInviteCode() {
               >
                 <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/>
+                </svg>
+              </button>
+              <!-- Pin/unpin (owner only) -->
+              <button
+                v-if="isOwner"
+                @click="msg.is_pinned ? handleUnpinMessage(msg.id) : handlePinMessage(msg.id)"
+                class="rounded p-1 text-text-muted hover:bg-bg-hover hover:text-text-primary"
+                :title="msg.is_pinned ? 'Unpin' : 'Pin'"
+              >
+                <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor" :class="msg.is_pinned ? 'text-accent' : ''">
+                  <path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2l-2-2z"/>
                 </svg>
               </button>
               <button
@@ -460,6 +615,12 @@ function copyInviteCode() {
           <span class="flex-1 truncate text-text-muted">{{ replyingTo.content }}</span>
           <button @click="replyingTo = null" class="ml-auto flex-shrink-0 hover:text-text-primary">✕</button>
         </div>
+        <!-- Typing indicator -->
+        <div v-if="typingUsers.length > 0" class="px-1 pb-1 text-xs text-text-muted">
+          <span class="font-medium text-text-secondary">{{ typingUsers.join(', ') }}</span>
+          {{ typingUsers.length === 1 ? 'is' : 'are' }} typing
+          <span class="animate-pulse">...</span>
+        </div>
         <form @submit.prevent="handleSendMessage" class="flex items-center gap-2 rounded-lg bg-bg-tertiary px-4 py-3" :class="replyingTo ? 'rounded-t-none' : ''">
           <input
             v-model="messageInput"
@@ -468,6 +629,7 @@ function copyInviteCode() {
             :disabled="!activeChannel"
             class="flex-1 bg-transparent text-text-primary placeholder-text-muted outline-none disabled:cursor-not-allowed"
             @keydown.enter.prevent="handleSendMessage"
+            @keydown="onTyping"
           />
           <button
             type="submit"
@@ -483,7 +645,46 @@ function copyInviteCode() {
     </template>
 
     <template #members>
-      <div class="p-4">
+      <!-- Pinned messages panel (replaces member list when open) -->
+      <div v-if="showPinnedPanel" class="flex h-full flex-col">
+        <div class="flex items-center justify-between border-b border-bg-tertiary px-4 py-3">
+          <h3 class="text-sm font-semibold">Pinned Messages</h3>
+          <button @click="showPinnedPanel = false" class="text-text-muted hover:text-text-primary">
+            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        </div>
+        <div class="flex-1 overflow-y-auto p-3">
+          <p v-if="pinnedMessages.length === 0" class="text-center text-sm text-text-muted py-6">
+            No pinned messages yet.
+          </p>
+          <div v-else class="space-y-3">
+            <div
+              v-for="pm in pinnedMessages"
+              :key="pm.id"
+              class="rounded-lg border border-bg-tertiary bg-bg-primary p-3"
+            >
+              <div class="mb-1 flex items-center gap-2">
+                <UserAvatar :src="pm.profile.avatar_url" :alt="pm.profile.display_name" size="sm" />
+                <span class="text-xs font-semibold text-text-primary">{{ pm.profile.display_name }}</span>
+                <span class="ml-auto text-xs text-text-muted">{{ formatTime(pm.created_at) }}</span>
+              </div>
+              <p class="break-words text-xs text-text-secondary leading-relaxed">{{ pm.content }}</p>
+              <button
+                v-if="isOwner"
+                @click="handleUnpinMessage(pm.id)"
+                class="mt-2 text-xs text-text-muted hover:text-danger"
+              >
+                Unpin
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Default member list -->
+      <div v-else class="p-4">
         <h3 class="mb-3 text-xs font-semibold uppercase text-text-muted">
           Members — {{ members.length }}
         </h3>
@@ -508,6 +709,13 @@ function copyInviteCode() {
       </div>
     </template>
   </AppShell>
+
+  <!-- Close emoji picker on outside click -->
+  <div
+    v-if="emojiPickerForMsg"
+    class="fixed inset-0 z-40"
+    @click="emojiPickerForMsg = null"
+  />
 
   <!-- Create Channel Dialog -->
   <div v-if="showCreateChannel" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60" @click.self="showCreateChannel = false">

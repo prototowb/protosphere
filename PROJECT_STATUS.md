@@ -5,13 +5,13 @@
 ## Current State
 
 ```yaml
-project_phase: "M3 Complete"
+project_phase: "M7 Complete"
 protogear_enabled: true
 framework: "Vue 3 + TypeScript + Supabase"
 project_type: "Real-time Communication Platform"
 initialization_date: "2026-02-20"
 current_sprint: null
-current_milestone: "M4 - Presence, Typing & Unread"
+current_milestone: "M8 - Channel Polish"
 local_mode: true
 ```
 
@@ -25,21 +25,36 @@ Backend adapter auto-detects mode via `VITE_SUPABASE_URL` env var. Local mode us
 
 ## Active Tickets
 
-### M3 — Real-time Messaging (local-first)
+### M7 — Reactions & Pinning (local-first)
 
 | Ticket | Title | Status | Description |
 |--------|-------|--------|-------------|
-| PTSPH-012 | Message input + display | Done | Send messages in channels, message list, message grouping, timestamps |
-| PTSPH-013 | Message editing/deletion | Done | Edit own messages, delete own (owner can delete any) |
-| PTSPH-014 | Reply system | Done | Reply to messages, reply bar above input, quoted preview in message |
+| PTSPH-024 | Emoji reactions | Complete | Add/remove emoji reactions on messages, reaction pill counts, `reactions` table |
+| PTSPH-025 | Pin messages | Complete | Pin messages in a channel, pinned messages panel from channel header |
 
-### M4 — Presence, Typing & Unread
+### M8 — Channel Polish (local-first)
 
 | Ticket | Title | Status | Description |
 |--------|-------|--------|-------------|
-| PTSPH-015 | User presence | Not Started | Online/idle/DND/offline, auto-idle after 5min inactivity |
-| PTSPH-016 | Typing indicators | Not Started | Broadcast typing state, "user is typing..." display |
-| PTSPH-017 | Unread indicators | Not Started | Unread channel markers, mention badge counts, mark-as-read |
+| PTSPH-026 | Channel categories | Not Started | Group channels under collapsible category headers |
+| PTSPH-027 | Channel reordering | Not Started | Drag-and-drop to reorder channels within a category |
+| PTSPH-028 | Slowmode enforcement | Not Started | Enforce `slowmode_seconds` in the input — countdown timer on send button |
+
+### M9 — Moderation & Roles (local-first)
+
+| Ticket | Title | Status | Description |
+|--------|-------|--------|-------------|
+| PTSPH-029 | Role-based permissions | Not Started | Enforce channel create/delete and message moderation by member role |
+| PTSPH-030 | Member context menu | Not Started | Click member to view profile, change role, kick |
+| PTSPH-031 | Kick & ban | Not Started | Owner/admin can kick or ban users; ban check on join via invite |
+
+### M10 — Supabase Integration (post-MVP)
+
+| Ticket | Title | Status | Description |
+|--------|-------|--------|-------------|
+| PTSPH-032 | Supabase end-to-end validation | Not Started | Test all backend operations against a real Supabase instance |
+| PTSPH-033 | Real-time message subscriptions | Not Started | Supabase Realtime for live cross-browser message delivery |
+| PTSPH-034 | Real-time presence via Supabase | Not Started | Replace localStorage presence with Supabase Realtime presence |
 
 ## Completed Tickets
 
@@ -75,6 +90,30 @@ Backend adapter auto-detects mode via `VITE_SUPABASE_URL` env var. Local mode us
 | PTSPH-013 | Message editing/deletion (inline edit, owner moderation) | 2026-02-20 |
 | PTSPH-014 | Reply system (reply bar, quoted preview, reply_to_id persisted) | 2026-02-20 |
 
+### M4 — Presence, Typing & Unread
+
+| Ticket | Title | Completed |
+|--------|-------|-----------|
+| PTSPH-015 | User presence (online/idle/offline, auto-idle, tab-close offline) | 2026-02-20 |
+| PTSPH-016 | Typing indicators (cross-tab via localStorage StorageEvent) | 2026-02-20 |
+| PTSPH-017 | Unread channel indicators (dot badge, mark-as-read on focus) | 2026-02-20 |
+
+### M5 — Direct Messages
+
+| Ticket | Title | Completed |
+|--------|-------|-----------|
+| PTSPH-018 | DM backend (groups, messages, profiles.search — local + supabase) | 2026-02-20 |
+| PTSPH-019 | DM conversation list (sidebar, new DM dialog with user search) | 2026-02-20 |
+| PTSPH-020 | DM message view (full chat UI, edit/delete, other user profile panel) | 2026-02-20 |
+
+### M6 — Mentions & Notifications
+
+| Ticket | Title | Completed |
+|--------|-------|-----------|
+| PTSPH-021 | @mention parsing (renderWithMentions, HTML-safe, highlight self vs others) | 2026-02-20 |
+| PTSPH-022 | Mention badge on server icon (red count badge, clears on open) | 2026-02-20 |
+| PTSPH-023 | Browser notifications (Notification API, fires on @mention when unfocused) | 2026-02-20 |
+
 ## Key Files
 
 ```
@@ -90,11 +129,16 @@ src/composables/
   useServers.ts         — CRUD, join/leave, invite codes
   useChannels.ts        — CRUD, list by server
   useMembers.ts         — list, role updates
-  useMessages.ts        — fetch, send, edit, delete
+  useMessages.ts        — fetch, send, edit, delete, pin, unpin, fetchPinned
+  useReactions.ts       — fetchReactionsForChannel, toggleReaction
+  usePresence.ts        — online/idle/offline lifecycle
+  useTyping.ts          — cross-tab typing state via StorageEvent
+  useUnread.ts          — unread tracking, mark-as-read
+  useDMs.ts             — DM groups, messages, user search
 
 src/stores/
   auth.ts               — user, session, isAuthenticated (backend-agnostic types)
-  servers.ts, channels.ts, messages.ts, ui.ts
+  servers.ts, channels.ts, messages.ts, dms.ts, ui.ts, reactions.ts, mentions.ts
 
 src/pages/
   LoginPage.vue         — email/password form, OAuth (hidden in local mode)
@@ -119,8 +163,21 @@ supabase/migrations/
   003_profile_trigger.sql — auto-create profile on signup
 ```
 
+## Completed Tickets (continued)
+
+### M7 — Reactions & Pinning
+
+| Ticket | Title | Completed |
+|--------|-------|-----------|
+| PTSPH-024 | Emoji reactions (quick picker, pill counts, toggle) | 2026-02-20 |
+| PTSPH-025 | Pin messages (pin/unpin hover action, pinned panel in header) | 2026-02-20 |
+
 ## Recent Updates
 
+- 2026-02-20: PTSPH-024/025 — M7: emoji reactions with quick picker + pill counts, message pinning with pinned panel.
+- 2026-02-20: PTSPH-021/022/023 — M6: @mention highlighting, server badge counts, browser notifications.
+- 2026-02-20: PTSPH-018/019/020 — M5: full DM system (conversation list, user search, message view with edit/delete).
+- 2026-02-20: PTSPH-015/016/017 — M4: presence (idle/offline), typing indicators (cross-tab), unread channel dots.
 - 2026-02-20: PTSPH-012/013/014 — Full messaging: send/receive, grouping, inline edit, delete, reply system.
 - 2026-02-20: PTSPH-008/009/010/011 — Server & channel CRUD, member system, backend adapter extensions. Full server management in local mode.
 - 2026-02-20: PTSPH-005/006/007 — Backend adapter, UI polish, future planning. App now works locally without Supabase.
