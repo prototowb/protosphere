@@ -175,13 +175,18 @@ watch(
   { immediate: true },
 )
 
-const isOwner = ref(false)
-watch(
-  [() => currentServer.value, () => authStore.user],
-  () => {
-    isOwner.value = currentServer.value?.owner_id === authStore.user?.id
-  },
-  { immediate: true },
+const isOwner = computed(() => currentServer.value?.owner_id === authStore.user?.id)
+
+const myMember = computed(() => members.value.find((m) => m.user_id === authStore.user?.id))
+const myRole = computed(() => myMember.value?.role ?? 'member')
+
+// owner + admin can create/delete channels, categories, and reorder
+const canManageChannels = computed(() =>
+  myRole.value === 'owner' || myRole.value === 'admin',
+)
+// owner + admin + moderator can delete any message, pin/unpin
+const canModerate = computed(() =>
+  myRole.value === 'owner' || myRole.value === 'admin' || myRole.value === 'moderator',
 )
 
 const messages = computed((): (Message & { profile: Profile })[] => {
@@ -319,7 +324,7 @@ async function onChannelDrop(targetChannelId: string) {
   const fromId = draggedChannelId.value
   draggedChannelId.value = null
   dragOverChannelId.value = null
-  if (!fromId || fromId === targetChannelId) return
+  if (!fromId || fromId === targetChannelId || !canManageChannels.value) return
 
   const from = channelsStore.channels.find((c) => c.id === fromId)
   const to = channelsStore.channels.find((c) => c.id === targetChannelId)
@@ -448,12 +453,14 @@ async function togglePinnedPanel() {
               Invite People
             </button>
             <button
+              v-if="canManageChannels"
               @click="showCreateChannel = true; showServerActions = false"
               class="flex w-full items-center gap-2 rounded px-3 py-2 text-sm text-text-primary hover:bg-bg-hover"
             >
               Create Channel
             </button>
             <button
+              v-if="canManageChannels"
               @click="showCreateCategory = true; showServerActions = false"
               class="flex w-full items-center gap-2 rounded px-3 py-2 text-sm text-text-primary hover:bg-bg-hover"
             >
@@ -497,7 +504,7 @@ async function togglePinnedPanel() {
           v-for="channel in channelsStore.channels.filter(c => c.category_id === null).sort((a,b) => a.position - b.position)"
           :key="channel.id"
           :to="`/channels/${serverId}/${channel.id}`"
-          :draggable="isOwner"
+          :draggable="canManageChannels"
           @dragstart.stop="onChannelDragStart(channel.id)"
           @dragover.prevent.stop="onChannelDragOver(channel.id)"
           @dragleave.stop="onChannelDragLeave"
@@ -507,7 +514,7 @@ async function togglePinnedPanel() {
           :class="[
             channelsStore.activeChannelId === channel.id ? 'bg-bg-hover text-text-primary font-medium' : 'text-text-secondary',
             dragOverChannelId === channel.id ? 'border-t-2 border-accent' : '',
-            isOwner ? 'cursor-grab' : '',
+            canManageChannels ? 'cursor-grab' : '',
           ]"
         >
           <span class="text-text-muted">#</span>
@@ -536,7 +543,7 @@ async function togglePinnedPanel() {
               {{ cat.name }}
             </button>
             <button
-              v-if="isOwner"
+              v-if="canManageChannels"
               @click="handleDeleteCategory(cat.id)"
               class="hidden rounded p-0.5 text-text-muted hover:text-danger group-hover:block"
               title="Delete category"
@@ -737,9 +744,9 @@ async function togglePinnedPanel() {
                   <polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/>
                 </svg>
               </button>
-              <!-- Pin/unpin (owner only) -->
+              <!-- Pin/unpin (moderator+) -->
               <button
-                v-if="isOwner"
+                v-if="canModerate"
                 @click="msg.is_pinned ? handleUnpinMessage(msg.id) : handlePinMessage(msg.id)"
                 class="rounded p-1 text-text-muted hover:bg-bg-hover hover:text-text-primary"
                 :title="msg.is_pinned ? 'Unpin' : 'Pin'"
@@ -760,7 +767,7 @@ async function togglePinnedPanel() {
                 </svg>
               </button>
               <button
-                v-if="msg.author_id === authStore.user?.id || isOwner"
+                v-if="msg.author_id === authStore.user?.id || canModerate"
                 @click="handleDeleteMessage(msg.id)"
                 class="rounded p-1 text-text-muted hover:bg-danger/10 hover:text-danger"
                 title="Delete"
@@ -857,7 +864,7 @@ async function togglePinnedPanel() {
               </div>
               <p class="break-words text-xs text-text-secondary leading-relaxed">{{ pm.content }}</p>
               <button
-                v-if="isOwner"
+                v-if="canModerate"
                 @click="handleUnpinMessage(pm.id)"
                 class="mt-2 text-xs text-text-muted hover:text-danger"
               >
