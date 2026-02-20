@@ -33,44 +33,44 @@ Backend adapter auto-detects mode via `VITE_SUPABASE_URL` env var. Local mode us
 | PTSPH-019 | DM conversation list | Not Started | Sidebar list of open DM conversations, start new DM by username |
 | PTSPH-020 | DM message view | Not Started | Full message UI (same as channels) for DMs, reuse message components |
 
-### M6 — Supabase Real-time
+### M6 — Mentions & Notifications (local-first)
 
 | Ticket | Title | Status | Description |
 |--------|-------|--------|-------------|
-| PTSPH-021 | Supabase end-to-end validation | Not Started | Test auth, profile, servers, channels, messages against real Supabase instance |
-| PTSPH-022 | Real-time message subscriptions | Not Started | Supabase Realtime channel subscriptions for live message delivery |
-| PTSPH-023 | Real-time presence via Supabase | Not Started | Replace localStorage presence with Supabase Realtime presence tracking |
+| PTSPH-021 | @mention parsing | Not Started | Parse @username in messages, highlight mentions in message text |
+| PTSPH-022 | Mention unread tracking | Not Started | Separate mention count from unread dot; red badge on server icon |
+| PTSPH-023 | Browser notifications | Not Started | Notification API push for @mentions when tab is not focused |
 
-### M7 — Mentions & Notifications
-
-| Ticket | Title | Status | Description |
-|--------|-------|--------|-------------|
-| PTSPH-024 | @mention parsing | Not Started | Parse @username in messages, highlight mentions, notify mentioned user |
-| PTSPH-025 | Mention badge on server icon | Not Started | Red badge count on server sidebar icon when mentioned |
-| PTSPH-026 | Browser notifications | Not Started | Notification API push for mentions when tab is not focused |
-
-### M8 — Reactions & Pinning
+### M7 — Reactions & Pinning (local-first)
 
 | Ticket | Title | Status | Description |
 |--------|-------|--------|-------------|
-| PTSPH-027 | Emoji reactions | Not Started | Add/remove emoji reactions on messages, reaction counts, `reactions` table |
-| PTSPH-028 | Pin messages | Not Started | Pin messages in a channel, pinned messages panel accessible from header |
+| PTSPH-024 | Emoji reactions | Not Started | Add/remove emoji reactions on messages, reaction pill counts, `reactions` table |
+| PTSPH-025 | Pin messages | Not Started | Pin messages in a channel, pinned messages panel from channel header |
 
-### M9 — Channel Polish
-
-| Ticket | Title | Status | Description |
-|--------|-------|--------|-------------|
-| PTSPH-029 | Channel categories | Not Started | Group channels under collapsible category headers (like Discord) |
-| PTSPH-030 | Channel reordering | Not Started | Drag-and-drop to reorder channels within a server |
-| PTSPH-031 | Slowmode enforcement | Not Started | Enforce `slowmode_seconds` in the input — disable send button with countdown |
-
-### M10 — Moderation & Roles
+### M8 — Channel Polish (local-first)
 
 | Ticket | Title | Status | Description |
 |--------|-------|--------|-------------|
-| PTSPH-032 | Kick & ban members | Not Started | Owner/admin can kick or ban users, `bans` table, ban check on join |
-| PTSPH-033 | Role-based permissions | Not Started | Enforce message delete/channel create permissions by member role |
-| PTSPH-034 | Member context menu | Not Started | Right-click/long-press member to view profile, change role, kick, ban |
+| PTSPH-026 | Channel categories | Not Started | Group channels under collapsible category headers |
+| PTSPH-027 | Channel reordering | Not Started | Drag-and-drop to reorder channels within a category |
+| PTSPH-028 | Slowmode enforcement | Not Started | Enforce `slowmode_seconds` in the input — countdown timer on send button |
+
+### M9 — Moderation & Roles (local-first)
+
+| Ticket | Title | Status | Description |
+|--------|-------|--------|-------------|
+| PTSPH-029 | Role-based permissions | Not Started | Enforce channel create/delete and message moderation by member role |
+| PTSPH-030 | Member context menu | Not Started | Click member to view profile, change role, kick |
+| PTSPH-031 | Kick & ban | Not Started | Owner/admin can kick or ban users; ban check on join via invite |
+
+### M10 — Supabase Integration (post-MVP)
+
+| Ticket | Title | Status | Description |
+|--------|-------|--------|-------------|
+| PTSPH-032 | Supabase end-to-end validation | Not Started | Test all backend operations against a real Supabase instance |
+| PTSPH-033 | Real-time message subscriptions | Not Started | Supabase Realtime for live cross-browser message delivery |
+| PTSPH-034 | Real-time presence via Supabase | Not Started | Replace localStorage presence with Supabase Realtime presence |
 
 ## Completed Tickets
 
