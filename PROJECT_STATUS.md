@@ -5,13 +5,13 @@
 ## Current State
 
 ```yaml
-project_phase: "M4 Complete"
+project_phase: "M5 Complete"
 protogear_enabled: true
 framework: "Vue 3 + TypeScript + Supabase"
 project_type: "Real-time Communication Platform"
 initialization_date: "2026-02-20"
 current_sprint: null
-current_milestone: "M5 - TBD"
+current_milestone: "M6 - Mentions & Notifications"
 local_mode: true
 ```
 
@@ -24,14 +24,6 @@ composables → backend (interface) → local.ts | supabase-backend.ts
 Backend adapter auto-detects mode via `VITE_SUPABASE_URL` env var. Local mode uses localStorage, Supabase mode wraps the real client. Composables are backend-agnostic.
 
 ## Active Tickets
-
-### M5 — Direct Messages
-
-| Ticket | Title | Status | Description |
-|--------|-------|--------|-------------|
-| PTSPH-018 | DM backend | Not Started | Extend Backend interface + local/supabase impl for DM groups, members, messages |
-| PTSPH-019 | DM conversation list | Not Started | Sidebar list of open DM conversations, start new DM by username |
-| PTSPH-020 | DM message view | Not Started | Full message UI (same as channels) for DMs, reuse message components |
 
 ### M6 — Mentions & Notifications (local-first)
 
@@ -114,6 +106,14 @@ Backend adapter auto-detects mode via `VITE_SUPABASE_URL` env var. Local mode us
 | PTSPH-016 | Typing indicators (cross-tab via localStorage StorageEvent) | 2026-02-20 |
 | PTSPH-017 | Unread channel indicators (dot badge, mark-as-read on focus) | 2026-02-20 |
 
+### M5 — Direct Messages
+
+| Ticket | Title | Completed |
+|--------|-------|-----------|
+| PTSPH-018 | DM backend (groups, messages, profiles.search — local + supabase) | 2026-02-20 |
+| PTSPH-019 | DM conversation list (sidebar, new DM dialog with user search) | 2026-02-20 |
+| PTSPH-020 | DM message view (full chat UI, edit/delete, other user profile panel) | 2026-02-20 |
+
 ## Key Files
 
 ```
@@ -133,10 +133,11 @@ src/composables/
   usePresence.ts        — online/idle/offline lifecycle
   useTyping.ts          — cross-tab typing state via StorageEvent
   useUnread.ts          — unread tracking, mark-as-read
+  useDMs.ts             — DM groups, messages, user search
 
 src/stores/
   auth.ts               — user, session, isAuthenticated (backend-agnostic types)
-  servers.ts, channels.ts, messages.ts, ui.ts
+  servers.ts, channels.ts, messages.ts, dms.ts, ui.ts
 
 src/pages/
   LoginPage.vue         — email/password form, OAuth (hidden in local mode)
@@ -163,6 +164,7 @@ supabase/migrations/
 
 ## Recent Updates
 
+- 2026-02-20: PTSPH-018/019/020 — M5: full DM system (conversation list, user search, message view with edit/delete).
 - 2026-02-20: PTSPH-015/016/017 — M4: presence (idle/offline), typing indicators (cross-tab), unread channel dots.
 - 2026-02-20: PTSPH-012/013/014 — Full messaging: send/receive, grouping, inline edit, delete, reply system.
 - 2026-02-20: PTSPH-008/009/010/011 — Server & channel CRUD, member system, backend adapter extensions. Full server management in local mode.

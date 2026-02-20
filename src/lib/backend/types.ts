@@ -1,4 +1,4 @@
-import type { Profile, Server, Channel, Member, Message } from '@/lib/types'
+import type { Profile, Server, Channel, Member, Message, DirectMessageGroup, DirectMessage } from '@/lib/types'
 
 export interface AuthUser {
   id: string
@@ -8,6 +8,11 @@ export interface AuthUser {
 export interface AuthSession {
   user: AuthUser
   access_token: string
+}
+
+export type DmGroupWithMeta = DirectMessageGroup & {
+  otherUser: Profile
+  lastMessage: DirectMessage | null
 }
 
 export interface Backend {
@@ -23,6 +28,7 @@ export interface Backend {
     get(id: string): Promise<Profile>
     update(id: string, updates: Partial<Profile>): Promise<Profile>
     uploadAvatar(userId: string, file: File): Promise<string>
+    search(query: string, excludeUserId: string): Promise<Profile[]>
   }
   servers: {
     list(userId: string): Promise<Server[]>
@@ -51,5 +57,13 @@ export interface Backend {
     send(channelId: string, authorId: string, content: string, replyToId?: string | null): Promise<Message & { profile: Profile }>
     edit(id: string, content: string): Promise<Message>
     delete(id: string): Promise<void>
+  }
+  dm: {
+    listGroups(userId: string): Promise<DmGroupWithMeta[]>
+    getOrCreate(userId: string, otherUserId: string): Promise<DirectMessageGroup>
+    listMessages(dmGroupId: string): Promise<(DirectMessage & { profile: Profile })[]>
+    sendMessage(dmGroupId: string, authorId: string, content: string): Promise<DirectMessage & { profile: Profile }>
+    editMessage(id: string, content: string): Promise<DirectMessage>
+    deleteMessage(id: string): Promise<void>
   }
 }

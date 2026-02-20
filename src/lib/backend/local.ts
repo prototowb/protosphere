@@ -1,4 +1,4 @@
-import type { Profile, Server, Channel, Member, Message } from '@/lib/types'
+import type { Profile, Server, Channel, Member, Message, DirectMessageGroup, DirectMessageMember, DirectMessage } from '@/lib/types'
 import type { AuthSession, Backend } from './types'
 
 const KEYS = {
@@ -9,6 +9,9 @@ const KEYS = {
   channels: 'protocode_channels',
   members: 'protocode_members',
   messages: 'protocode_messages',
+  dm_groups: 'protocode_dm_groups',
+  dm_members: 'protocode_dm_members',
+  dm_messages: 'protocode_dm_messages',
 } as const
 
 interface StoredUser {
@@ -142,6 +145,17 @@ export function createLocalBackend(): Backend {
           reader.onerror = () => reject(new Error('Failed to read file'))
           reader.readAsDataURL(file)
         })
+      },
+
+      async search(query: string, excludeUserId: string) {
+        const profiles = readJson<Record<string, Profile>>(KEYS.profiles, {})
+        const q = query.toLowerCase()
+        return Object.values(profiles).filter(
+          (p) => p.id !== excludeUserId && (
+            p.username.toLowerCase().includes(q) ||
+            p.display_name.toLowerCase().includes(q)
+          ),
+        )
       },
     },
 
@@ -423,6 +437,127 @@ export function createLocalBackend(): Backend {
         let messages = readJson<Message[]>(KEYS.messages, [])
         messages = messages.filter((m) => m.id !== id)
         writeJson(KEYS.messages, messages)
+      },
+    },
+
+    dm: {
+      async listGroups(userId: string) {
+        const groups = readJson<DirectMessageGroup[]>(KEYS.dm_groups, [])
+        const dmMembers = readJson<DirectMessageMember[]>(KEYS.dm_members, [])
+        const profiles = readJson<Record<string, Profile>>(KEYS.profiles, {})
+        const dmMessages = readJson<DirectMessage[]>(KEYS.dm_messages, [])
+
+        const myGroupIds = new Set(
+          dmMembers.filter((m) => m.user_id === userId).map((m) => m.dm_group_id),
+        )
+
+        const result = []
+        for (const group of groups) {
+          if (!myGroupIds.has(group.id)) continue
+          const otherMember = dmMembers.find(
+            (m) => m.dm_group_id === group.id && m.user_id !== userId,
+          )
+          if (!otherMember) continue
+          const otherUser = profiles[otherMember.user_id]
+          if (!otherUser) continue
+
+          const groupMessages = dmMessages
+            .filter((m) => m.dm_group_id === group.id)
+            .sort((a, b) => a.created_at.localeCompare(b.created_at))
+          const lastMessage = groupMessages[groupMessages.length - 1] ?? null
+
+          result.push({ ...group, otherUser, lastMessage })
+        }
+
+        return result.sort((a, b) => {
+          const aTime = a.lastMessage?.created_at ?? a.created_at
+          const bTime = b.lastMessage?.created_at ?? b.created_at
+          return bTime.localeCompare(aTime)
+        })
+      },
+
+      async getOrCreate(userId: string, otherUserId: string) {
+        const groups = readJson<DirectMessageGroup[]>(KEYS.dm_groups, [])
+        const dmMembers = readJson<DirectMessageMember[]>(KEYS.dm_members, [])
+
+        // Find existing 1:1 group between the two users
+        const myGroupIds = new Set(
+          dmMembers.filter((m) => m.user_id === userId).map((m) => m.dm_group_id),
+        )
+        const otherGroupIds = new Set(
+          dmMembers.filter((m) => m.user_id === otherUserId).map((m) => m.dm_group_id),
+        )
+        for (const id of myGroupIds) {
+          const group = groups.find((g) => g.id === id && !g.is_group)
+          if (group && otherGroupIds.has(id)) return group
+        }
+
+        // Create new 1:1 group
+        const now = new Date().toISOString()
+        const group: DirectMessageGroup = {
+          id: crypto.randomUUID(),
+          name: null,
+          is_group: false,
+          created_at: now,
+        }
+        groups.push(group)
+        writeJson(KEYS.dm_groups, groups)
+
+        dmMembers.push(
+          { dm_group_id: group.id, user_id: userId, joined_at: now },
+          { dm_group_id: group.id, user_id: otherUserId, joined_at: now },
+        )
+        writeJson(KEYS.dm_members, dmMembers)
+
+        return group
+      },
+
+      async listMessages(dmGroupId: string) {
+        const messages = readJson<DirectMessage[]>(KEYS.dm_messages, [])
+        const profiles = readJson<Record<string, Profile>>(KEYS.profiles, {})
+        const result: (DirectMessage & { profile: Profile })[] = []
+        for (const m of messages) {
+          if (m.dm_group_id !== dmGroupId) continue
+          const profile = profiles[m.author_id]
+          if (profile) result.push({ ...m, profile })
+        }
+        return result.sort((a, b) => a.created_at.localeCompare(b.created_at))
+      },
+
+      async sendMessage(dmGroupId: string, authorId: string, content: string) {
+        const messages = readJson<DirectMessage[]>(KEYS.dm_messages, [])
+        const profiles = readJson<Record<string, Profile>>(KEYS.profiles, {})
+        const profile = profiles[authorId]
+        if (!profile) throw new Error('Profile not found')
+
+        const message: DirectMessage = {
+          id: crypto.randomUUID(),
+          dm_group_id: dmGroupId,
+          author_id: authorId,
+          content,
+          edited_at: null,
+          attachments: [],
+          created_at: new Date().toISOString(),
+        }
+        messages.push(message)
+        writeJson(KEYS.dm_messages, messages)
+        return { ...message, profile }
+      },
+
+      async editMessage(id: string, content: string) {
+        const messages = readJson<DirectMessage[]>(KEYS.dm_messages, [])
+        const message = messages.find((m) => m.id === id)
+        if (!message) throw new Error('Message not found')
+        message.content = content
+        message.edited_at = new Date().toISOString()
+        writeJson(KEYS.dm_messages, messages)
+        return message
+      },
+
+      async deleteMessage(id: string) {
+        let messages = readJson<DirectMessage[]>(KEYS.dm_messages, [])
+        messages = messages.filter((m) => m.id !== id)
+        writeJson(KEYS.dm_messages, messages)
       },
     },
   }
