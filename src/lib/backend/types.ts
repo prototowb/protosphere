@@ -1,4 +1,4 @@
-import type { Profile, Server, Channel, Member, Message, Reaction, DirectMessageGroup, DirectMessage } from '@/lib/types'
+import type { Profile, Server, Channel, ChannelCategory, Member, Message, Reaction, DirectMessageGroup, DirectMessage } from '@/lib/types'
 
 export interface AuthUser {
   id: string
@@ -42,8 +42,14 @@ export interface Backend {
   channels: {
     list(serverId: string): Promise<Channel[]>
     get(id: string): Promise<Channel>
-    create(data: { server_id: string; name: string; description?: string; is_default?: boolean }): Promise<Channel>
-    update(id: string, updates: Partial<Pick<Channel, 'name' | 'description' | 'slowmode_seconds' | 'position'>>): Promise<Channel>
+    create(data: { server_id: string; name: string; description?: string; is_default?: boolean; category_id?: string | null }): Promise<Channel>
+    update(id: string, updates: Partial<Pick<Channel, 'name' | 'description' | 'slowmode_seconds' | 'position' | 'category_id'>>): Promise<Channel>
+    delete(id: string): Promise<void>
+  }
+  categories: {
+    list(serverId: string): Promise<ChannelCategory[]>
+    create(data: { server_id: string; name: string }): Promise<ChannelCategory>
+    update(id: string, updates: Partial<Pick<ChannelCategory, 'name' | 'position'>>): Promise<ChannelCategory>
     delete(id: string): Promise<void>
   }
   members: {

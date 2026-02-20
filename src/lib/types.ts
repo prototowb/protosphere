@@ -31,6 +31,14 @@ export interface Server {
   created_at: string
 }
 
+export interface ChannelCategory {
+  id: string
+  server_id: string
+  name: string
+  position: number
+  created_at: string
+}
+
 export interface Channel {
   id: string
   server_id: string
@@ -40,6 +48,7 @@ export interface Channel {
   position: number
   is_default: boolean
   slowmode_seconds: number
+  category_id: string | null
   created_at: string
 }
 

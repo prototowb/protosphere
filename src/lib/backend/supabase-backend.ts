@@ -1,4 +1,4 @@
-import type { Profile, Server, Channel, Member, Message, Reaction, DirectMessageGroup, DirectMessage } from '@/lib/types'
+import type { Profile, Server, Channel, ChannelCategory, Member, Message, Reaction, DirectMessageGroup, DirectMessage } from '@/lib/types'
 import type { Backend } from './types'
 import { supabase } from '@/lib/supabase'
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -321,6 +321,46 @@ export function createSupabaseBackend(): Backend {
           .order('created_at')
         if (error) throw error
         return data as (Message & { profile: Profile })[]
+      },
+    },
+
+    categories: {
+      async list(serverId: string) {
+        const { data, error } = await client
+          .from('channel_categories')
+          .select('*')
+          .eq('server_id', serverId)
+          .order('position')
+        if (error) throw error
+        return data as ChannelCategory[]
+      },
+
+      async create(input) {
+        const { data, error } = await client
+          .from('channel_categories')
+          .insert({ ...input, name: input.name.toUpperCase() })
+          .select()
+          .single()
+        if (error) throw error
+        return data as ChannelCategory
+      },
+
+      async update(id, updates) {
+        const { data, error } = await client
+          .from('channel_categories')
+          .update(updates)
+          .eq('id', id)
+          .select()
+          .single()
+        if (error) throw error
+        return data as ChannelCategory
+      },
+
+      async delete(id) {
+        // Unassign channels first
+        await client.from('channels').update({ category_id: null }).eq('category_id', id)
+        const { error } = await client.from('channel_categories').delete().eq('id', id)
+        if (error) throw error
       },
     },
 

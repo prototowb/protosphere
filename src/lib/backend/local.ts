@@ -1,4 +1,4 @@
-import type { Profile, Server, Channel, Member, Message, Reaction, DirectMessageGroup, DirectMessageMember, DirectMessage } from '@/lib/types'
+import type { Profile, Server, Channel, ChannelCategory, Member, Message, Reaction, DirectMessageGroup, DirectMessageMember, DirectMessage } from '@/lib/types'
 import type { AuthSession, Backend } from './types'
 
 const KEYS = {
@@ -10,6 +10,7 @@ const KEYS = {
   members: 'protocode_members',
   messages: 'protocode_messages',
   reactions: 'protocode_reactions',
+  categories: 'protocode_categories',
   dm_groups: 'protocode_dm_groups',
   dm_members: 'protocode_dm_members',
   dm_messages: 'protocode_dm_messages',
@@ -217,6 +218,7 @@ export function createLocalBackend(): Backend {
           position: 0,
           is_default: true,
           slowmode_seconds: 0,
+          category_id: null,
           created_at: new Date().toISOString(),
         })
         writeJson(KEYS.channels, channels)
@@ -295,6 +297,7 @@ export function createLocalBackend(): Backend {
           position: existing.length,
           is_default: data.is_default ?? false,
           slowmode_seconds: 0,
+          category_id: data.category_id ?? null,
           created_at: new Date().toISOString(),
         }
         channels.push(channel)
@@ -468,6 +471,52 @@ export function createLocalBackend(): Backend {
           if (profile) result.push({ ...m, profile })
         }
         return result
+      },
+    },
+
+    categories: {
+      async list(serverId: string) {
+        const categories = readJson<ChannelCategory[]>(KEYS.categories, [])
+        return categories
+          .filter((c) => c.server_id === serverId)
+          .sort((a, b) => a.position - b.position)
+      },
+
+      async create(data) {
+        const categories = readJson<ChannelCategory[]>(KEYS.categories, [])
+        const existing = categories.filter((c) => c.server_id === data.server_id)
+        const category: ChannelCategory = {
+          id: crypto.randomUUID(),
+          server_id: data.server_id,
+          name: data.name.toUpperCase(),
+          position: existing.length,
+          created_at: new Date().toISOString(),
+        }
+        categories.push(category)
+        writeJson(KEYS.categories, categories)
+        return category
+      },
+
+      async update(id, updates) {
+        const categories = readJson<ChannelCategory[]>(KEYS.categories, [])
+        const category = categories.find((c) => c.id === id)
+        if (!category) throw new Error('Category not found')
+        Object.assign(category, updates)
+        writeJson(KEYS.categories, categories)
+        return category
+      },
+
+      async delete(id) {
+        // Unassign channels in this category
+        const channels = readJson<Channel[]>(KEYS.channels, [])
+        for (const ch of channels) {
+          if (ch.category_id === id) ch.category_id = null
+        }
+        writeJson(KEYS.channels, channels)
+
+        let categories = readJson<ChannelCategory[]>(KEYS.categories, [])
+        categories = categories.filter((c) => c.id !== id)
+        writeJson(KEYS.categories, categories)
       },
     },
 
