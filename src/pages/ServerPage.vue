@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, onMounted, nextTick, computed } from 'vue'
+import { ref, watch, onMounted, onUnmounted, nextTick, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppShell from '@/components/layout/AppShell.vue'
 import UserAvatar from '@/components/user/UserAvatar.vue'
@@ -10,6 +10,8 @@ import { useChannels } from '@/composables/useChannels'
 import { useMembers } from '@/composables/useMembers'
 import { useServers } from '@/composables/useServers'
 import { useMessages } from '@/composables/useMessages'
+import { useTyping } from '@/composables/useTyping'
+import { useUnread } from '@/composables/useUnread'
 import { useAuthStore } from '@/stores/auth'
 import type { Message, Profile } from '@/lib/types'
 
@@ -23,6 +25,8 @@ const { fetchChannels, createChannel } = useChannels()
 const { members, fetchMembers } = useMembers()
 const { leaveServer, deleteServer, regenerateInviteCode } = useServers()
 const { fetchMessages, sendMessage, editMessage, deleteMessage } = useMessages()
+const { typingUsers, onTyping, onSent, startListening, stopListening } = useTyping(() => channelsStore.activeChannelId)
+const { unreadChannelIds, markRead, refreshUnread } = useUnread()
 
 const showCreateChannel = ref(false)
 const newChannelName = ref('')
@@ -53,7 +57,8 @@ function loadServer() {
   }
 }
 
-onMounted(loadServer)
+onMounted(() => { loadServer(); startListening() })
+onUnmounted(stopListening)
 watch(() => route.params.serverId, loadServer)
 
 watch(() => channelsStore.channels, (channels) => {
@@ -75,12 +80,21 @@ watch(() => route.params.channelId, (id) => {
   }
 })
 
-// Load messages when active channel changes
+// Load messages and mark as read when active channel changes
 watch(() => channelsStore.activeChannelId, (id) => {
   if (id && id !== serverId.value) {
-    fetchMessages(id).then(() => scrollToBottom())
+    fetchMessages(id).then(() => {
+      scrollToBottom()
+      markRead(id)
+      refreshUnread(channelsStore.channels.map((c) => c.id))
+    })
   }
 }, { immediate: true })
+
+// Refresh unread whenever the channel list changes (new channels loaded)
+watch(() => channelsStore.channels, (channels) => {
+  refreshUnread(channels.map((c) => c.id))
+})
 
 const currentServer = ref<typeof serversStore.servers[0] | undefined>()
 watch(
@@ -133,6 +147,7 @@ async function handleSendMessage() {
   sending.value = true
   try {
     messageInput.value = ''
+    onSent()
     await sendMessage(channelsStore.activeChannelId, authStore.user.id, content, replyingTo.value?.id)
     replyingTo.value = null
   } finally {
@@ -302,7 +317,11 @@ function copyInviteCode() {
           :class="channelsStore.activeChannelId === channel.id ? 'bg-bg-hover text-text-primary font-medium' : 'text-text-secondary'"
         >
           <span class="text-text-muted">#</span>
-          <span class="truncate">{{ channel.name }}</span>
+          <span class="truncate flex-1">{{ channel.name }}</span>
+          <span
+            v-if="unreadChannelIds.has(channel.id)"
+            class="ml-auto h-2 w-2 flex-shrink-0 rounded-full bg-white"
+          />
         </router-link>
       </div>
     </template>
@@ -460,6 +479,12 @@ function copyInviteCode() {
           <span class="flex-1 truncate text-text-muted">{{ replyingTo.content }}</span>
           <button @click="replyingTo = null" class="ml-auto flex-shrink-0 hover:text-text-primary">✕</button>
         </div>
+        <!-- Typing indicator -->
+        <div v-if="typingUsers.length > 0" class="px-1 pb-1 text-xs text-text-muted">
+          <span class="font-medium text-text-secondary">{{ typingUsers.join(', ') }}</span>
+          {{ typingUsers.length === 1 ? 'is' : 'are' }} typing
+          <span class="animate-pulse">...</span>
+        </div>
         <form @submit.prevent="handleSendMessage" class="flex items-center gap-2 rounded-lg bg-bg-tertiary px-4 py-3" :class="replyingTo ? 'rounded-t-none' : ''">
           <input
             v-model="messageInput"
@@ -468,6 +493,7 @@ function copyInviteCode() {
             :disabled="!activeChannel"
             class="flex-1 bg-transparent text-text-primary placeholder-text-muted outline-none disabled:cursor-not-allowed"
             @keydown.enter.prevent="handleSendMessage"
+            @keydown="onTyping"
           />
           <button
             type="submit"

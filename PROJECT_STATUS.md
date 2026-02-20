@@ -5,13 +5,13 @@
 ## Current State
 
 ```yaml
-project_phase: "M3 Complete"
+project_phase: "M4 Complete"
 protogear_enabled: true
 framework: "Vue 3 + TypeScript + Supabase"
 project_type: "Real-time Communication Platform"
 initialization_date: "2026-02-20"
 current_sprint: null
-current_milestone: "M4 - Presence, Typing & Unread"
+current_milestone: "M5 - TBD"
 local_mode: true
 ```
 
@@ -37,9 +37,9 @@ Backend adapter auto-detects mode via `VITE_SUPABASE_URL` env var. Local mode us
 
 | Ticket | Title | Status | Description |
 |--------|-------|--------|-------------|
-| PTSPH-015 | User presence | Not Started | Online/idle/DND/offline, auto-idle after 5min inactivity |
-| PTSPH-016 | Typing indicators | Not Started | Broadcast typing state, "user is typing..." display |
-| PTSPH-017 | Unread indicators | Not Started | Unread channel markers, mention badge counts, mark-as-read |
+| PTSPH-015 | User presence | Done | Online/idle/offline, auto-idle after 5min, offline on tab close |
+| PTSPH-016 | Typing indicators | Done | Cross-tab typing state via localStorage events, "X is typing..." display |
+| PTSPH-017 | Unread indicators | Done | Unread dot on channel names, mark-as-read on navigation |
 
 ## Completed Tickets
 
@@ -75,6 +75,14 @@ Backend adapter auto-detects mode via `VITE_SUPABASE_URL` env var. Local mode us
 | PTSPH-013 | Message editing/deletion (inline edit, owner moderation) | 2026-02-20 |
 | PTSPH-014 | Reply system (reply bar, quoted preview, reply_to_id persisted) | 2026-02-20 |
 
+### M4 — Presence, Typing & Unread
+
+| Ticket | Title | Completed |
+|--------|-------|-----------|
+| PTSPH-015 | User presence (online/idle/offline, auto-idle, tab-close offline) | 2026-02-20 |
+| PTSPH-016 | Typing indicators (cross-tab via localStorage StorageEvent) | 2026-02-20 |
+| PTSPH-017 | Unread channel indicators (dot badge, mark-as-read on focus) | 2026-02-20 |
+
 ## Key Files
 
 ```
@@ -91,6 +99,9 @@ src/composables/
   useChannels.ts        — CRUD, list by server
   useMembers.ts         — list, role updates
   useMessages.ts        — fetch, send, edit, delete
+  usePresence.ts        — online/idle/offline lifecycle
+  useTyping.ts          — cross-tab typing state via StorageEvent
+  useUnread.ts          — unread tracking, mark-as-read
 
 src/stores/
   auth.ts               — user, session, isAuthenticated (backend-agnostic types)
@@ -121,6 +132,7 @@ supabase/migrations/
 
 ## Recent Updates
 
+- 2026-02-20: PTSPH-015/016/017 — M4: presence (idle/offline), typing indicators (cross-tab), unread channel dots.
 - 2026-02-20: PTSPH-012/013/014 — Full messaging: send/receive, grouping, inline edit, delete, reply system.
 - 2026-02-20: PTSPH-008/009/010/011 — Server & channel CRUD, member system, backend adapter extensions. Full server management in local mode.
 - 2026-02-20: PTSPH-005/006/007 — Backend adapter, UI polish, future planning. App now works locally without Supabase.

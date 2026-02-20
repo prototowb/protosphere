@@ -9,6 +9,7 @@ import { useServers } from '@/composables/useServers'
 import UserAvatar from '@/components/user/UserAvatar.vue'
 import CreateServerDialog from '@/components/server/CreateServerDialog.vue'
 import JoinServerDialog from '@/components/server/JoinServerDialog.vue'
+import { usePresence } from '@/composables/usePresence'
 
 const router = useRouter()
 const route = useRoute()
@@ -17,6 +18,8 @@ const authStore = useAuthStore()
 const serversStore = useServersStore()
 const { profile, fetchProfile } = useProfile()
 const { fetchServers, createServer, joinServer } = useServers()
+
+const { currentStatus } = usePresence()
 
 const showCreateServer = ref(false)
 const showJoinServer = ref(false)
@@ -141,7 +144,7 @@ function getServerInitial(name: string) {
           <UserAvatar
             :src="profile?.avatar_url"
             :alt="profile?.display_name ?? authStore.user?.email ?? '?'"
-            :status="profile?.status ?? 'online'"
+            :status="currentStatus"
             size="sm"
           />
         </button>
@@ -170,7 +173,7 @@ function getServerInitial(name: string) {
         <UserAvatar
           :src="profile?.avatar_url"
           :alt="profile?.display_name ?? '?'"
-          :status="profile?.status ?? 'online'"
+          :status="currentStatus"
           size="sm"
         />
         <div class="min-w-0 flex-1">
