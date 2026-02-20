@@ -1,4 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
+
+const publicRoutes = ['login', 'register']
 
 const router = createRouter({
   history: createWebHistory(),
@@ -53,6 +56,27 @@ const router = createRouter({
       redirect: '/channels/@me',
     },
   ],
+})
+
+router.beforeEach((to) => {
+  const authStore = useAuthStore()
+
+  // While loading auth state, allow navigation (prevents flash)
+  if (authStore.loading) return true
+
+  const isPublic = publicRoutes.includes(to.name as string)
+
+  // Redirect unauthenticated users to login
+  if (!authStore.isAuthenticated && !isPublic) {
+    return { name: 'login', query: { redirect: to.fullPath } }
+  }
+
+  // Redirect authenticated users away from login/register
+  if (authStore.isAuthenticated && isPublic) {
+    return { name: 'dms' }
+  }
+
+  return true
 })
 
 export default router

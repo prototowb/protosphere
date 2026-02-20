@@ -1,13 +1,15 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
-import type { Session, User } from '@supabase/supabase-js'
+import { computed, ref } from 'vue'
+import type { AuthUser, AuthSession } from '@/lib/backend/types'
 
 export const useAuthStore = defineStore('auth', () => {
-  const user = ref<User | null>(null)
-  const session = ref<Session | null>(null)
+  const user = ref<AuthUser | null>(null)
+  const session = ref<AuthSession | null>(null)
   const loading = ref(true)
 
-  function setSession(newSession: Session | null) {
+  const isAuthenticated = computed(() => !!session.value)
+
+  function setSession(newSession: AuthSession | null) {
     session.value = newSession
     user.value = newSession?.user ?? null
   }
@@ -17,5 +19,5 @@ export const useAuthStore = defineStore('auth', () => {
     user.value = null
   }
 
-  return { user, session, loading, setSession, clear }
+  return { user, session, loading, isAuthenticated, setSession, clear }
 })

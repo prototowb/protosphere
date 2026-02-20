@@ -1,0 +1,116 @@
+// TypeScript types matching the database schema
+// All types correspond to tables in supabase/migrations/001_initial_schema.sql
+
+export type UserStatus = 'online' | 'idle' | 'dnd' | 'offline'
+
+export type MemberRole = 'owner' | 'admin' | 'moderator' | 'member'
+
+export type ChannelType = 'text'
+
+export interface Profile {
+  id: string
+  username: string
+  display_name: string
+  avatar_url: string | null
+  status: UserStatus
+  status_text: string
+  bio: string
+  created_at: string
+  updated_at: string
+}
+
+export interface Server {
+  id: string
+  name: string
+  description: string
+  icon_url: string | null
+  owner_id: string
+  invite_code: string | null
+  is_public: boolean
+  member_count: number
+  created_at: string
+}
+
+export interface Channel {
+  id: string
+  server_id: string
+  name: string
+  description: string
+  type: ChannelType
+  position: number
+  is_default: boolean
+  slowmode_seconds: number
+  created_at: string
+}
+
+export interface Attachment {
+  url: string
+  filename: string
+  size: number
+  mime_type: string
+}
+
+export interface Message {
+  id: string
+  channel_id: string
+  author_id: string
+  content: string
+  edited_at: string | null
+  reply_to_id: string | null
+  attachments: Attachment[]
+  is_pinned: boolean
+  created_at: string
+}
+
+export interface Member {
+  server_id: string
+  user_id: string
+  role: MemberRole
+  nickname: string | null
+  joined_at: string
+}
+
+export interface Reaction {
+  message_id: string
+  user_id: string
+  emoji: string
+  created_at: string
+}
+
+export interface ChannelReadState {
+  channel_id: string
+  user_id: string
+  last_read_at: string
+  mention_count: number
+}
+
+export interface DirectMessageGroup {
+  id: string
+  name: string | null
+  is_group: boolean
+  created_at: string
+}
+
+export interface DirectMessageMember {
+  dm_group_id: string
+  user_id: string
+  joined_at: string
+}
+
+export interface DirectMessage {
+  id: string
+  dm_group_id: string
+  author_id: string
+  content: string
+  edited_at: string | null
+  attachments: Attachment[]
+  created_at: string
+}
+
+export interface Ban {
+  server_id: string
+  user_id: string
+  banned_by: string
+  reason: string
+  created_at: string
+}
