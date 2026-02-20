@@ -72,6 +72,19 @@ const replyingTo = ref<(Message & { profile: Profile }) | null>(null)
 // Emoji picker
 const QUICK_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '😡', '🎉', '🔥']
 const emojiPickerForMsg = ref<string | null>(null)
+const pickerAnchorRect = ref<{ top: number; right: number } | null>(null)
+
+function openEmojiPicker(msgId: string, event: MouseEvent) {
+  if (emojiPickerForMsg.value === msgId) {
+    emojiPickerForMsg.value = null
+    pickerAnchorRect.value = null
+    return
+  }
+  const btn = event.currentTarget as HTMLElement
+  const rect = btn.getBoundingClientRect()
+  pickerAnchorRect.value = { top: rect.bottom + 4, right: window.innerWidth - rect.right }
+  emojiPickerForMsg.value = msgId
+}
 
 // Pinned messages panel
 const showPinnedPanel = ref(false)
@@ -434,6 +447,7 @@ function getReactionGroups(messageId: string): { emoji: string; count: number; i
 
 async function handleToggleReaction(messageId: string, emoji: string) {
   emojiPickerForMsg.value = null
+  pickerAnchorRect.value = null
   await toggleReaction(messageId, emoji)
 }
 
@@ -744,31 +758,15 @@ async function togglePinnedPanel() {
               class="absolute right-2 top-0 hidden -translate-y-1/2 items-center gap-1 rounded border border-bg-tertiary bg-bg-primary p-0.5 shadow group-hover:flex"
             >
               <!-- Emoji picker trigger -->
-              <div class="relative">
-                <button
-                  @click.stop="emojiPickerForMsg = emojiPickerForMsg === msg.id ? null : msg.id"
-                  class="rounded p-1 text-text-muted hover:bg-bg-hover hover:text-text-primary"
-                  title="Add Reaction"
-                >
-                  <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/>
-                  </svg>
-                </button>
-                <!-- Quick emoji picker -->
-                <div
-                  v-if="emojiPickerForMsg === msg.id"
-                  class="absolute right-0 top-7 z-50 flex gap-1 rounded-lg border border-bg-tertiary bg-bg-primary p-1.5 shadow-lg"
-                  @click.stop
-                >
-                  <button
-                    v-for="emoji in QUICK_EMOJIS"
-                    :key="emoji"
-                    @click="handleToggleReaction(msg.id, emoji)"
-                    class="rounded p-1 text-base hover:bg-bg-hover"
-                    :title="emoji"
-                  >{{ emoji }}</button>
-                </div>
-              </div>
+              <button
+                @click.stop="openEmojiPicker(msg.id, $event)"
+                class="rounded p-1 text-text-muted hover:bg-bg-hover hover:text-text-primary"
+                title="Add Reaction"
+              >
+                <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/>
+                </svg>
+              </button>
               <button
                 @click="startReply(msg)"
                 class="rounded p-1 text-text-muted hover:bg-bg-hover hover:text-text-primary"
@@ -1112,4 +1110,27 @@ async function togglePinnedPanel() {
       </div>
     </div>
   </div>
+
+  <!-- Emoji picker (teleported to body to escape overflow containers) -->
+  <Teleport to="body">
+    <div
+      v-if="emojiPickerForMsg && pickerAnchorRect"
+      class="fixed z-[9999] flex gap-1 rounded-lg border border-bg-tertiary bg-bg-primary p-1.5 shadow-lg"
+      :style="{ top: pickerAnchorRect.top + 'px', right: pickerAnchorRect.right + 'px' }"
+      @click.stop
+    >
+      <button
+        v-for="emoji in QUICK_EMOJIS"
+        :key="emoji"
+        @click="handleToggleReaction(emojiPickerForMsg!, emoji)"
+        class="rounded p-1 text-base hover:bg-bg-hover"
+        :title="emoji"
+      >{{ emoji }}</button>
+    </div>
+    <div
+      v-if="emojiPickerForMsg"
+      class="fixed inset-0 z-[9998]"
+      @click="emojiPickerForMsg = null; pickerAnchorRect = null"
+    />
+  </Teleport>
 </template>
