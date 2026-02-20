@@ -49,6 +49,10 @@ const newCategoryName = ref('')
 const collapsedCategories = ref<Set<string>>(new Set())
 const draggedChannelId = ref<string | null>(null)
 const dragOverChannelId = ref<string | null>(null)
+
+// Slowmode
+const slowmodeRemaining = ref(0)
+let slowmodeTimer: ReturnType<typeof setInterval> | null = null
 const inviteCode = ref('')
 const showInvite = ref(false)
 const showServerActions = ref(false)
@@ -85,6 +89,18 @@ function loadServer() {
   }
 }
 
+function startSlowmode(seconds: number) {
+  slowmodeRemaining.value = seconds
+  if (slowmodeTimer) clearInterval(slowmodeTimer)
+  slowmodeTimer = setInterval(() => {
+    slowmodeRemaining.value--
+    if (slowmodeRemaining.value <= 0) {
+      clearInterval(slowmodeTimer!)
+      slowmodeTimer = null
+    }
+  }, 1000)
+}
+
 onMounted(async () => {
   loadServer()
   startListening()
@@ -92,7 +108,10 @@ onMounted(async () => {
   clearServerMentions(serverId.value)
   await requestPermission()
 })
-onUnmounted(stopListening)
+onUnmounted(() => {
+  stopListening()
+  if (slowmodeTimer) clearInterval(slowmodeTimer)
+})
 watch(() => route.params.serverId, loadServer)
 
 watch(() => channelsStore.channels, (channels) => {
@@ -118,6 +137,8 @@ watch(() => route.params.channelId, (id) => {
 watch(() => channelsStore.activeChannelId, (id) => {
   if (id && id !== serverId.value) {
     showPinnedPanel.value = false
+    slowmodeRemaining.value = 0
+    if (slowmodeTimer) { clearInterval(slowmodeTimer); slowmodeTimer = null }
     fetchMessages(id).then(() => {
       scrollToBottom()
       scanForMentions(serverId.value, id)
@@ -180,13 +201,15 @@ watch(messages, scrollToBottom)
 
 async function handleSendMessage() {
   const content = messageInput.value.trim()
-  if (!content || sending.value || !channelsStore.activeChannelId || !authStore.user?.id) return
+  if (!content || sending.value || !channelsStore.activeChannelId || !authStore.user?.id || slowmodeRemaining.value > 0) return
   sending.value = true
   try {
     messageInput.value = ''
     onSent()
     await sendMessage(channelsStore.activeChannelId, authStore.user.id, content, replyingTo.value?.id)
     replyingTo.value = null
+    const slowmode = activeChannel.value?.slowmode_seconds ?? 0
+    if (slowmode > 0) startSlowmode(slowmode)
   } finally {
     sending.value = false
   }
@@ -786,18 +809,19 @@ async function togglePinnedPanel() {
           <input
             v-model="messageInput"
             type="text"
-            :placeholder="`Message #${activeChannel?.name ?? 'general'}`"
-            :disabled="!activeChannel"
-            class="flex-1 bg-transparent text-text-primary placeholder-text-muted outline-none disabled:cursor-not-allowed"
+            :placeholder="slowmodeRemaining > 0 ? `Slowmode active — wait ${slowmodeRemaining}s` : `Message #${activeChannel?.name ?? 'general'}`"
+            :disabled="!activeChannel || slowmodeRemaining > 0"
+            class="flex-1 bg-transparent text-text-primary placeholder-text-muted outline-none disabled:cursor-not-allowed disabled:opacity-60"
             @keydown.enter.prevent="handleSendMessage"
             @keydown="onTyping"
           />
           <button
             type="submit"
-            :disabled="!messageInput.trim() || sending || !activeChannel"
-            class="rounded p-1 text-text-muted transition-colors hover:text-text-primary disabled:opacity-30"
+            :disabled="!messageInput.trim() || sending || !activeChannel || slowmodeRemaining > 0"
+            class="min-w-8 rounded p-1 text-text-muted transition-colors hover:text-text-primary disabled:opacity-30"
           >
-            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
+            <span v-if="slowmodeRemaining > 0" class="text-xs font-medium tabular-nums text-text-muted">{{ slowmodeRemaining }}s</span>
+            <svg v-else class="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
               <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
             </svg>
           </button>
