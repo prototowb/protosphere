@@ -2,6 +2,7 @@
 import { ref, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useServersStore } from '@/stores/servers'
+import { useToastStore } from '@/stores/toast'
 import { useServers } from '@/composables/useServers'
 import { backend } from '@/lib/backend'
 import type { Ban, Profile } from '@/lib/types'
@@ -9,16 +10,20 @@ import type { Ban, Profile } from '@/lib/types'
 const route = useRoute()
 const router = useRouter()
 const serversStore = useServersStore()
+const toastStore = useToastStore()
 const { fetchServers, updateServer, deleteServer, unbanMember } = useServers()
 
 const serverId = ref(route.params.serverId as string)
 const name = ref('')
 const description = ref('')
+const iconUrl = ref<string | null>(null)
 const saving = ref(false)
-const saveSuccess = ref(false)
 const error = ref('')
 
 const bans = ref<(Ban & { profile: Profile })[]>([])
+const iconInputEl = ref<HTMLInputElement | null>(null)
+const showDeleteConfirm = ref(false)
+const deleteConfirmName = ref('')
 
 async function fetchBans() {
   bans.value = await backend.bans.list(serverId.value)
@@ -47,20 +52,43 @@ function loadServer() {
   if (server) {
     name.value = server.name
     description.value = server.description
+    iconUrl.value = server.icon_url
   }
+}
+
+function handleIconSelect(event: Event) {
+  const file = (event.target as HTMLInputElement).files?.[0]
+  if (!file) return
+  if (!file.type.startsWith('image/')) {
+    error.value = 'Please select an image file'
+    return
+  }
+  if (file.size > 512 * 1024) {
+    error.value = 'Image must be under 512 KB'
+    return
+  }
+  const reader = new FileReader()
+  reader.onload = () => {
+    iconUrl.value = reader.result as string
+  }
+  reader.readAsDataURL(file)
+}
+
+function removeIcon() {
+  iconUrl.value = null
+  if (iconInputEl.value) iconInputEl.value.value = ''
 }
 
 async function handleSave() {
   saving.value = true
-  saveSuccess.value = false
   error.value = ''
   try {
     await updateServer(serverId.value, {
       name: name.value,
       description: description.value,
+      icon_url: iconUrl.value,
     })
-    saveSuccess.value = true
-    setTimeout(() => { saveSuccess.value = false }, 3000)
+    toastStore.show('Settings saved', 'success')
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : 'Failed to save'
   } finally {
@@ -69,9 +97,14 @@ async function handleSave() {
 }
 
 async function handleDelete() {
-  if (!confirm('Are you sure you want to delete this server? This cannot be undone.')) return
+  if (deleteConfirmName.value !== name.value) return
   await deleteServer(serverId.value)
+  toastStore.show('Server deleted', 'success')
   router.push('/channels/@me')
+}
+
+function getServerInitial(n: string) {
+  return n.split(/\s+/).map((w) => w[0]).join('').substring(0, 2).toUpperCase()
 }
 </script>
 
@@ -92,11 +125,50 @@ async function handleDelete() {
         {{ error }}
       </div>
 
-      <div v-if="saveSuccess" class="mb-4 rounded bg-green-500/10 px-4 py-3 text-sm text-green-400">
-        Settings saved!
-      </div>
-
       <form @submit.prevent="handleSave" class="space-y-4">
+        <!-- Server Icon -->
+        <div>
+          <label class="mb-2 block text-sm text-text-secondary">Server Icon</label>
+          <div class="flex items-center gap-4">
+            <div
+              class="flex h-20 w-20 flex-shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-bg-tertiary"
+            >
+              <img
+                v-if="iconUrl"
+                :src="iconUrl"
+                :alt="name"
+                class="h-full w-full object-cover"
+              />
+              <span v-else class="text-xl font-bold text-text-muted">{{ getServerInitial(name || 'S') }}</span>
+            </div>
+            <div class="flex flex-col gap-2">
+              <input
+                ref="iconInputEl"
+                type="file"
+                accept="image/*"
+                class="hidden"
+                @change="handleIconSelect"
+              />
+              <button
+                type="button"
+                @click="iconInputEl?.click()"
+                class="rounded bg-accent px-3 py-1.5 text-sm font-medium text-white hover:bg-accent-hover"
+              >
+                Upload Image
+              </button>
+              <button
+                v-if="iconUrl"
+                type="button"
+                @click="removeIcon"
+                class="rounded px-3 py-1.5 text-sm text-text-muted hover:text-danger"
+              >
+                Remove
+              </button>
+              <p class="text-xs text-text-muted">Max 512 KB. JPG, PNG, or GIF.</p>
+            </div>
+          </div>
+        </div>
+
         <div>
           <label for="server-name" class="mb-1 block text-sm text-text-secondary">Server Name</label>
           <input
@@ -130,13 +202,42 @@ async function handleDelete() {
           </button>
           <button
             type="button"
-            @click="handleDelete"
+            @click="showDeleteConfirm = true"
             class="rounded border border-red-500/30 px-4 py-2 text-sm text-red-400 hover:bg-red-500/10"
           >
             Delete Server
           </button>
         </div>
       </form>
+
+      <!-- Delete confirmation dialog -->
+      <div v-if="showDeleteConfirm" class="mt-6 rounded-lg border border-red-500/30 bg-red-500/5 p-4">
+        <h3 class="mb-2 font-semibold text-red-400">Delete Server</h3>
+        <p class="mb-3 text-sm text-text-secondary">
+          This action is irreversible. Type <span class="font-semibold text-text-primary">{{ name }}</span> to confirm.
+        </p>
+        <input
+          v-model="deleteConfirmName"
+          type="text"
+          :placeholder="name"
+          class="mb-3 w-full rounded border border-bg-tertiary bg-bg-primary px-3 py-2 text-text-primary outline-none focus:border-red-500"
+        />
+        <div class="flex gap-2">
+          <button
+            @click="handleDelete"
+            :disabled="deleteConfirmName !== name"
+            class="rounded bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-30 disabled:cursor-not-allowed"
+          >
+            Delete Server
+          </button>
+          <button
+            @click="showDeleteConfirm = false; deleteConfirmName = ''"
+            class="rounded px-4 py-2 text-sm text-text-secondary hover:text-text-primary"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
 
       <!-- Ban list -->
       <div class="mt-8 border-t border-bg-tertiary pt-6">

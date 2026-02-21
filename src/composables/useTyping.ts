@@ -2,8 +2,8 @@ import { ref, onUnmounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 
 const TYPING_KEY = 'protosphere_typing'
-const TYPING_EXPIRE_MS = 4000
-const STOP_AFTER_MS = 3000
+const TYPING_EXPIRE_MS = 2000
+const STOP_AFTER_MS = 1500
 
 type TypingEntry = { displayName: string; ts: number }
 type TypingMap = Record<string, Record<string, TypingEntry>>
@@ -20,7 +20,7 @@ function writeTyping(map: TypingMap) {
   localStorage.setItem(TYPING_KEY, JSON.stringify(map))
 }
 
-export function useTyping(getChannelId: () => string | null) {
+export function useTyping(getChannelId: () => string | null, getDisplayName?: () => string) {
   const authStore = useAuthStore()
   const typingUsers = ref<string[]>([])
   let stopTimer: ReturnType<typeof setTimeout> | null = null
@@ -32,7 +32,7 @@ export function useTyping(getChannelId: () => string | null) {
     const map = readTyping()
     if (!map[channelId]) map[channelId] = {}
     map[channelId][authStore.user.id] = {
-      displayName: authStore.user.email?.split('@')[0] ?? 'Someone',
+      displayName: getDisplayName?.() ?? authStore.user.email?.split('@')[0] ?? 'Someone',
       ts: Date.now(),
     }
     writeTyping(map)
@@ -57,13 +57,14 @@ export function useTyping(getChannelId: () => string | null) {
     const now = Date.now()
     const channel = map[channelId] ?? {}
     typingUsers.value = Object.entries(channel)
-      .filter(([uid, e]) => uid !== authStore.user?.id && now - e.ts < TYPING_EXPIRE_MS)
+      .filter(([, e]) => now - e.ts < TYPING_EXPIRE_MS)
       .map(([, e]) => e.displayName)
   }
 
   // Called from the message input's keydown handler
   function onTyping() {
     notifyTyping()
+    refreshTypingUsers()
     if (stopTimer) clearTimeout(stopTimer)
     stopTimer = setTimeout(() => { clearSelf(); refreshTypingUsers() }, STOP_AFTER_MS)
   }
@@ -77,7 +78,7 @@ export function useTyping(getChannelId: () => string | null) {
   function startListening() {
     refreshTypingUsers()
     window.addEventListener('storage', refreshTypingUsers)
-    pollInterval = setInterval(refreshTypingUsers, 1000)
+    pollInterval = setInterval(refreshTypingUsers, 500)
   }
 
   function stopListening() {

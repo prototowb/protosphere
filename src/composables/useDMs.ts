@@ -30,9 +30,9 @@ export function useDMs() {
     store.messagesByGroup[dmGroupId] = await backend.dm.listMessages(dmGroupId)
   }
 
-  async function sendMessage(dmGroupId: string, content: string) {
+  async function sendMessage(dmGroupId: string, content: string, replyToId?: string | null) {
     if (!authStore.user?.id) return
-    const msg = await backend.dm.sendMessage(dmGroupId, authStore.user.id, content)
+    const msg = await backend.dm.sendMessage(dmGroupId, authStore.user.id, content, replyToId)
     if (!store.messagesByGroup[dmGroupId]) store.messagesByGroup[dmGroupId] = []
     store.messagesByGroup[dmGroupId].push(msg)
     // Update last message preview in group list

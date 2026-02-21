@@ -14,10 +14,17 @@ export function useCategories() {
     return category
   }
 
+  async function updateCategory(id: string, updates: { name?: string; position?: number }) {
+    const updated = await backend.categories.update(id, updates)
+    const idx = categoriesStore.categories.findIndex((c) => c.id === id)
+    if (idx !== -1) categoriesStore.categories[idx] = updated
+    return updated
+  }
+
   async function deleteCategory(id: string) {
     await backend.categories.delete(id)
     categoriesStore.categories = categoriesStore.categories.filter((c) => c.id !== id)
   }
 
-  return { fetchCategories, createCategory, deleteCategory }
+  return { fetchCategories, createCategory, updateCategory, deleteCategory }
 }

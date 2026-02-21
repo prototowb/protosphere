@@ -1,19 +1,37 @@
 <script setup lang="ts">
-import { ref, watch, onMounted, nextTick, computed } from 'vue'
+import { ref, watch, onMounted, onUnmounted, nextTick, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppShell from '@/components/layout/AppShell.vue'
 import UserAvatar from '@/components/user/UserAvatar.vue'
 import EmojiPicker from '@/components/chat/EmojiPicker.vue'
+import MessageSearch from '@/components/chat/MessageSearch.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useDmsStore } from '@/stores/dms'
 import { useDMs } from '@/composables/useDMs'
+import { renderMessage } from '@/lib/mentions'
+import { useToastStore } from '@/stores/toast'
+import { useContextMenuStore } from '@/stores/contextMenu'
+import { dmMessageContextItems, dmConversationContextItems } from '@/lib/contextMenuItems'
+import { useDmUnread } from '@/composables/useDmUnread'
+import { useTyping } from '@/composables/useTyping'
+import { useMessageSearch } from '@/composables/useMessageSearch'
+import { useProfile } from '@/composables/useProfile'
 import type { DirectMessage, Profile } from '@/lib/types'
 
 const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
 const store = useDmsStore()
+const toastStore = useToastStore()
+const contextMenuStore = useContextMenuStore()
 const { fetchGroups, openDM, fetchMessages, sendMessage, editMessage, deleteMessage, searchUsers } = useDMs()
+const { unreadDmGroupIds, markDmRead, refreshDmUnread } = useDmUnread()
+const { profile: myProfile, fetchProfile: fetchMyProfile } = useProfile()
+const { typingUsers, onTyping, onSent, startListening, stopListening } = useTyping(
+  () => store.activeDmGroupId,
+  () => myProfile.value?.display_name ?? authStore.user?.email?.split('@')[0] ?? 'Someone',
+)
+const { query: dmSearchQuery, results: dmSearchResults, isOpen: dmSearchOpen, open: openDmSearch, close: closeDmSearch } = useMessageSearch(() => messages.value)
 
 const messageInput = ref('')
 const messageInputEl = ref<HTMLInputElement | null>(null)
@@ -54,6 +72,22 @@ function insertEmoji(emoji: string) {
 const editingId = ref<string | null>(null)
 const editingContent = ref('')
 
+// Reply state
+const replyingTo = ref<(DirectMessage & { profile: Profile }) | null>(null)
+
+function startReply(msg: DirectMessage & { profile: Profile }) {
+  replyingTo.value = msg
+  nextTick(() => messageInputEl.value?.focus())
+}
+
+function cancelReply() {
+  replyingTo.value = null
+}
+
+function getDmMessageById(id: string): (DirectMessage & { profile: Profile }) | undefined {
+  return messages.value.find((m) => m.id === id)
+}
+
 const showNewDM = ref(false)
 const searchQuery = ref('')
 const searchResults = ref<Profile[]>([])
@@ -72,13 +106,21 @@ const messages = computed((): (DirectMessage & { profile: Profile })[] => {
 
 onMounted(async () => {
   await fetchGroups()
+  fetchMyProfile()
+  refreshDmUnread()
   if (dmGroupId.value) loadMessages(dmGroupId.value)
+  startListening()
+})
+
+onUnmounted(() => {
+  stopListening()
 })
 
 watch(dmGroupId, (id) => {
   if (id) {
     store.activeDmGroupId = id
     loadMessages(id)
+    markDmRead(id)
   } else {
     store.activeDmGroupId = null
   }
@@ -103,9 +145,12 @@ async function handleSend() {
   const content = messageInput.value.trim()
   if (!content || sending.value || !dmGroupId.value) return
   sending.value = true
+  const replyId = replyingTo.value?.id ?? null
   try {
     messageInput.value = ''
-    await sendMessage(dmGroupId.value, content)
+    replyingTo.value = null
+    onSent()
+    await sendMessage(dmGroupId.value, content, replyId)
   } finally {
     sending.value = false
   }
@@ -194,6 +239,37 @@ function formatLastMessage(msg: DirectMessage | null): string {
   const preview = msg.content.length > 40 ? msg.content.slice(0, 40) + '…' : msg.content
   return isMe ? `You: ${preview}` : preview
 }
+
+// ── Context Menus ─────────────────────────────────────────
+function scrollToMessage(messageId: string) {
+  nextTick(() => {
+    if (!messageListEl.value) return
+    const el = messageListEl.value.querySelector(`[data-message-id="${messageId}"]`)
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      el.classList.add('bg-accent/10')
+      setTimeout(() => el.classList.remove('bg-accent/10'), 2000)
+    }
+  })
+}
+
+function onDmMessageContext(event: MouseEvent, msg: DirectMessage & { profile: Profile }) {
+  const isAuthor = msg.author_id === authStore.user?.id
+  contextMenuStore.show(event, dmMessageContextItems({
+    isAuthor,
+    onReply: () => startReply(msg),
+    onEdit: () => startEdit(msg),
+    onDelete: () => handleDelete(msg.id),
+    onCopyText: () => { navigator.clipboard.writeText(msg.content); toastStore.show('Copied to clipboard', 'success') },
+  }))
+}
+
+function onDmConversationContext(event: MouseEvent, groupId: string) {
+  contextMenuStore.show(event, dmConversationContextItems({
+    onMarkRead: () => { markDmRead(groupId); toastStore.show('Marked as read', 'info') },
+    onCloseConversation: () => { router.push('/channels/@me'); toastStore.show('Conversation closed', 'info') },
+  }))
+}
 </script>
 
 <template>
@@ -222,6 +298,7 @@ function formatLastMessage(msg: DirectMessage | null): string {
           v-for="group in store.groups"
           :key="group.id"
           @click="router.push(`/channels/@me/${group.id}`)"
+          @contextmenu.prevent="onDmConversationContext($event, group.id)"
           class="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-bg-hover"
           :class="dmGroupId === group.id ? 'bg-bg-hover' : ''"
         >
@@ -235,6 +312,10 @@ function formatLastMessage(msg: DirectMessage | null): string {
             <p class="truncate text-sm font-medium text-text-primary">{{ group.otherUser.display_name }}</p>
             <p class="truncate text-xs text-text-muted">{{ formatLastMessage(group.lastMessage) }}</p>
           </div>
+          <span
+            v-if="unreadDmGroupIds.has(group.id)"
+            class="ml-auto h-2 w-2 flex-shrink-0 rounded-full bg-white"
+          />
         </button>
       </div>
     </template>
@@ -252,6 +333,18 @@ function formatLastMessage(msg: DirectMessage | null): string {
           <span v-if="activeGroup.otherUser.status_text" class="ml-1 truncate text-sm text-text-muted">
             {{ activeGroup.otherUser.status_text }}
           </span>
+          <div class="ml-auto flex items-center gap-1">
+            <button
+              @click="dmSearchOpen ? closeDmSearch() : openDmSearch()"
+              :class="dmSearchOpen ? 'text-text-primary bg-bg-hover' : 'text-text-muted hover:text-text-primary hover:bg-bg-hover'"
+              class="rounded p-1.5"
+              title="Search Messages"
+            >
+              <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              </svg>
+            </button>
+          </div>
         </template>
         <template v-else>
           <span class="font-semibold text-text-primary">Direct Messages</span>
@@ -303,8 +396,10 @@ function formatLastMessage(msg: DirectMessage | null): string {
           </div>
 
           <div
-            class="group relative flex gap-3 rounded px-2 py-0.5 hover:bg-bg-secondary"
+            :data-message-id="msg.id"
+            class="group relative flex gap-3 rounded px-2 py-0.5 transition-colors hover:bg-bg-secondary"
             :class="msg.showHeader ? 'mt-3' : ''"
+            @contextmenu.prevent="onDmMessageContext($event, msg)"
           >
             <div class="w-10 flex-shrink-0">
               <UserAvatar
@@ -316,6 +411,18 @@ function formatLastMessage(msg: DirectMessage | null): string {
             </div>
 
             <div class="min-w-0 flex-1">
+              <!-- Reply preview -->
+              <div
+                v-if="msg.reply_to_id && getDmMessageById(msg.reply_to_id)"
+                class="mb-1 flex items-center gap-1.5 text-xs text-text-muted"
+              >
+                <svg class="h-3 w-3 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/>
+                </svg>
+                <span class="font-medium text-text-secondary">{{ getDmMessageById(msg.reply_to_id)?.profile.display_name ?? 'Unknown' }}</span>
+                <span class="truncate">{{ getDmMessageById(msg.reply_to_id)?.content }}</span>
+              </div>
+
               <div v-if="msg.showHeader" class="mb-0.5 flex items-baseline gap-2">
                 <span class="font-semibold text-text-primary">{{ msg.profile.display_name }}</span>
                 <span class="text-xs text-text-muted">{{ formatTime(msg.created_at) }}</span>
@@ -333,16 +440,26 @@ function formatLastMessage(msg: DirectMessage | null): string {
                 <button @click="cancelEdit" class="rounded px-2 py-1 text-xs text-text-muted hover:text-text-primary">Cancel</button>
               </div>
 
-              <p v-else class="break-words text-sm text-text-primary leading-relaxed">
-                {{ msg.content }}
-                <span v-if="msg.edited_at" class="ml-1 text-xs text-text-muted">(edited)</span>
-              </p>
+              <p
+                v-else
+                class="break-words text-sm text-text-primary leading-relaxed"
+                v-html="renderMessage(msg.content, null) + (msg.edited_at ? ' <span class=\'text-xs text-text-muted\'>(edited)</span>' : '')"
+              />
             </div>
 
             <div
               v-if="editingId !== msg.id"
               class="absolute right-2 top-0 hidden -translate-y-1/2 items-center gap-1 rounded border border-bg-tertiary bg-bg-primary p-0.5 shadow group-hover:flex"
             >
+              <button
+                @click="startReply(msg)"
+                class="rounded p-1 text-text-muted hover:bg-bg-hover hover:text-text-primary"
+                title="Reply"
+              >
+                <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/>
+                </svg>
+              </button>
               <button
                 v-if="msg.author_id === authStore.user?.id"
                 @click="startEdit(msg)"
@@ -381,6 +498,24 @@ function formatLastMessage(msg: DirectMessage | null): string {
 
     <template v-if="dmGroupId" #input>
       <div class="px-4 pb-4">
+        <!-- Reply bar -->
+        <div v-if="replyingTo" class="mb-1 flex items-center gap-2 rounded bg-bg-secondary px-3 py-2 text-sm text-text-secondary">
+          <svg class="h-4 w-4 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/>
+          </svg>
+          <span>Replying to <span class="font-medium text-text-primary">{{ replyingTo.profile.display_name }}</span></span>
+          <button @click="cancelReply" class="ml-auto text-text-muted hover:text-text-primary">
+            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        </div>
+        <!-- Typing indicator -->
+        <div v-if="typingUsers.length > 0" class="px-1 pb-1 text-xs text-text-muted">
+          <span class="font-medium text-text-secondary">{{ typingUsers.join(', ') }}</span>
+          {{ typingUsers.length === 1 ? 'is' : 'are' }} typing
+          <span class="animate-pulse">...</span>
+        </div>
         <form @submit.prevent="handleSend" class="flex items-center gap-2 rounded-lg bg-bg-tertiary px-4 py-3">
           <!-- Emoji drawer button -->
           <button
@@ -403,6 +538,7 @@ function formatLastMessage(msg: DirectMessage | null): string {
             type="text"
             :placeholder="`Message ${activeGroup?.otherUser.display_name ?? ''}`"
             class="flex-1 bg-transparent text-text-primary placeholder-text-muted outline-none"
+            @input="onTyping"
             @keydown.enter.prevent="handleSend"
           />
           <button
@@ -419,8 +555,17 @@ function formatLastMessage(msg: DirectMessage | null): string {
     </template>
 
     <template #members>
+      <!-- Search panel -->
+      <MessageSearch
+        v-if="dmSearchOpen"
+        v-model:query="dmSearchQuery"
+        :results="dmSearchResults"
+        @close="closeDmSearch"
+        @select="(id: string) => { closeDmSearch(); scrollToMessage(id) }"
+      />
+
       <!-- Show other user's profile in the member sidebar -->
-      <div v-if="activeGroup" class="p-4">
+      <div v-else-if="activeGroup" class="p-4">
         <div class="flex flex-col items-center gap-3 py-4 text-center">
           <UserAvatar
             :src="activeGroup.otherUser.avatar_url"

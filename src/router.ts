@@ -55,6 +55,11 @@ const router = createRouter({
       path: '/',
       redirect: '/channels/@me',
     },
+    {
+      path: '/:pathMatch(.*)*',
+      name: 'not-found',
+      redirect: '/channels/@me',
+    },
   ],
 })
 

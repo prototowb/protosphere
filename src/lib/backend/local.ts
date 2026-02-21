@@ -692,7 +692,7 @@ export function createLocalBackend(): Backend {
         return result.sort((a, b) => a.created_at.localeCompare(b.created_at))
       },
 
-      async sendMessage(dmGroupId: string, authorId: string, content: string) {
+      async sendMessage(dmGroupId: string, authorId: string, content: string, replyToId?: string | null) {
         const messages = readJson<DirectMessage[]>(KEYS.dm_messages, [])
         const profiles = readJson<Record<string, Profile>>(KEYS.profiles, {})
         const profile = profiles[authorId]
@@ -704,6 +704,7 @@ export function createLocalBackend(): Backend {
           author_id: authorId,
           content,
           edited_at: null,
+          reply_to_id: replyToId ?? null,
           attachments: [],
           created_at: new Date().toISOString(),
         }

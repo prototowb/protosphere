@@ -53,3 +53,46 @@ body {
   border-radius: 2px;
   cursor: default;
 }
+
+/* Markdown rendering styles */
+.md-code {
+  background-color: var(--color-bg-tertiary);
+  color: var(--color-text-primary);
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-family: 'Fira Code', 'Cascadia Code', ui-monospace, monospace;
+  font-size: 0.85em;
+}
+
+.md-codeblock {
+  background-color: var(--color-bg-tertiary);
+  color: var(--color-text-primary);
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-family: 'Fira Code', 'Cascadia Code', ui-monospace, monospace;
+  font-size: 0.85em;
+  overflow-x: auto;
+  margin: 4px 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.md-codeblock code {
+  background: none;
+  padding: 0;
+}
+
+.md-link {
+  color: oklch(0.623 0.214 259.815);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.md-link:hover {
+  color: oklch(0.546 0.245 262.881);
+}
+
+del {
+  text-decoration: line-through;
+  opacity: 0.7;
+}
