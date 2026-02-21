@@ -22,9 +22,9 @@ const textSizeClasses = {
 } as const
 
 const indicatorPosition = {
-  sm: '-bottom-0.5 -right-0.5',
-  md: '-bottom-0.5 -right-0.5',
-  lg: '-bottom-1 -right-1',
+  sm: '-bottom-1 -right-1',
+  md: '-bottom-1 -right-1',
+  lg: '-bottom-1.5 -right-1.5',
 } as const
 
 const initial = (props.alt ?? '?').charAt(0).toUpperCase()

@@ -16,6 +16,7 @@ import { useDmUnread } from '@/composables/useDmUnread'
 import { useTyping } from '@/composables/useTyping'
 import { useMessageSearch } from '@/composables/useMessageSearch'
 import { useProfile } from '@/composables/useProfile'
+import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 import type { DirectMessage, Profile } from '@/lib/types'
 
 const route = useRoute()
@@ -172,9 +173,26 @@ async function submitEdit() {
   cancelEdit()
 }
 
-async function handleDelete(messageId: string) {
-  if (!dmGroupId.value) return
-  await deleteMessage(dmGroupId.value, messageId)
+const confirmDialog = ref<{
+  title: string
+  message: string
+  confirmLabel: string
+  danger: boolean
+  onConfirm: (input: string) => void
+} | null>(null)
+
+function handleDelete(messageId: string) {
+  confirmDialog.value = {
+    title: 'Delete Message',
+    message: 'Are you sure you want to delete this message? This cannot be undone.',
+    confirmLabel: 'Delete',
+    danger: true,
+    onConfirm: async () => {
+      confirmDialog.value = null
+      if (!dmGroupId.value) return
+      await deleteMessage(dmGroupId.value, messageId)
+    },
+  }
 }
 
 let searchTimer: ReturnType<typeof setTimeout> | null = null
@@ -644,4 +662,15 @@ function onDmConversationContext(event: MouseEvent, groupId: string) {
       @click="emojiDrawerOpen = false"
     />
   </Teleport>
+
+  <!-- Confirm dialog -->
+  <ConfirmDialog
+    v-if="confirmDialog"
+    :title="confirmDialog.title"
+    :message="confirmDialog.message"
+    :confirm-label="confirmDialog.confirmLabel"
+    :danger="confirmDialog.danger"
+    @confirm="confirmDialog.onConfirm"
+    @cancel="confirmDialog = null"
+  />
 </template>

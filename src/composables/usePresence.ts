@@ -5,6 +5,9 @@ import type { UserStatus } from '@/lib/types'
 
 const IDLE_TIMEOUT = 5 * 60 * 1000 // 5 minutes
 
+// Manual override: 'dnd' | 'offline' block auto behavior; null = auto
+const manualOverride = ref<UserStatus | null>(null)
+
 export function usePresence() {
   const authStore = useAuthStore()
   const currentStatus = ref<UserStatus>('online')
@@ -22,20 +25,38 @@ export function usePresence() {
 
   function resetIdleTimer() {
     if (idleTimer) clearTimeout(idleTimer)
-    idleTimer = setTimeout(() => setStatus('idle'), IDLE_TIMEOUT)
+    idleTimer = setTimeout(() => {
+      if (manualOverride.value) return
+      setStatus('idle')
+    }, IDLE_TIMEOUT)
   }
 
   function handleActivity() {
+    if (manualOverride.value) return
     if (currentStatus.value === 'idle') setStatus('online')
     resetIdleTimer()
   }
 
   function handleVisibilityChange() {
+    if (manualOverride.value) return
     if (document.hidden) {
       setStatus('offline')
     } else {
       setStatus('online')
       resetIdleTimer()
+    }
+  }
+
+  function setManualStatus(status: UserStatus) {
+    if (status === 'online') {
+      // Clear override, resume auto behavior
+      manualOverride.value = null
+      setStatus(status)
+      resetIdleTimer()
+    } else {
+      // Idle, DND, or Invisible — lock status, block auto behavior
+      manualOverride.value = status
+      setStatus(status)
     }
   }
 
@@ -72,5 +93,5 @@ export function usePresence() {
     window.removeEventListener('beforeunload', handleBeforeUnload)
   })
 
-  return { currentStatus }
+  return { currentStatus, setManualStatus }
 }
