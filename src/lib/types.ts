@@ -112,6 +112,7 @@ export interface DirectMessage {
   author_id: string
   content: string
   edited_at: string | null
+  reply_to_id: string | null
   attachments: Attachment[]
   created_at: string
 }

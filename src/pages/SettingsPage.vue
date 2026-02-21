@@ -3,17 +3,18 @@ import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
 import { useProfile } from '@/composables/useProfile'
+import { useToastStore } from '@/stores/toast'
 import UserAvatar from '@/components/user/UserAvatar.vue'
 
 const router = useRouter()
 const { logout } = useAuth()
 const { profile, loading, error, fetchProfile, updateProfile, uploadAvatar } = useProfile()
+const toastStore = useToastStore()
 
 const displayName = ref('')
 const bio = ref('')
 const statusText = ref('')
 const saving = ref(false)
-const saveSuccess = ref(false)
 
 onMounted(async () => {
   await fetchProfile()
@@ -26,15 +27,13 @@ onMounted(async () => {
 
 async function handleSave() {
   saving.value = true
-  saveSuccess.value = false
   await updateProfile({
     display_name: displayName.value,
     bio: bio.value,
     status_text: statusText.value,
   })
   if (!error.value) {
-    saveSuccess.value = true
-    setTimeout(() => { saveSuccess.value = false }, 3000)
+    toastStore.show('Profile updated', 'success')
   }
   saving.value = false
 }
@@ -79,11 +78,6 @@ async function handleLogout() {
         <!-- Error display -->
         <div v-if="error" class="mb-4 rounded bg-red-500/10 px-4 py-3 text-sm text-red-400">
           {{ error }}
-        </div>
-
-        <!-- Success display -->
-        <div v-if="saveSuccess" class="mb-4 rounded bg-green-500/10 px-4 py-3 text-sm text-green-400">
-          Profile updated!
         </div>
 
         <!-- Avatar section -->

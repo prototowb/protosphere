@@ -523,10 +523,10 @@ export function createSupabaseBackend(): Backend {
         return data as (DirectMessage & { profile: Profile })[]
       },
 
-      async sendMessage(dmGroupId: string, authorId: string, content: string) {
+      async sendMessage(dmGroupId: string, authorId: string, content: string, replyToId?: string | null) {
         const { data, error } = await client
           .from('direct_messages')
-          .insert({ dm_group_id: dmGroupId, author_id: authorId, content })
+          .insert({ dm_group_id: dmGroupId, author_id: authorId, content, reply_to_id: replyToId ?? null })
           .select('*, profile:profiles(*)')
           .single()
         if (error) throw error

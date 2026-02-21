@@ -5,13 +5,13 @@
 ## Current State
 
 ```yaml
-project_phase: "M9 Complete"
+project_phase: "M9.5 Complete"
 protogear_enabled: true
 framework: "Vue 3 + TypeScript + Supabase"
 project_type: "Real-time Communication Platform"
 initialization_date: "2026-02-20"
 current_sprint: null
-current_milestone: "M10 - Supabase Integration"
+current_milestone: "M10 - Supabase Integration (deferred)"
 local_mode: true
 ```
 
@@ -48,7 +48,20 @@ Backend adapter auto-detects mode via `VITE_SUPABASE_URL` env var. Local mode us
 | PTSPH-030 | Member context menu | Complete | Click member to view profile, change role, kick |
 | PTSPH-031 | Kick & ban | Complete | Owner/admin can kick or ban users; ban check on join via invite |
 
-### M10 — Supabase Integration (post-MVP)
+### M9.5 — Feature Polish & Context Menus
+
+| Ticket | Title | Status | Description |
+|--------|-------|--------|-------------|
+| PTSPH-035 | Toast notification system | Complete | Global toast component (success/error/info/warning), auto-dismiss, replaces inline feedback |
+| PTSPH-036 | Context menu system | Complete | App-native right-click menus on messages, members, channels, server header, server icons, DM conversations/messages |
+| PTSPH-037 | Message markdown rendering | Complete | Bold, italic, code, code blocks, strikethrough, URL auto-linking; safe HTML pipeline |
+| PTSPH-038 | Member list sorting & role groups | Complete | Sort by role hierarchy → online status → name; role section headers |
+| PTSPH-039 | Category collapse persistence | Complete | Collapsed state saved to localStorage per server |
+| PTSPH-040 | Channel description in header | Complete | Visible with separator, full text on hover via title attribute |
+| PTSPH-041 | Unread system improvements | Complete | DM unread badges, tab title with count, reply-to-self counts as mention |
+| PTSPH-042 | Message search | Complete | Client-side search with highlight, results panel replaces member sidebar |
+
+### M10 — Supabase Integration (deferred)
 
 | Ticket | Title | Status | Description |
 |--------|-------|--------|-------------|
@@ -135,10 +148,14 @@ src/composables/
   useTyping.ts          — cross-tab typing state via StorageEvent
   useUnread.ts          — unread tracking, mark-as-read
   useDMs.ts             — DM groups, messages, user search
+  useDmUnread.ts        — DM unread tracking (localStorage-based)
+  useMessageSearch.ts   — Client-side message search composable
 
 src/stores/
   auth.ts               — user, session, isAuthenticated (backend-agnostic types)
   servers.ts, channels.ts, messages.ts, dms.ts, ui.ts, reactions.ts, mentions.ts
+  toast.ts              — global toast notification state
+  contextMenu.ts        — context menu state (position, items, visibility)
 
 src/pages/
   LoginPage.vue         — email/password form, OAuth (hidden in local mode)
@@ -149,6 +166,14 @@ src/pages/
   ServerSettingsPage.vue — edit server name/description, delete
   InvitePage.vue        — join server via invite code
 
+src/components/chat/
+  EmojiPicker.vue        — emoji-mart wrapper, lazy-loaded, dark-themed
+  MessageSearch.vue      — search input + results panel with highlight
+
+src/components/ui/
+  ToastContainer.vue     — global toast notifications (bottom-right)
+  ContextMenu.vue        — app-native right-click context menu
+
 src/components/server/
   CreateServerDialog.vue — modal for creating new servers
   JoinServerDialog.vue   — modal for joining via invite code
@@ -156,6 +181,9 @@ src/components/server/
 src/lib/
   supabase.ts           — conditional client (null if no env vars)
   types.ts              — TypeScript types matching DB schema
+  markdown.ts           — lightweight markdown-to-HTML renderer (code, bold, italic, strikethrough, links)
+  mentions.ts           — renderMessage pipeline (escape → markdown → mentions), mention extraction
+  contextMenuItems.ts   — factory functions for context menu items per target type
 
 supabase/migrations/
   001_initial_schema.sql — 11 tables with constraints
@@ -172,8 +200,42 @@ supabase/migrations/
 | PTSPH-024 | Emoji reactions (quick picker, pill counts, toggle) | 2026-02-20 |
 | PTSPH-025 | Pin messages (pin/unpin hover action, pinned panel in header) | 2026-02-20 |
 
+## Completed Tickets (continued)
+
+### M8 — Channel Polish
+
+| Ticket | Title | Completed |
+|--------|-------|-----------|
+| PTSPH-026 | Channel categories (collapsible with animated chevrons) | 2026-02-20 |
+| PTSPH-027 | Drag-and-drop channel reordering within categories | 2026-02-20 |
+| PTSPH-028 | Slowmode enforcement with countdown timer | 2026-02-20 |
+
+### M9 — Moderation & Roles
+
+| Ticket | Title | Completed |
+|--------|-------|-----------|
+| PTSPH-029 | Role-based permissions (owner/admin/moderator/member) | 2026-02-20 |
+| PTSPH-030 | Member profile modal with role management | 2026-02-20 |
+| PTSPH-031 | Kick & ban system with ban list in server settings | 2026-02-20 |
+
+### M9.5 — Feature Polish & Context Menus
+
+| Ticket | Title | Completed |
+|--------|-------|-----------|
+| PTSPH-035 | Toast notification system | 2026-02-21 |
+| PTSPH-036 | Context menu system (messages, members, channels, server icons, DMs) | 2026-02-21 |
+| PTSPH-037 | Message markdown rendering (bold, italic, code, strikethrough, links) | 2026-02-21 |
+| PTSPH-038 | Member list sorting by role + status with group headers | 2026-02-21 |
+| PTSPH-039 | Category collapse persistence (localStorage) | 2026-02-21 |
+| PTSPH-040 | Channel description in header with hover tooltip | 2026-02-21 |
+| PTSPH-041 | Unread improvements (DM badges, tab title, reply-as-mention) | 2026-02-21 |
+| PTSPH-042 | Message search with highlight and scroll-to-message | 2026-02-21 |
+
 ## Recent Updates
 
+- 2026-02-21: PTSPH-035–042 — M9.5: toast system, context menus (7 targets), markdown rendering, member sorting, category persistence, channel descriptions, DM unread badges, tab title, reply-as-mention, message search.
+- 2026-02-20: Full emoji picker drawer on message input (emoji-mart, categorized, lazy-loaded). Reaction picker overflow fix.
+- 2026-02-20: App renamed from protocode-chat to Protosphere.
 - 2026-02-20: PTSPH-029/030/031 — M9: role-based permissions, member profile modal, kick & ban with ban list.
 - 2026-02-20: PTSPH-026/027/028 — M8: channel categories (collapsible), drag-to-reorder, slowmode countdown.
 - 2026-02-20: PTSPH-024/025 — M7: emoji reactions with quick picker + pill counts, message pinning with pinned panel.

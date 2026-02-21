@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, watchEffect } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useUiStore } from '@/stores/ui'
 import { useAuthStore } from '@/stores/auth'
@@ -11,6 +11,10 @@ import CreateServerDialog from '@/components/server/CreateServerDialog.vue'
 import JoinServerDialog from '@/components/server/JoinServerDialog.vue'
 import { usePresence } from '@/composables/usePresence'
 import { useMentionsStore } from '@/stores/mentions'
+import { useDmUnread } from '@/composables/useDmUnread'
+import { useContextMenuStore } from '@/stores/contextMenu'
+import { useToastStore } from '@/stores/toast'
+import { serverIconContextItems } from '@/lib/contextMenuItems'
 
 const router = useRouter()
 const route = useRoute()
@@ -22,6 +26,16 @@ const { fetchServers, createServer, joinServer } = useServers()
 
 const { currentStatus } = usePresence()
 const mentionsStore = useMentionsStore()
+const { totalDmUnread } = useDmUnread()
+const contextMenuStore = useContextMenuStore()
+const toastStore = useToastStore()
+
+// Tab title with unread count
+watchEffect(() => {
+  const serverMentions = Object.values(mentionsStore.mentionsByServer).reduce((a, b) => a + (b ?? 0), 0)
+  const total = serverMentions + totalDmUnread.value
+  document.title = total > 0 ? `(${total}) Protosphere` : 'Protosphere'
+})
 
 const showCreateServer = ref(false)
 const showJoinServer = ref(false)
@@ -61,6 +75,51 @@ async function handleJoinServer(inviteCode: string) {
   }
 }
 
+const showInviteDialog = ref(false)
+const inviteDialogCode = ref('')
+const inviteDialogServerId = ref('')
+const inviteDialogIsOwner = ref(false)
+
+function onServerIconContext(event: MouseEvent, server: typeof serversStore.servers[0]) {
+  const isOwner = server.owner_id === authStore.user?.id
+  contextMenuStore.show(event, serverIconContextItems({
+    isOwner,
+    onInvite: () => {
+      inviteDialogCode.value = server.invite_code ?? ''
+      inviteDialogServerId.value = server.id
+      inviteDialogIsOwner.value = isOwner
+      showInviteDialog.value = true
+    },
+    onServerSettings: () => router.push(`/servers/${server.id}/settings`),
+    onMarkRead: () => {
+      mentionsStore.mentionsByServer[server.id] = 0
+      toastStore.show('Marked as read', 'info')
+    },
+    onLeave: async () => {
+      const { leaveServer } = useServers()
+      await leaveServer(server.id)
+      toastStore.show('Left server', 'success')
+      router.push('/channels/@me')
+    },
+    onDelete: async () => {
+      const { deleteServer } = useServers()
+      await deleteServer(server.id)
+      toastStore.show('Server deleted', 'success')
+      router.push('/channels/@me')
+    },
+  }))
+}
+
+function copyInviteCode() {
+  navigator.clipboard.writeText(inviteDialogCode.value)
+  toastStore.show('Invite code copied!', 'success')
+}
+
+async function handleRegenerateInvite() {
+  const { regenerateInviteCode } = useServers()
+  inviteDialogCode.value = await regenerateInviteCode(inviteDialogServerId.value)
+}
+
 function getServerInitial(name: string) {
   return name
     .split(/\s+/)
@@ -80,16 +139,24 @@ function getServerInitial(name: string) {
     >
       <div class="flex flex-1 flex-col items-center gap-2 overflow-y-auto py-3">
         <!-- DM / Home Button -->
-        <router-link
-          to="/channels/@me"
-          class="flex h-12 w-12 items-center justify-center rounded-2xl bg-accent text-sm font-bold text-white transition-all hover:rounded-xl"
-          :class="{ 'rounded-xl': route.path.startsWith('/channels/@me') }"
-          title="Direct Messages"
-        >
-          <svg class="h-6 w-6" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/>
-          </svg>
-        </router-link>
+        <div class="relative">
+          <router-link
+            to="/channels/@me"
+            class="flex h-12 w-12 items-center justify-center rounded-2xl bg-accent text-sm font-bold text-white transition-all hover:rounded-xl"
+            :class="{ 'rounded-xl': route.path.startsWith('/channels/@me') }"
+            title="Direct Messages"
+          >
+            <svg class="h-6 w-6" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/>
+            </svg>
+          </router-link>
+          <span
+            v-if="totalDmUnread > 0"
+            class="absolute -bottom-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-danger px-1 text-[10px] font-bold text-white"
+          >
+            {{ totalDmUnread > 99 ? '99+' : totalDmUnread }}
+          </span>
+        </div>
 
         <div class="my-1 h-px w-8 bg-bg-tertiary" />
 
@@ -97,11 +164,18 @@ function getServerInitial(name: string) {
         <div v-for="server in serversStore.servers" :key="server.id" class="relative">
           <router-link
             :to="`/channels/${server.id}/${server.id}`"
-            class="flex h-12 w-12 items-center justify-center rounded-2xl bg-bg-tertiary text-xs font-bold text-text-primary transition-all hover:rounded-xl hover:bg-accent"
+            class="flex h-12 w-12 items-center justify-center overflow-hidden rounded-2xl bg-bg-tertiary text-xs font-bold text-text-primary transition-all hover:rounded-xl hover:bg-accent"
             :class="{ 'rounded-xl bg-accent': serversStore.activeServerId === server.id }"
             :title="server.name"
+            @contextmenu.prevent="onServerIconContext($event, server)"
           >
-            {{ getServerInitial(server.name) }}
+            <img
+              v-if="server.icon_url"
+              :src="server.icon_url"
+              :alt="server.name"
+              class="h-full w-full object-cover"
+            />
+            <span v-else>{{ getServerInitial(server.name) }}</span>
           </router-link>
           <!-- Mention badge -->
           <span
@@ -143,21 +217,6 @@ function getServerInitial(name: string) {
         </div>
       </div>
 
-      <!-- User Panel (bottom of server sidebar) -->
-      <div class="w-full border-t border-bg-tertiary p-2">
-        <button
-          @click="router.push('/settings')"
-          class="flex w-full items-center justify-center rounded p-1 hover:bg-bg-hover"
-          title="User Settings"
-        >
-          <UserAvatar
-            :src="profile?.avatar_url"
-            :alt="profile?.display_name ?? authStore.user?.email ?? '?'"
-            :status="currentStatus"
-            size="sm"
-          />
-        </button>
-      </div>
     </aside>
 
     <!-- Channel Sidebar -->
@@ -245,6 +304,32 @@ function getServerInitial(name: string) {
       @join="handleJoinServer"
       @close="showJoinServer = false"
     />
+
+    <!-- Invite dialog (from server icon context menu) -->
+    <div v-if="showInviteDialog" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60" @click.self="showInviteDialog = false">
+      <div class="w-full max-w-md rounded-lg bg-bg-secondary p-6">
+        <h2 class="mb-4 text-xl font-bold">Invite People</h2>
+        <p class="mb-2 text-sm text-text-secondary">Share this invite code with others:</p>
+        <div class="flex items-center gap-2">
+          <input
+            :value="inviteDialogCode"
+            readonly
+            class="flex-1 rounded border border-bg-tertiary bg-bg-primary px-3 py-2 font-mono text-text-primary"
+          />
+          <button @click="copyInviteCode" class="rounded bg-accent px-3 py-2 text-sm text-white hover:bg-accent-hover">Copy</button>
+        </div>
+        <button
+          v-if="inviteDialogIsOwner"
+          @click="handleRegenerateInvite"
+          class="mt-2 text-sm text-text-muted hover:text-text-primary"
+        >
+          Regenerate code
+        </button>
+        <div class="mt-4 flex justify-end">
+          <button @click="showInviteDialog = false" class="rounded px-4 py-2 text-sm text-text-secondary hover:text-text-primary">Close</button>
+        </div>
+      </div>
+    </div>
 
     <!-- Close server menu on outside click -->
     <div

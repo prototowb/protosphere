@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import AppShell from '@/components/layout/AppShell.vue'
 import UserAvatar from '@/components/user/UserAvatar.vue'
 import EmojiPicker from '@/components/chat/EmojiPicker.vue'
+import MessageSearch from '@/components/chat/MessageSearch.vue'
 import { useServersStore } from '@/stores/servers'
 import { useChannelsStore } from '@/stores/channels'
 import { useMessagesStore } from '@/stores/messages'
@@ -14,13 +15,18 @@ import { useMembers } from '@/composables/useMembers'
 import { useServers } from '@/composables/useServers'
 import { useMessages } from '@/composables/useMessages'
 import { useReactions } from '@/composables/useReactions'
+import { useMessageSearch } from '@/composables/useMessageSearch'
 import { useTyping } from '@/composables/useTyping'
+import { useDMs } from '@/composables/useDMs'
 import { useUnread } from '@/composables/useUnread'
 import { useMentions } from '@/composables/useMentions'
-import { renderWithMentions } from '@/lib/mentions'
+import { renderMessage } from '@/lib/mentions'
 import { useAuthStore } from '@/stores/auth'
 import { useReactionsStore } from '@/stores/reactions'
-import type { Message, Profile, Member, MemberRole } from '@/lib/types'
+import { useToastStore } from '@/stores/toast'
+import { useContextMenuStore } from '@/stores/contextMenu'
+import { messageContextItems, memberContextItems, channelContextItems, categoryContextItems, serverHeaderContextItems } from '@/lib/contextMenuItems'
+import type { Message, Profile, Member, MemberRole, Channel, ChannelCategory } from '@/lib/types'
 
 const route = useRoute()
 const router = useRouter()
@@ -28,17 +34,24 @@ const serversStore = useServersStore()
 const channelsStore = useChannelsStore()
 const messagesStore = useMessagesStore()
 const authStore = useAuthStore()
-const { fetchChannels, createChannel, updateChannel } = useChannels()
-const { fetchCategories, createCategory, deleteCategory } = useCategories()
+const { fetchChannels, createChannel, updateChannel, deleteChannel } = useChannels()
+const { fetchCategories, createCategory, updateCategory, deleteCategory } = useCategories()
 const categoriesStore = useCategoriesStore()
 const { members, fetchMembers, updateRole } = useMembers()
 const { leaveServer, deleteServer, kickMember, banMember, regenerateInviteCode } = useServers()
 const { fetchMessages, sendMessage, editMessage, deleteMessage, pinMessage, unpinMessage, fetchPinnedMessages } = useMessages()
 const { fetchReactionsForChannel, toggleReaction } = useReactions()
 const reactionsStore = useReactionsStore()
-const { typingUsers, onTyping, onSent, startListening, stopListening } = useTyping(() => channelsStore.activeChannelId)
+const toastStore = useToastStore()
+const contextMenuStore = useContextMenuStore()
+const { openDM } = useDMs()
+const { typingUsers, onTyping, onSent, startListening, stopListening } = useTyping(
+  () => channelsStore.activeChannelId,
+  () => myMember.value?.profile.display_name ?? authStore.user?.email?.split('@')[0] ?? 'Someone',
+)
 const { unreadChannelIds, markRead, refreshUnread } = useUnread()
 const { scanForMentions, clearServerMentions, requestPermission, getUsername } = useMentions()
+const { query: searchQuery, results: searchResults, isOpen: searchOpen, open: openSearch, close: closeSearch } = useMessageSearch(() => messages.value)
 
 const myUsername = ref<string | null>(null)
 
@@ -47,6 +60,36 @@ const newChannelName = ref('')
 const newChannelCategoryId = ref<string | null>(null)
 const showCreateCategory = ref(false)
 const newCategoryName = ref('')
+
+// Inline category rename
+const renamingCategoryId = ref<string | null>(null)
+const renamingCategoryName = ref('')
+
+// Edit channel dialog
+const showEditChannel = ref(false)
+const editChannelId = ref<string | null>(null)
+const editChannelName = ref('')
+const editChannelDescription = ref('')
+const editChannelSlowmode = ref(0)
+const COLLAPSED_KEY = 'protosphere_collapsed_categories'
+
+function loadCollapsedCategories(sid: string): Set<string> {
+  try {
+    const state: Record<string, string[]> = JSON.parse(localStorage.getItem(COLLAPSED_KEY) ?? '{}')
+    return new Set(state[sid] ?? [])
+  } catch {
+    return new Set()
+  }
+}
+
+function saveCollapsedCategories(sid: string, cats: Set<string>) {
+  try {
+    const state: Record<string, string[]> = JSON.parse(localStorage.getItem(COLLAPSED_KEY) ?? '{}')
+    state[sid] = [...cats]
+    localStorage.setItem(COLLAPSED_KEY, JSON.stringify(state))
+  } catch { /* ignore */ }
+}
+
 const collapsedCategories = ref<Set<string>>(new Set())
 const draggedChannelId = ref<string | null>(null)
 const dragOverChannelId = ref<string | null>(null)
@@ -132,6 +175,7 @@ function loadServer() {
   serversStore.activeServerId = serverId.value
 
   if (serverId.value) {
+    collapsedCategories.value = loadCollapsedCategories(serverId.value)
     fetchChannels(serverId.value)
     fetchCategories(serverId.value)
     fetchMembers(serverId.value)
@@ -226,6 +270,40 @@ watch(
 
 const isOwner = computed(() => currentServer.value?.owner_id === authStore.user?.id)
 
+// ── Member sorting by role hierarchy → status → display name ───
+const ROLE_ORDER: Record<string, number> = { owner: 0, admin: 1, moderator: 2, member: 3 }
+const STATUS_ORDER: Record<string, number> = { online: 0, idle: 1, dnd: 2, offline: 3 }
+
+const ROLE_LABELS: Record<string, string> = { owner: 'Owner', admin: 'Admins', moderator: 'Moderators', member: 'Members' }
+
+type MemberWithProfile = Member & { profile: Profile }
+interface RoleGroup {
+  role: string
+  label: string
+  members: MemberWithProfile[]
+}
+
+const memberRoleGroups = computed((): RoleGroup[] => {
+  const sorted = [...members.value].sort((a, b) => {
+    const roleDiff = (ROLE_ORDER[a.role] ?? 3) - (ROLE_ORDER[b.role] ?? 3)
+    if (roleDiff !== 0) return roleDiff
+    const statusDiff = (STATUS_ORDER[a.profile.status] ?? 3) - (STATUS_ORDER[b.profile.status] ?? 3)
+    if (statusDiff !== 0) return statusDiff
+    return a.profile.display_name.localeCompare(b.profile.display_name)
+  })
+
+  const groups: RoleGroup[] = []
+  let currentRole = ''
+  for (const m of sorted) {
+    if (m.role !== currentRole) {
+      currentRole = m.role
+      groups.push({ role: m.role, label: ROLE_LABELS[m.role] ?? m.role, members: [] })
+    }
+    groups[groups.length - 1]!.members.push(m)
+  }
+  return groups
+})
+
 const myMember = computed(() => members.value.find((m) => m.user_id === authStore.user?.id))
 const myRole = computed(() => myMember.value?.role ?? 'member')
 
@@ -247,6 +325,18 @@ function scrollToBottom() {
   nextTick(() => {
     if (messageListEl.value) {
       messageListEl.value.scrollTop = messageListEl.value.scrollHeight
+    }
+  })
+}
+
+function scrollToMessage(messageId: string) {
+  nextTick(() => {
+    if (!messageListEl.value) return
+    const el = messageListEl.value.querySelector(`[data-message-id="${messageId}"]`)
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      el.classList.add('bg-accent/10')
+      setTimeout(() => el.classList.remove('bg-accent/10'), 2000)
     }
   })
 }
@@ -347,11 +437,68 @@ async function handleCreateCategory() {
   showCreateCategory.value = false
 }
 
+function openEditChannel(channelId: string) {
+  const ch = channelsStore.channels.find((c) => c.id === channelId)
+  if (!ch) return
+  editChannelId.value = ch.id
+  editChannelName.value = ch.name
+  editChannelDescription.value = ch.description
+  editChannelSlowmode.value = ch.slowmode_seconds
+  showEditChannel.value = true
+}
+
+async function handleEditChannel() {
+  if (!editChannelId.value || !editChannelName.value.trim()) return
+  await updateChannel(editChannelId.value, {
+    name: editChannelName.value.trim(),
+    description: editChannelDescription.value.trim(),
+    slowmode_seconds: editChannelSlowmode.value,
+  })
+  showEditChannel.value = false
+  toastStore.show('Channel updated', 'success')
+}
+
+async function handleDeleteChannel(channelId: string) {
+  await deleteChannel(channelId)
+  toastStore.show('Channel deleted', 'success')
+  // Navigate to default channel if we deleted the active one
+  if (channelsStore.activeChannelId === null && channelsStore.channels.length > 0) {
+    const defaultCh = channelsStore.channels.find((c) => c.is_default) || channelsStore.channels[0]
+    if (defaultCh) router.replace(`/channels/${serverId.value}/${defaultCh.id}`)
+  }
+}
+
 async function handleDeleteCategory(categoryId: string) {
-  if (!confirm('Delete this category? Channels inside will become uncategorized.')) return
   await deleteCategory(categoryId)
-  // Refresh channels so category_id nulls are reflected
   fetchChannels(serverId.value)
+  toastStore.show('Category deleted', 'success')
+}
+
+function startCategoryRename(categoryId: string) {
+  const cat = categoriesStore.categories.find((c) => c.id === categoryId)
+  if (!cat) return
+  renamingCategoryId.value = categoryId
+  renamingCategoryName.value = cat.name
+}
+
+async function submitCategoryRename() {
+  if (!renamingCategoryId.value || !renamingCategoryName.value.trim()) return
+  await updateCategory(renamingCategoryId.value, { name: renamingCategoryName.value.trim() })
+  renamingCategoryId.value = null
+  renamingCategoryName.value = ''
+}
+
+function cancelCategoryRename() {
+  renamingCategoryId.value = null
+  renamingCategoryName.value = ''
+}
+
+function onCategoryContext(event: MouseEvent, cat: ChannelCategory) {
+  contextMenuStore.show(event, categoryContextItems(cat, {
+    canManage: canManageChannels.value,
+    onRename: () => startCategoryRename(cat.id),
+    onDelete: () => handleDeleteCategory(cat.id),
+  }))
 }
 
 // ── Channel drag-and-drop reordering (owner only) ────────
@@ -412,6 +559,7 @@ function toggleCategory(categoryId: string) {
   } else {
     collapsedCategories.value.add(categoryId)
   }
+  saveCollapsedCategories(serverId.value, collapsedCategories.value)
 }
 
 
@@ -421,8 +569,8 @@ async function handleLeaveServer() {
 }
 
 async function handleDeleteServer() {
-  if (!confirm('Are you sure you want to delete this server? This cannot be undone.')) return
   await deleteServer(serverId.value)
+  toastStore.show('Server deleted', 'success')
   router.push('/channels/@me')
 }
 
@@ -432,6 +580,7 @@ async function handleRegenerateInvite() {
 
 function copyInviteCode() {
   navigator.clipboard.writeText(inviteCode.value)
+  toastStore.show('Invite code copied!', 'success')
 }
 
 // ── Member context menu ───────────────────────────────────
@@ -452,17 +601,17 @@ async function handleRoleChange(userId: string, role: MemberRole) {
 }
 
 async function handleKick(userId: string) {
-  if (!confirm('Kick this member from the server?')) return
   await kickMember(serverId.value, userId)
   await fetchMembers(serverId.value)
   selectedMember.value = null
+  toastStore.show('Member kicked', 'success')
 }
 
 async function handleBan(userId: string) {
-  if (!confirm('Ban this member? They will be kicked and cannot rejoin.')) return
   await banMember(serverId.value, userId)
   await fetchMembers(serverId.value)
   selectedMember.value = null
+  toastStore.show('Member banned', 'success')
 }
 
 // ── Reactions ─────────────────────────────────────────────
@@ -506,12 +655,69 @@ async function togglePinnedPanel() {
   showPinnedPanel.value = !showPinnedPanel.value
   if (showPinnedPanel.value) await refreshPinnedPanel()
 }
+
+// ── Context Menus ─────────────────────────────────────────
+function onMessageContext(event: MouseEvent, msg: Message & { profile: Profile }) {
+  const isAuthor = msg.author_id === authStore.user?.id
+  contextMenuStore.show(event, messageContextItems(msg, {
+    isAuthor,
+    canModerate: canModerate.value,
+    onReply: () => startReply(msg),
+    onEdit: () => startEdit(msg),
+    onDelete: () => handleDeleteMessage(msg.id),
+    onPin: () => handlePinMessage(msg.id),
+    onUnpin: () => handleUnpinMessage(msg.id),
+    onCopyText: () => { navigator.clipboard.writeText(msg.content); toastStore.show('Copied to clipboard', 'success') },
+    onAddReaction: () => {
+      pickerAnchorRect.value = { top: event.clientY, right: window.innerWidth - event.clientX }
+      emojiPickerForMsg.value = msg.id
+    },
+  }))
+}
+
+function onMemberContext(event: MouseEvent, member: Member & { profile: Profile }) {
+  const isMe = member.user_id === authStore.user?.id
+  contextMenuStore.show(event, memberContextItems(member, {
+    isMe,
+    myRole: myRole.value,
+    onViewProfile: () => { selectedMember.value = member },
+    onOpenDM: async () => {
+      const groupId = await openDM(member.user_id)
+      router.push(`/channels/@me/${groupId}`)
+    },
+    onChangeRole: (role: MemberRole) => handleRoleChange(member.user_id, role),
+    onKick: () => handleKick(member.user_id),
+    onBan: () => handleBan(member.user_id),
+  }))
+}
+
+function onChannelContext(event: MouseEvent, channel: Channel) {
+  contextMenuStore.show(event, channelContextItems(channel, {
+    canManage: canManageChannels.value,
+    onEditChannel: () => openEditChannel(channel.id),
+    onDeleteChannel: () => handleDeleteChannel(channel.id),
+    onMarkRead: () => { markRead(channel.id); toastStore.show('Marked as read', 'info') },
+  }))
+}
+
+function onServerHeaderContext(event: MouseEvent) {
+  contextMenuStore.show(event, serverHeaderContextItems({
+    isOwner: isOwner.value,
+    canManageChannels: canManageChannels.value,
+    onInvite: () => { showInvite.value = true },
+    onCreateChannel: () => { showCreateChannel.value = true },
+    onCreateCategory: () => { showCreateCategory.value = true },
+    onServerSettings: () => { router.push(`/servers/${serverId.value}/settings`) },
+    onLeave: () => handleLeaveServer(),
+    onDelete: () => handleDeleteServer(),
+  }))
+}
 </script>
 
 <template>
   <AppShell>
     <template #sidebar-header>
-      <div class="flex h-12 items-center justify-between border-b border-bg-tertiary px-4">
+      <div class="flex h-12 items-center justify-between border-b border-bg-tertiary px-4" @contextmenu.prevent="onServerHeaderContext($event)">
         <h2 class="truncate font-semibold">{{ currentServer?.name ?? 'Server' }}</h2>
         <div class="relative">
           <button
@@ -547,13 +753,14 @@ async function togglePinnedPanel() {
             >
               Create Category
             </button>
+            <button
+              v-if="canManageChannels"
+              @click="router.push(`/servers/${serverId}/settings`); showServerActions = false"
+              class="flex w-full items-center gap-2 rounded px-3 py-2 text-sm text-text-primary hover:bg-bg-hover"
+            >
+              Server Settings
+            </button>
             <template v-if="isOwner">
-              <button
-                @click="router.push(`/servers/${serverId}/settings`); showServerActions = false"
-                class="flex w-full items-center gap-2 rounded px-3 py-2 text-sm text-text-primary hover:bg-bg-hover"
-              >
-                Server Settings
-              </button>
               <div class="my-1 h-px bg-bg-tertiary" />
               <button
                 @click="handleDeleteServer(); showServerActions = false"
@@ -586,6 +793,7 @@ async function togglePinnedPanel() {
           :key="channel.id"
           :to="`/channels/${serverId}/${channel.id}`"
           :draggable="canManageChannels"
+          @contextmenu.prevent="onChannelContext($event, channel)"
           @dragstart.stop="onChannelDragStart(channel.id)"
           @dragover.prevent.stop="onChannelDragOver(channel.id)"
           @dragleave.stop="onChannelDragLeave"
@@ -609,30 +817,45 @@ async function togglePinnedPanel() {
         <!-- Categories -->
         <div v-for="cat in categoriesStore.categories" :key="cat.id" class="mt-2">
           <!-- Category header -->
-          <div class="group flex items-center gap-1 px-1 py-0.5">
-            <button
-              @click="toggleCategory(cat.id)"
-              class="flex flex-1 items-center gap-1 rounded px-1 py-0.5 text-xs font-semibold uppercase tracking-wide text-text-muted hover:text-text-primary"
-            >
-              <svg
-                class="h-2.5 w-2.5 flex-shrink-0 transition-transform"
-                :class="collapsedCategories.has(cat.id) ? '-rotate-90' : ''"
-                viewBox="0 0 24 24" fill="currentColor"
+          <div
+            class="group flex items-center gap-1 px-1 py-0.5"
+            @contextmenu.prevent="onCategoryContext($event, cat)"
+          >
+            <template v-if="renamingCategoryId === cat.id">
+              <input
+                v-model="renamingCategoryName"
+                @keydown.enter.prevent="submitCategoryRename"
+                @keydown.escape="cancelCategoryRename"
+                @blur="submitCategoryRename"
+                class="flex-1 rounded border border-accent bg-bg-primary px-1 py-0.5 text-xs font-semibold uppercase tracking-wide text-text-primary outline-none"
+                autofocus
+              />
+            </template>
+            <template v-else>
+              <button
+                @click="toggleCategory(cat.id)"
+                class="flex flex-1 items-center gap-1 rounded px-1 py-0.5 text-xs font-semibold uppercase tracking-wide text-text-muted hover:text-text-primary"
               >
-                <path d="M7 10l5 5 5-5z"/>
-              </svg>
-              {{ cat.name }}
-            </button>
-            <button
-              v-if="canManageChannels"
-              @click="handleDeleteCategory(cat.id)"
-              class="hidden rounded p-0.5 text-text-muted hover:text-danger group-hover:block"
-              title="Delete category"
-            >
-              <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-              </svg>
-            </button>
+                <svg
+                  class="h-2.5 w-2.5 flex-shrink-0 transition-transform"
+                  :class="collapsedCategories.has(cat.id) ? '-rotate-90' : ''"
+                  viewBox="0 0 24 24" fill="currentColor"
+                >
+                  <path d="M7 10l5 5 5-5z"/>
+                </svg>
+                {{ cat.name }}
+              </button>
+              <button
+                v-if="canManageChannels"
+                @click="handleDeleteCategory(cat.id)"
+                class="hidden rounded p-0.5 text-text-muted hover:text-danger group-hover:block"
+                title="Delete category"
+              >
+                <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </button>
+            </template>
           </div>
           <!-- Channels in this category -->
           <template v-if="!collapsedCategories.has(cat.id)">
@@ -641,6 +864,7 @@ async function togglePinnedPanel() {
               :key="channel.id"
               :to="`/channels/${serverId}/${channel.id}`"
               :draggable="isOwner"
+              @contextmenu.prevent="onChannelContext($event, channel)"
               @dragstart.stop="onChannelDragStart(channel.id)"
               @dragover.prevent.stop="onChannelDragOver(channel.id)"
               @dragleave.stop="onChannelDragLeave"
@@ -669,10 +893,25 @@ async function togglePinnedPanel() {
       <header class="flex h-12 items-center gap-2 border-b border-bg-tertiary bg-bg-primary px-4">
         <span class="text-text-muted">#</span>
         <span class="font-semibold text-text-primary">{{ activeChannel?.name ?? 'general' }}</span>
-        <span v-if="activeChannel?.description" class="ml-2 truncate text-sm text-text-muted">
+        <span v-if="activeChannel?.description" class="ml-1 text-text-muted/50">·</span>
+        <span
+          v-if="activeChannel?.description"
+          class="truncate text-sm text-text-muted"
+          :title="activeChannel.description"
+        >
           {{ activeChannel.description }}
         </span>
         <div class="ml-auto flex items-center gap-1">
+          <button
+            @click="searchOpen ? closeSearch() : openSearch()"
+            :class="searchOpen ? 'text-text-primary bg-bg-hover' : 'text-text-muted hover:text-text-primary hover:bg-bg-hover'"
+            class="rounded p-1.5"
+            title="Search Messages"
+          >
+            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+          </button>
           <button
             @click="togglePinnedPanel"
             :class="showPinnedPanel ? 'text-text-primary bg-bg-hover' : 'text-text-muted hover:text-text-primary hover:bg-bg-hover'"
@@ -713,8 +952,10 @@ async function togglePinnedPanel() {
 
           <!-- Message row -->
           <div
-            class="group relative flex gap-3 rounded px-2 py-0.5 hover:bg-bg-secondary"
+            :data-message-id="msg.id"
+            class="group relative flex gap-3 rounded px-2 py-0.5 transition-colors hover:bg-bg-secondary"
             :class="msg.showHeader ? 'mt-3' : ''"
+            @contextmenu.prevent="onMessageContext($event, msg)"
           >
             <!-- Avatar (only on first in group) -->
             <div class="w-10 flex-shrink-0">
@@ -762,7 +1003,7 @@ async function togglePinnedPanel() {
               <p
                 v-else
                 class="break-words text-sm text-text-primary leading-relaxed"
-                v-html="renderWithMentions(msg.content, myUsername) + (msg.edited_at ? ' <span class=\'text-xs text-text-muted\'>(edited)</span>' : '')"
+                v-html="renderMessage(msg.content, myUsername) + (msg.edited_at ? ' <span class=\'text-xs text-text-muted\'>(edited)</span>' : '')"
               />
 
               <!-- Reaction pills -->
@@ -901,7 +1142,7 @@ async function togglePinnedPanel() {
             :disabled="!activeChannel || slowmodeRemaining > 0"
             class="flex-1 bg-transparent text-text-primary placeholder-text-muted outline-none disabled:cursor-not-allowed disabled:opacity-60"
             @keydown.enter.prevent="handleSendMessage"
-            @keydown="onTyping"
+            @input="onTyping"
           />
           <button
             type="submit"
@@ -918,8 +1159,17 @@ async function togglePinnedPanel() {
     </template>
 
     <template #members>
+      <!-- Search panel -->
+      <MessageSearch
+        v-if="searchOpen"
+        v-model:query="searchQuery"
+        :results="searchResults"
+        @close="closeSearch"
+        @select="(id: string) => { closeSearch(); scrollToMessage(id) }"
+      />
+
       <!-- Pinned messages panel (replaces member list when open) -->
-      <div v-if="showPinnedPanel" class="flex h-full flex-col">
+      <div v-else-if="showPinnedPanel" class="flex h-full flex-col">
         <div class="flex items-center justify-between border-b border-bg-tertiary px-4 py-3">
           <h3 class="text-sm font-semibold">Pinned Messages</h3>
           <button @click="showPinnedPanel = false" class="text-text-muted hover:text-text-primary">
@@ -943,7 +1193,7 @@ async function togglePinnedPanel() {
                 <span class="text-xs font-semibold text-text-primary">{{ pm.profile.display_name }}</span>
                 <span class="ml-auto text-xs text-text-muted">{{ formatTime(pm.created_at) }}</span>
               </div>
-              <p class="break-words text-xs text-text-secondary leading-relaxed">{{ pm.content }}</p>
+              <p class="break-words text-xs text-text-secondary leading-relaxed" v-html="renderMessage(pm.content, myUsername)" />
               <button
                 v-if="canModerate"
                 @click="handleUnpinMessage(pm.id)"
@@ -958,28 +1208,30 @@ async function togglePinnedPanel() {
 
       <!-- Default member list -->
       <div v-else class="p-4">
-        <h3 class="mb-3 text-xs font-semibold uppercase text-text-muted">
-          Members — {{ members.length }}
-        </h3>
-        <div class="space-y-1">
-          <button
-            v-for="member in members"
-            :key="member.user_id"
-            @click="selectedMember = member"
-            class="flex w-full items-center gap-2 rounded px-2 py-1.5 hover:bg-bg-hover text-left"
-            :class="selectedMember?.user_id === member.user_id ? 'bg-bg-hover' : ''"
-          >
-            <UserAvatar
-              :src="member.profile.avatar_url"
-              :alt="member.profile.display_name"
-              :status="member.profile.status"
-              size="sm"
-            />
-            <div class="min-w-0 flex-1">
-              <p class="truncate text-sm font-medium">{{ member.profile.display_name }}</p>
-              <p v-if="member.role !== 'member'" class="text-xs text-accent">{{ member.role }}</p>
-            </div>
-          </button>
+        <div v-for="group in memberRoleGroups" :key="group.role" class="mb-3">
+          <h3 class="mb-1 text-xs font-semibold uppercase text-text-muted">
+            {{ group.label }} — {{ group.members.length }}
+          </h3>
+          <div class="space-y-0.5">
+            <button
+              v-for="member in group.members"
+              :key="member.user_id"
+              @click="selectedMember = member"
+              @contextmenu.prevent="onMemberContext($event, member)"
+              class="flex w-full items-center gap-2 rounded px-2 py-1.5 hover:bg-bg-hover text-left"
+              :class="selectedMember?.user_id === member.user_id ? 'bg-bg-hover' : ''"
+            >
+              <UserAvatar
+                :src="member.profile.avatar_url"
+                :alt="member.profile.display_name"
+                :status="member.profile.status"
+                size="sm"
+              />
+              <div class="min-w-0 flex-1">
+                <p class="truncate text-sm font-medium">{{ member.profile.display_name }}</p>
+              </div>
+            </button>
+          </div>
         </div>
       </div>
     </template>
@@ -1129,6 +1381,52 @@ async function togglePinnedPanel() {
         <div class="flex justify-end gap-2">
           <button type="button" @click="showCreateCategory = false" class="rounded px-4 py-2 text-sm text-text-secondary hover:text-text-primary">Cancel</button>
           <button type="submit" :disabled="!newCategoryName.trim()" class="rounded bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50">Create</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Edit Channel Dialog -->
+  <div v-if="showEditChannel" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60" @click.self="showEditChannel = false">
+    <div class="w-full max-w-md rounded-lg bg-bg-secondary p-6">
+      <h2 class="mb-4 text-xl font-bold">Edit Channel</h2>
+      <form @submit.prevent="handleEditChannel" class="space-y-4">
+        <div>
+          <label for="edit-channel-name" class="mb-1 block text-sm text-text-secondary">Channel Name</label>
+          <input
+            id="edit-channel-name"
+            v-model="editChannelName"
+            type="text"
+            required
+            maxlength="50"
+            class="w-full rounded border border-bg-tertiary bg-bg-primary px-3 py-2 text-text-primary outline-none focus:border-accent"
+          />
+        </div>
+        <div>
+          <label for="edit-channel-desc" class="mb-1 block text-sm text-text-secondary">Description</label>
+          <input
+            id="edit-channel-desc"
+            v-model="editChannelDescription"
+            type="text"
+            maxlength="200"
+            class="w-full rounded border border-bg-tertiary bg-bg-primary px-3 py-2 text-text-primary outline-none focus:border-accent"
+            placeholder="What's this channel about?"
+          />
+        </div>
+        <div>
+          <label for="edit-channel-slowmode" class="mb-1 block text-sm text-text-secondary">Slowmode (seconds, 0 = off)</label>
+          <input
+            id="edit-channel-slowmode"
+            v-model.number="editChannelSlowmode"
+            type="number"
+            min="0"
+            max="3600"
+            class="w-full rounded border border-bg-tertiary bg-bg-primary px-3 py-2 text-text-primary outline-none focus:border-accent"
+          />
+        </div>
+        <div class="flex justify-end gap-2">
+          <button type="button" @click="showEditChannel = false" class="rounded px-4 py-2 text-sm text-text-secondary hover:text-text-primary">Cancel</button>
+          <button type="submit" :disabled="!editChannelName.trim()" class="rounded bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50">Save</button>
         </div>
       </form>
     </div>

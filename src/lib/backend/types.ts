@@ -82,7 +82,7 @@ export interface Backend {
     listGroups(userId: string): Promise<DmGroupWithMeta[]>
     getOrCreate(userId: string, otherUserId: string): Promise<DirectMessageGroup>
     listMessages(dmGroupId: string): Promise<(DirectMessage & { profile: Profile })[]>
-    sendMessage(dmGroupId: string, authorId: string, content: string): Promise<DirectMessage & { profile: Profile }>
+    sendMessage(dmGroupId: string, authorId: string, content: string, replyToId?: string | null): Promise<DirectMessage & { profile: Profile }>
     editMessage(id: string, content: string): Promise<DirectMessage>
     deleteMessage(id: string): Promise<void>
   }

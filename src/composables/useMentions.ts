@@ -48,7 +48,14 @@ export function useMentions() {
     for (const msg of messages) {
       if (msg.author_id === authStore.user.id) continue
       if (lastRead && msg.created_at <= lastRead) continue
-      if (extractMentionedUsernames(msg.content).includes(username)) {
+
+      const isMention = extractMentionedUsernames(msg.content).includes(username)
+      // Count reply-to-self as a mention
+      const isReplyToMe = msg.reply_to_id
+        ? messages.find((m) => m.id === msg.reply_to_id)?.author_id === authStore.user.id
+        : false
+
+      if (isMention || isReplyToMe) {
         count++
         maybeNotify(msg.profile.display_name, msg.content)
       }
