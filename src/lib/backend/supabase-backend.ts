@@ -1,7 +1,8 @@
-import type { Profile, Server, Channel, ChannelCategory, Member, Message, Reaction, Ban, DirectMessageGroup, DirectMessage } from '@/lib/types'
+import type { Profile, Server, Channel, ChannelCategory, Member, Message, Reaction, Ban, DirectMessageGroup, DirectMessage, Role, UserRole, ChannelRoleOverride } from '@/lib/types'
 import type { Backend } from './types'
 import { supabase } from '@/lib/supabase'
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { serializePermissions, PermissionPresets, Permission } from '@/lib/permissions'
 
 export function createSupabaseBackend(): Backend {
   const client = supabase as SupabaseClient
@@ -147,6 +148,22 @@ export function createSupabaseBackend(): Backend {
           slowmode_seconds: 0,
         })
 
+        // Seed system roles
+        const { data: seededRoles } = await client.from('roles').insert([
+          { server_id: server.id, name: 'Owner', color: '#f97316', position: 0, permissions: serializePermissions(Permission.ADMINISTRATOR), is_default: false, is_system: true },
+          { server_id: server.id, name: 'Admin', color: '#3b82f6', position: 10, permissions: serializePermissions(PermissionPresets.ADMIN), is_default: false, is_system: true },
+          { server_id: server.id, name: 'Moderator', color: '#a855f7', position: 20, permissions: serializePermissions(PermissionPresets.MODERATOR), is_default: false, is_system: true },
+          { server_id: server.id, name: 'Member', color: null, position: 30, permissions: serializePermissions(PermissionPresets.MEMBER), is_default: true, is_system: true },
+        ]).select()
+
+        // Assign Owner role to creator
+        if (seededRoles) {
+          const ownerRole = (seededRoles as Role[]).find((r) => r.name === 'Owner')
+          if (ownerRole) {
+            await client.from('user_roles').insert({ user_id: ownerId, role_id: ownerRole.id })
+          }
+        }
+
         return server
       },
 
@@ -244,6 +261,18 @@ export function createSupabaseBackend(): Backend {
           .select()
           .single()
         if (error) throw error
+
+        // Assign default role
+        const { data: defaultRole } = await client
+          .from('roles')
+          .select('id')
+          .eq('server_id', serverId)
+          .eq('is_default', true)
+          .single()
+        if (defaultRole) {
+          await client.from('user_roles').insert({ user_id: userId, role_id: (defaultRole as Role).id })
+        }
+
         return data as Member
       },
 
@@ -562,6 +591,103 @@ export function createSupabaseBackend(): Backend {
 
       async deleteMessage(id: string) {
         const { error } = await client.from('direct_messages').delete().eq('id', id)
+        if (error) throw error
+      },
+    },
+
+    roles: {
+      async list(serverId: string) {
+        const { data, error } = await client
+          .from('roles')
+          .select('*')
+          .eq('server_id', serverId)
+          .order('position')
+        if (error) throw error
+        return (data ?? []).map((r: Record<string, unknown>) => ({ ...r, permissions: String(r.permissions) }) as Role)
+      },
+
+      async create(input) {
+        const { data, error } = await client.from('roles').insert(input).select().single()
+        if (error) throw error
+        const r = data as Record<string, unknown>
+        return { ...r, permissions: String(r.permissions) } as Role
+      },
+
+      async update(id, updates) {
+        const { data, error } = await client.from('roles').update(updates).eq('id', id).select().single()
+        if (error) throw error
+        const r = data as Record<string, unknown>
+        return { ...r, permissions: String(r.permissions) } as Role
+      },
+
+      async delete(id) {
+        const { error } = await client.from('roles').delete().eq('id', id)
+        if (error) throw error
+      },
+
+      async listUserRoles(serverId: string, userId: string) {
+        const { data, error } = await client
+          .from('user_roles')
+          .select('roles(*)')
+          .eq('user_id', userId)
+        if (error) throw error
+        return (data ?? [])
+          .map((row: Record<string, unknown>) => {
+            const r = row.roles as Record<string, unknown>
+            return { ...r, permissions: String(r.permissions) } as Role
+          })
+          .filter((r) => r.server_id === serverId)
+      },
+
+      async assignRole(userId: string, roleId: string) {
+        const { data, error } = await client
+          .from('user_roles')
+          .insert({ user_id: userId, role_id: roleId })
+          .select()
+          .single()
+        if (error) throw error
+        return data as UserRole
+      },
+
+      async removeRole(userId: string, roleId: string) {
+        const { error } = await client
+          .from('user_roles')
+          .delete()
+          .eq('user_id', userId)
+          .eq('role_id', roleId)
+        if (error) throw error
+      },
+
+      async listChannelOverrides(channelId: string) {
+        const { data, error } = await client
+          .from('channel_role_overrides')
+          .select('*')
+          .eq('channel_id', channelId)
+        if (error) throw error
+        return (data ?? []).map((o: Record<string, unknown>) => ({
+          ...o,
+          allow: String(o.allow),
+          deny: String(o.deny),
+        }) as ChannelRoleOverride)
+      },
+
+      async setChannelOverride(channelId: string, roleId: string, allow: string, deny: string) {
+        const { data, error } = await client
+          .from('channel_role_overrides')
+          .upsert({ channel_id: channelId, role_id: roleId, allow, deny })
+          .select()
+          .single()
+        if (error) throw error
+        const o = data as Record<string, unknown>
+        return { ...o, allow: String(o.allow), deny: String(o.deny) } as ChannelRoleOverride
+      },
+
+      async deleteChannelOverride(channelId: string, roleId: string) {
+        const { error } = await client
+          .from('channel_role_overrides')
+          .delete()
+          .eq('channel_id', channelId)
+          .eq('role_id', roleId)
         if (error) throw error
       },
     },
