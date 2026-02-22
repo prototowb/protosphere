@@ -21,14 +21,20 @@ This file is part of the Proto Gear documentation system. For complete context, 
 
 ## Workflow Mode
 
-**No Git Repository** - Consider initializing Git for version control
+**Git Repository Active**
 
+| Setting | Value |
+|---------|-------|
+| Repository | https://github.com/prototowb/protosphere |
+| Branch Model | Git Flow (main + development) |
+| Ticket Prefix | PTSPH |
+| Remote | origin (GitHub) |
 
 ---
 
 ## Overview
 
-This document defines the branching model and commit conventions for . Following these conventions ensures consistency across all contributors (human and AI).
+This document defines the branching model and commit conventions for Protosphere. Following these conventions ensures consistency across all contributors (human and AI).
 
 ---
 

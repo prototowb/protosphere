@@ -131,7 +131,23 @@ export function createSupabaseBackend(): Backend {
           .select()
           .single()
         if (error) throw error
-        return data as Server
+        const server = data as Server
+
+        // Auto-join owner as 'owner' role (required for RLS to allow subsequent reads)
+        await client.from('members').insert({ server_id: server.id, user_id: ownerId, role: 'owner' })
+
+        // Auto-create default #general channel
+        await client.from('channels').insert({
+          server_id: server.id,
+          name: 'general',
+          description: 'General discussion',
+          type: 'text',
+          position: 0,
+          is_default: true,
+          slowmode_seconds: 0,
+        })
+
+        return server
       },
 
       async update(id, updates) {

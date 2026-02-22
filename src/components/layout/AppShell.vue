@@ -102,16 +102,19 @@ async function handleCreateServer(name: string, description: string) {
   }
 }
 
-async function handleJoinServer(inviteCode: string) {
+async function handleJoinServer(inviteCode: string, done: (error?: string) => void) {
   serverError.value = ''
   try {
     const server = await joinServer(inviteCode)
+    done()
     showJoinServer.value = false
     if (server) {
       router.push(`/channels/${server.id}/${server.id}`)
     }
   } catch (e: unknown) {
-    serverError.value = e instanceof Error ? e.message : 'Failed to join server'
+    const msg = e instanceof Error ? e.message : 'Failed to join server'
+    serverError.value = msg
+    done(msg)
   }
 }
 

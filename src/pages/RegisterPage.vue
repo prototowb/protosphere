@@ -1,11 +1,19 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
+import { useAuthStore } from '@/stores/auth'
 import { isLocalMode } from '@/lib/backend'
 
 const router = useRouter()
 const { register, loginWithOAuth } = useAuth()
+const authStore = useAuthStore()
+
+// Redirect when session is established (works for both local and Supabase modes)
+watch(
+  () => authStore.isAuthenticated,
+  (isAuth) => { if (isAuth) router.push('/channels/@me') },
+)
 
 const email = ref('')
 const username = ref('')
@@ -38,10 +46,7 @@ async function handleRegister() {
   loading.value = true
   try {
     await register(email.value, password.value, username.value)
-    // In local mode, registration auto-logs in — redirect immediately
-    if (isLocalMode) {
-      router.push('/channels/@me')
-    }
+    // Redirect is handled by the isAuthenticated watcher above
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : 'Registration failed'
   } finally {

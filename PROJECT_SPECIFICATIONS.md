@@ -1,19 +1,16 @@
-# Project Specification: Unified Communication Platform
+# Project Specification: Protosphere Community Platform
 
 ## Context
 
-This is the kick-off specification for a web-based IRC/Discord-like communication platform. It serves a dual purpose:
+Protosphere is the central communication platform for a single online community. Originally scaffolded as a multi-server Discord clone (M1-M9.5), the project is pivoting to serve a **hybrid community model**: public-facing spaces for broad participation, private spaces for trusted members, and graduated access through custom roles with granular permissions.
 
-1. **Standalone product** — A real-time chat platform with servers, channels, DMs, roles, and rich messaging
-2. **Unified hub** — The central user management and authentication system for all future services (TypeScript course, future courses, web games, etc.)
-
-Development starts from scratch in a new repository. The existing TypeScript learning platform will eventually integrate with this system for shared authentication and user profiles.
+It also serves as the **unified authentication hub** for all future services (TypeScript course, web games, etc.).
 
 ---
 
 ## Vision
 
-A lightweight, fast, self-hostable communication platform where communities form around learning, building, and playing. Think Discord's UX clarity meets IRC's simplicity — no bloat, no Electron, just a modern web app.
+The central hub for a single online community — not a Discord clone. Protosphere provides **spaces** (sub-communities) within one shared identity, a **custom role system** with granular permissions, community **branding and onboarding**, robust **moderation tools**, and **engagement features** like threads, polls, and events. Lightweight, fast, self-hostable — no bloat, no Electron, just a modern web app.
 
 ---
 
@@ -197,10 +194,139 @@ created_at      TIMESTAMPTZ DEFAULT now()
 PRIMARY KEY (server_id, user_id)
 ```
 
-### Future Tables (not in MVP, reserved)
-- `custom_emojis` — server-specific emoji uploads
+#### `community_settings` (single-row, instance identity)
+```sql
+id                UUID PRIMARY KEY DEFAULT gen_random_uuid()
+name              TEXT NOT NULL DEFAULT 'My Community'
+description       TEXT NOT NULL DEFAULT ''
+logo_url          TEXT
+banner_url        TEXT
+registration_mode TEXT NOT NULL DEFAULT 'open'   -- open, approval, invite_only, closed
+rules             TEXT NOT NULL DEFAULT ''
+welcome_message   TEXT NOT NULL DEFAULT ''
+created_at        TIMESTAMPTZ DEFAULT now()
+updated_at        TIMESTAMPTZ DEFAULT now()
+```
+
+#### `roles` (per-space custom roles)
+```sql
+id            UUID PRIMARY KEY DEFAULT gen_random_uuid()
+server_id     UUID REFERENCES servers(id) ON DELETE CASCADE NOT NULL
+name          TEXT NOT NULL                -- 1-50 chars
+color         TEXT                         -- hex, e.g. '#5865F2'
+icon          TEXT                         -- emoji or icon identifier
+position      INT NOT NULL DEFAULT 0       -- lower = higher priority
+permissions   BIGINT NOT NULL DEFAULT 0    -- bitfield
+is_default    BOOLEAN NOT NULL DEFAULT false
+is_system     BOOLEAN NOT NULL DEFAULT false
+created_at    TIMESTAMPTZ DEFAULT now()
+UNIQUE(server_id, name)
+```
+
+#### `user_roles` (many-to-many role assignment)
+```sql
+user_id       UUID REFERENCES profiles(id) ON DELETE CASCADE
+role_id       UUID REFERENCES roles(id) ON DELETE CASCADE
+assigned_at   TIMESTAMPTZ DEFAULT now()
+PRIMARY KEY (user_id, role_id)
+```
+
+#### `channel_role_overrides` (per-channel permission tweaks)
+```sql
+channel_id    UUID REFERENCES channels(id) ON DELETE CASCADE
+role_id       UUID REFERENCES roles(id) ON DELETE CASCADE
+allow         BIGINT NOT NULL DEFAULT 0    -- permissions explicitly allowed
+deny          BIGINT NOT NULL DEFAULT 0    -- permissions explicitly denied
+PRIMARY KEY (channel_id, role_id)
+```
+
+#### `audit_log` (immutable moderation record)
+```sql
+id          UUID PRIMARY KEY DEFAULT gen_random_uuid()
+server_id   UUID REFERENCES servers(id) ON DELETE SET NULL
+actor_id    UUID REFERENCES profiles(id) NOT NULL
+action      TEXT NOT NULL                  -- 'member.kick', 'message.delete', etc.
+target_type TEXT NOT NULL                  -- 'member', 'message', 'channel', 'role'
+target_id   TEXT NOT NULL
+details     JSONB DEFAULT '{}'
+created_at  TIMESTAMPTZ DEFAULT now()
+```
+
+#### `reports` (member-submitted content reports)
+```sql
+id            UUID PRIMARY KEY DEFAULT gen_random_uuid()
+reporter_id   UUID REFERENCES profiles(id) NOT NULL
+reported_type TEXT NOT NULL                -- 'message' or 'user'
+reported_id   TEXT NOT NULL
+server_id     UUID REFERENCES servers(id)
+category      TEXT NOT NULL                -- spam, harassment, nsfw, misinformation, other
+description   TEXT DEFAULT ''
+status        TEXT DEFAULT 'pending'       -- pending, reviewing, resolved, dismissed
+reviewed_by   UUID REFERENCES profiles(id)
+resolution    TEXT DEFAULT ''
+created_at    TIMESTAMPTZ DEFAULT now()
+resolved_at   TIMESTAMPTZ
+```
+
+#### `mutes` (temporary member silencing)
+```sql
+server_id   UUID REFERENCES servers(id) ON DELETE CASCADE
+user_id     UUID REFERENCES profiles(id) ON DELETE CASCADE
+muted_by    UUID REFERENCES profiles(id) NOT NULL
+reason      TEXT DEFAULT ''
+expires_at  TIMESTAMPTZ                    -- null = permanent
+created_at  TIMESTAMPTZ DEFAULT now()
+PRIMARY KEY (server_id, user_id)
+```
+
+#### `polls`, `poll_options`, `poll_votes`
+```sql
+-- polls
+id              UUID PRIMARY KEY DEFAULT gen_random_uuid()
+message_id      UUID UNIQUE REFERENCES messages(id) ON DELETE CASCADE NOT NULL
+question        TEXT NOT NULL               -- 1-300 chars
+allow_multiple  BOOLEAN DEFAULT false
+closes_at       TIMESTAMPTZ
+created_at      TIMESTAMPTZ DEFAULT now()
+
+-- poll_options
+id        UUID PRIMARY KEY DEFAULT gen_random_uuid()
+poll_id   UUID REFERENCES polls(id) ON DELETE CASCADE NOT NULL
+text      TEXT NOT NULL                     -- 1-100 chars
+position  INT DEFAULT 0
+
+-- poll_votes
+poll_id   UUID REFERENCES polls(id) ON DELETE CASCADE
+option_id UUID REFERENCES poll_options(id) ON DELETE CASCADE
+user_id   UUID REFERENCES profiles(id) ON DELETE CASCADE
+PRIMARY KEY (poll_id, option_id, user_id)
+```
+
+#### `events`, `event_rsvps`
+```sql
+-- events
+id          UUID PRIMARY KEY DEFAULT gen_random_uuid()
+server_id   UUID REFERENCES servers(id) ON DELETE CASCADE NOT NULL
+channel_id  UUID REFERENCES channels(id) ON DELETE SET NULL
+creator_id  UUID REFERENCES profiles(id) NOT NULL
+title       TEXT NOT NULL                   -- 1-200 chars
+description TEXT DEFAULT ''
+starts_at   TIMESTAMPTZ NOT NULL
+ends_at     TIMESTAMPTZ
+location    TEXT DEFAULT ''
+created_at  TIMESTAMPTZ DEFAULT now()
+
+-- event_rsvps
+event_id  UUID REFERENCES events(id) ON DELETE CASCADE
+user_id   UUID REFERENCES profiles(id) ON DELETE CASCADE
+status    TEXT DEFAULT 'going'              -- going, maybe, not_going
+PRIMARY KEY (event_id, user_id)
+```
+
+### Future Tables (reserved)
+- `custom_emojis` — community emoji uploads
 - `webhooks` — external integrations
-- `audit_log` — moderation actions
+- `automod_rules` — automated moderation rules (word filter, spam detection)
 - `voice_sessions` — voice/video (future phase)
 - `service_connections` — links to TypeScript course, future games, etc.
 
@@ -332,7 +458,7 @@ realtime:typing:channel_id=<uuid>
 - [x] Mark channel as read (on navigation or manual)
 - [x] Browser notifications for mentions and DMs (opt-in)
 
-#### Roles & Permissions
+#### Roles & Permissions (v1 — being replaced)
 - [x] Role hierarchy: Owner > Admin > Moderator > Member
 - [x] Owner: full control, transfer ownership, delete server
 - [x] Admin: manage channels, manage roles (below admin), manage members
@@ -340,27 +466,74 @@ realtime:typing:channel_id=<uuid>
 - [x] Member: send messages, react, upload files
 - [x] Per-channel permission overrides (future — keep schema flexible)
 
-#### Moderation
+#### Roles & Permissions (v2 — M11)
+- [ ] Custom named roles with granular permission bitfields
+- [ ] Multiple roles per user (many-to-many)
+- [ ] Per-channel role overrides (allow/deny per permission)
+- [ ] Permission presets (Admin, Moderator, Member templates)
+- [ ] Role ordering (position-based hierarchy)
+- [ ] System roles (owner role cannot be deleted)
+- [ ] `ADMINISTRATOR` permission bypasses all checks
+
+**Permission Categories:**
+- Community: `MANAGE_SPACE`, `MANAGE_ROLES`, `MANAGE_INVITES`, `VIEW_AUDIT_LOG`
+- Channels: `VIEW_CHANNEL`, `MANAGE_CHANNELS`, `MANAGE_CATEGORIES`
+- Messaging: `SEND_MESSAGES`, `ATTACH_FILES`, `EMBED_LINKS`, `MENTION_EVERYONE`, `MANAGE_MESSAGES`, `ADD_REACTIONS`
+- Moderation: `KICK_MEMBERS`, `BAN_MEMBERS`, `MUTE_MEMBERS`, `MANAGE_BANS`
+- Members: `CHANGE_NICKNAME`, `MANAGE_NICKNAMES`
+
+#### Moderation (v1 — complete)
 - [x] Kick user from server
 - [x] Ban user from server (with reason)
 - [x] Unban user
-- [x] Mute user (server-wide, timed or permanent)
 - [x] Delete any message (mod+)
 - [x] Slowmode per channel
+
+#### Moderation (v2 — M13)
+- [ ] Audit log (who did what, when, immutable)
+- [ ] Report system (message + user reports with categories)
+- [ ] Mod queue (pending reports, review actions)
+- [ ] Mute system (timed or permanent, blocks messaging)
+- [ ] Auto-moderation (word filter, spam detection)
 
 #### Search
 - [x] Full-text message search within server
 - [x] Filter by channel, author, date range
 - [x] Search results with context and jump-to-message
 
-### Future Features (post-MVP)
+### Planned Features (M11-M15)
+
+#### Community Architecture (M11-M12)
+- [ ] Custom roles with granular permissions (M11)
+- [ ] Community settings entity (branding, registration mode, rules) (M12)
+- [ ] Server → Space rename throughout UI (M12)
+- [ ] Space visibility: public, private, restricted (M12)
+- [ ] Community sidebar with branded header + space list (M12)
+- [ ] Onboarding flow: landing page, welcome screen, rules acceptance (M12)
+
+#### Moderation & Safety (M13)
+- [ ] Audit log for all moderation actions
+- [ ] Report system (message + user, categorized)
+- [ ] Mod queue with review workflow
+- [ ] Mute system (timed + permanent)
+- [ ] Auto-moderation (word filter, spam detection)
+
+#### Engagement (M14)
+- [ ] Threads (lightweight channels spawned from messages)
+- [ ] Polls (embedded in messages, multi-option, optional expiry)
+- [ ] Events (date, description, RSVP)
+- [ ] Announcement spaces (restricted posting)
+
+#### Real-time & Production (M15)
+- [ ] Supabase Realtime for messages (INSERT/UPDATE/DELETE)
+- [ ] Supabase Realtime Presence (replace localStorage)
+- [ ] Supabase Realtime Broadcast (typing indicators)
+- [ ] Complete RLS policies for all new tables
+
+### Future Features (post-M15)
 - Voice/video channels (WebRTC)
-- Custom emoji uploads per server
-- Threads (reply chains within a channel)
+- Custom emoji uploads
 - Webhooks & bot API
-- Audit log for moderation actions
-- Server discovery / public listing
-- Server categories (channel groups)
 - User blocking
 - Message formatting toolbar (WYSIWYG toggle)
 - Mobile app (Capacitor or PWA)
@@ -571,69 +744,66 @@ CREATE POLICY "messages_insert" ON messages FOR INSERT WITH CHECK (
 
 ## Development Milestones
 
-### M1: Project Scaffold & Auth (Week 1-2)
-- Vite + Vue 3 + TypeScript + Tailwind 4 + Vue Router + Pinia
-- Supabase project setup (database, auth config, storage buckets)
-- Database schema migration (all tables + RLS policies)
-- Login / Register pages (email + GitHub + Google OAuth)
-- Profile creation trigger + profile editor
-- Basic app shell layout (server sidebar, channel sidebar, main area)
+### Completed: M1-M10
 
-### M2: Server & Channel Management (Week 3-4)
-- Create / edit / delete servers
-- Invite code generation + join flow
-- Create / edit / delete / reorder channels
-- Server member list
-- Role assignment (owner promotes/demotes)
-- Server settings page
+- **M1**: Project scaffold, auth, profiles, backend adapter
+- **M2**: Server & channel CRUD, member system
+- **M3**: Messaging (send/edit/delete, replies, grouping)
+- **M4**: Presence, typing indicators, unread tracking
+- **M5**: Direct messages (1:1 conversations)
+- **M6**: @mentions, notification badges, browser notifications
+- **M7**: Emoji reactions, message pinning
+- **M8**: Channel categories, drag-drop reorder, slowmode
+- **M9**: Role-based permissions (fixed hierarchy), kick & ban
+- **M9.5**: Toast system, context menus, markdown, search, polish
+- **M10**: Local Supabase dev setup, Supabase bugfixes
 
-### M3: Real-time Messaging (Week 5-6)
-- Message sending + receiving via Supabase Realtime
-- Markdown rendering
-- Message editing + deletion
-- Reply to messages
-- Message grouping (consecutive from same author)
-- Infinite scroll pagination (load older messages)
-- Auto-link URLs
+### M11: Roles & Permissions Engine
 
-### M4: Presence, Typing & Unread (Week 7)
-- User presence (online/idle/DND/offline)
-- Auto-idle detection (5min inactivity)
-- Typing indicators (broadcast channel)
-- Unread channel indicators
-- Mention detection + badge counts
-- Mark as read on navigation
+Replace hardcoded role hierarchy with custom roles + permission bitfields:
+- Permission bitfield library (`src/lib/permissions.ts`)
+- `roles`, `user_roles`, `channel_role_overrides` tables
+- Backend interface + implementations for both adapters
+- Roles store + composables (`useRoles`, `usePermissions`)
+- Migrate all UI permission checks to `can(Permission.X)`
+- Role management UI (create/edit/delete, drag-to-reorder, color picker)
+- New RLS policies using `user_has_permission()` function
 
-### M5: Rich Features (Week 8-9)
-- Emoji reactions on messages
-- @mention autocomplete
-- Pin/unpin messages
-- File upload (drag & drop, paste, button)
-- Image preview + file attachment display
-- Full-text search with filters
+### M12: Spaces & Community Identity
 
-### M6: Direct Messages (Week 10)
-- 1:1 DM creation + conversation view
-- Group DMs (up to 10)
-- DM list in sidebar
-- DM notifications
+Reframe app as single community with spaces:
+- `community_settings` entity (branding, registration mode, rules)
+- Server → Space rename in all UI text and routes
+- Space visibility (public/private/restricted) and types (general/announcement/archive)
+- Community sidebar redesign (branded header + space list)
+- Community admin panel
+- Onboarding flow (landing page, welcome screen, rules acceptance)
+- Space access control (role-based join gating)
 
-### M7: Moderation & Permissions (Week 11)
-- Kick / ban / unban users
-- Mute users (timed + permanent)
-- Message deletion by mods
-- Slowmode per channel
-- Permission checks throughout UI (hide/disable unauthorized actions)
+### M13: Moderation & Safety
 
-### M8: Polish & Launch (Week 12)
-- Responsive / mobile layout
-- Browser notifications (opt-in)
-- Keyboard shortcuts (Ctrl+K search, Esc close, etc.)
-- Error handling + offline indicators + reconnection UX
-- Loading states + skeleton screens
-- Accessibility audit (ARIA, focus management, screen reader)
-- Performance audit (bundle size, virtual scroll, lazy loading)
-- Build + deploy pipeline
+Trust and safety infrastructure:
+- Audit log (immutable record of all moderation actions)
+- Report system (message + user, categorized)
+- Mod queue (review pending reports)
+- Mute system (timed or permanent)
+- Auto-moderation (word filter, spam detection)
+
+### M14: Engagement Features
+
+Community engagement:
+- Threads (lightweight channels spawned from messages)
+- Polls (embedded in messages)
+- Events (creation, RSVP, calendar)
+- Announcement spaces (restricted posting)
+
+### M15: Supabase Real-time & Integration
+
+Production readiness:
+- Supabase Realtime for messages, presence, typing
+- RLS policies for all new tables
+- Complete Supabase backend for all new namespaces
+- End-to-end testing
 
 ---
 
