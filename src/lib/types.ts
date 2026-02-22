@@ -124,3 +124,29 @@ export interface Ban {
   reason: string
   created_at: string
 }
+
+export interface Role {
+  id: string
+  server_id: string
+  name: string
+  color: string | null
+  icon: string | null
+  position: number
+  permissions: string  // decimal string representation of a BIGINT
+  is_default: boolean
+  is_system: boolean
+  created_at: string
+}
+
+export interface UserRole {
+  user_id: string
+  role_id: string
+  assigned_at: string
+}
+
+export interface ChannelRoleOverride {
+  channel_id: string
+  role_id: string
+  allow: string  // decimal string representation of a BIGINT
+  deny: string   // decimal string representation of a BIGINT
+}

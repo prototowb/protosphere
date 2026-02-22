@@ -49,7 +49,7 @@ export function memberContextItems(
   member: Member & { profile: Profile },
   opts: {
     isMe: boolean
-    myRole: MemberRole
+    canManageRoles: boolean
     onViewProfile: () => void
     onOpenDM: () => void
     onCopyUsername: () => void
@@ -74,11 +74,11 @@ export function memberContextItems(
   }
 
   // Role management
-  const canManage = !opts.isMe && (opts.myRole === 'owner' || (opts.myRole === 'admin' && (member.role === 'member' || member.role === 'moderator')))
+  const canManage = !opts.isMe && opts.canManageRoles
   if (canManage && opts.onChangeRole) {
     items.push(sep)
     if (member.role !== 'moderator') items.push({ label: 'Make Moderator', action: () => opts.onChangeRole!('moderator') })
-    if (member.role !== 'admin' && opts.myRole === 'owner') items.push({ label: 'Make Admin', action: () => opts.onChangeRole!('admin') })
+    if (member.role !== 'admin') items.push({ label: 'Make Admin', action: () => opts.onChangeRole!('admin') })
     if (member.role !== 'member') items.push({ label: 'Set to Member', action: () => opts.onChangeRole!('member') })
   }
 

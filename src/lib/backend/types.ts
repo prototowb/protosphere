@@ -1,4 +1,4 @@
-import type { Profile, Server, Channel, ChannelCategory, Member, Message, Reaction, Ban, DirectMessageGroup, DirectMessage } from '@/lib/types'
+import type { Profile, Server, Channel, ChannelCategory, Member, Message, Reaction, Ban, DirectMessageGroup, DirectMessage, Role, UserRole, ChannelRoleOverride } from '@/lib/types'
 
 export interface AuthUser {
   id: string
@@ -85,5 +85,17 @@ export interface Backend {
     sendMessage(dmGroupId: string, authorId: string, content: string, replyToId?: string | null): Promise<DirectMessage & { profile: Profile }>
     editMessage(id: string, content: string): Promise<DirectMessage>
     deleteMessage(id: string): Promise<void>
+  }
+  roles: {
+    list(serverId: string): Promise<Role[]>
+    create(data: { server_id: string; name: string; color?: string | null; icon?: string | null; permissions?: string; position?: number; is_default?: boolean }): Promise<Role>
+    update(id: string, updates: Partial<Pick<Role, 'name' | 'color' | 'icon' | 'position' | 'permissions' | 'is_default'>>): Promise<Role>
+    delete(id: string): Promise<void>
+    listUserRoles(serverId: string, userId: string): Promise<Role[]>
+    assignRole(userId: string, roleId: string): Promise<UserRole>
+    removeRole(userId: string, roleId: string): Promise<void>
+    listChannelOverrides(channelId: string): Promise<ChannelRoleOverride[]>
+    setChannelOverride(channelId: string, roleId: string, allow: string, deny: string): Promise<ChannelRoleOverride>
+    deleteChannelOverride(channelId: string, roleId: string): Promise<void>
   }
 }

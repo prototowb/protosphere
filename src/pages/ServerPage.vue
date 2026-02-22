@@ -28,6 +28,9 @@ import { useToastStore } from '@/stores/toast'
 import { useContextMenuStore } from '@/stores/contextMenu'
 import { messageContextItems, memberContextItems, channelContextItems, categoryContextItems, serverHeaderContextItems } from '@/lib/contextMenuItems'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
+import { useRoles } from '@/composables/useRoles'
+import { usePermissions } from '@/composables/usePermissions'
+import { Permission } from '@/lib/permissions'
 import type { Message, Profile, Member, MemberRole, Channel, ChannelCategory } from '@/lib/types'
 
 const route = useRoute()
@@ -40,6 +43,7 @@ const { fetchChannels, createChannel, updateChannel, deleteChannel } = useChanne
 const { fetchCategories, createCategory, updateCategory, deleteCategory } = useCategories()
 const categoriesStore = useCategoriesStore()
 const { members, fetchMembers, updateRole } = useMembers()
+const { fetchServerRoles, fetchUserRoles } = useRoles()
 const { leaveServer, deleteServer, kickMember, banMember, regenerateInviteCode } = useServers()
 const { fetchMessages, sendMessage, editMessage, deleteMessage, pinMessage, unpinMessage, fetchPinnedMessages } = useMessages()
 const { fetchReactionsForChannel, toggleReaction } = useReactions()
@@ -193,7 +197,12 @@ function loadServer() {
     collapsedCategories.value = loadCollapsedCategories(serverId.value)
     fetchChannels(serverId.value)
     fetchCategories(serverId.value)
-    fetchMembers(serverId.value)
+    fetchMembers(serverId.value).then(() => {
+      if (authStore.user?.id) {
+        fetchServerRoles(serverId.value)
+        fetchUserRoles(serverId.value, authStore.user.id)
+      }
+    })
   }
 }
 
@@ -322,14 +331,15 @@ const memberRoleGroups = computed((): RoleGroup[] => {
 const myMember = computed(() => members.value.find((m) => m.user_id === authStore.user?.id))
 const myRole = computed(() => myMember.value?.role ?? 'member')
 
-// owner + admin can create/delete channels, categories, and reorder
-const canManageChannels = computed(() =>
-  myRole.value === 'owner' || myRole.value === 'admin',
-)
-// owner + admin + moderator can delete any message, pin/unpin
-const canModerate = computed(() =>
-  myRole.value === 'owner' || myRole.value === 'admin' || myRole.value === 'moderator',
-)
+const { can, check } = usePermissions(serverId, myRole)
+
+// Create/delete channels, categories
+const canManageChannels = can(Permission.MANAGE_CHANNELS)
+// Delete others' messages, pin/unpin
+const canModerate = can(Permission.MANAGE_MESSAGES)
+// Kick / ban members
+const canKick = can(Permission.KICK_MEMBERS)
+const canBan = can(Permission.BAN_MEMBERS)
 
 const messages = computed((): (Message & { profile: Profile })[] => {
   const id = channelsStore.activeChannelId
@@ -682,12 +692,7 @@ function copyInviteCode() {
 
 // ── Member context menu ───────────────────────────────────
 function canChangeRole(target: Member & { profile: Profile }) {
-  // Owners can change anyone (except themselves to non-owner for safety)
-  // Admins can change members/moderators but not owners or other admins
-  if (target.user_id === authStore.user?.id) return false
-  if (myRole.value === 'owner') return true
-  if (myRole.value === 'admin') return target.role === 'member' || target.role === 'moderator'
-  return false
+  return check(Permission.MANAGE_ROLES) && target.user_id !== authStore.user?.id
 }
 
 async function handleRoleChange(userId: string, role: MemberRole) {
@@ -798,7 +803,7 @@ function onMemberContext(event: MouseEvent, member: Member & { profile: Profile 
   const isMe = member.user_id === authStore.user?.id
   contextMenuStore.show(event, memberContextItems(member, {
     isMe,
-    myRole: myRole.value,
+    canManageRoles: check(Permission.MANAGE_ROLES),
     onViewProfile: () => { selectedMember.value = member },
     onOpenDM: async () => {
       const groupId = await openDM(member.user_id)
@@ -1454,12 +1459,12 @@ function onServerHeaderContext(event: MouseEvent) {
             <option value="member">Member</option>
             <option value="moderator">Moderator</option>
             <option value="admin">Admin</option>
-            <option v-if="myRole === 'owner'" value="owner">Owner</option>
+            <option v-if="isOwner" value="owner">Owner</option>
           </select>
         </div>
 
-        <!-- Kick / Ban buttons (owner/admin only, not for self) -->
-        <div v-if="canManageChannels && selectedMember.user_id !== authStore.user?.id" class="mt-3 flex gap-2">
+        <!-- Kick / Ban buttons (moderators+, not for self) -->
+        <div v-if="(canKick || canBan) && selectedMember.user_id !== authStore.user?.id" class="mt-3 flex gap-2">
           <button
             @click="handleKick(selectedMember!.user_id)"
             class="flex-1 rounded bg-bg-tertiary px-3 py-2 text-sm font-medium text-text-secondary hover:bg-bg-hover"
