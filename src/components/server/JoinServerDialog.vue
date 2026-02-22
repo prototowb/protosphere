@@ -2,17 +2,22 @@
 import { ref } from 'vue'
 
 const emit = defineEmits<{
-  join: [inviteCode: string]
+  join: [inviteCode: string, done: (error?: string) => void]
   close: []
 }>()
 
 const inviteCode = ref('')
 const loading = ref(false)
+const error = ref('')
 
 function handleSubmit() {
   if (!inviteCode.value.trim()) return
   loading.value = true
-  emit('join', inviteCode.value.trim())
+  error.value = ''
+  emit('join', inviteCode.value.trim(), (err?: string) => {
+    loading.value = false
+    if (err) error.value = err
+  })
 }
 </script>
 
@@ -33,6 +38,8 @@ function handleSubmit() {
             placeholder="Enter an invite code"
           />
         </div>
+
+        <p v-if="error" class="text-sm text-red-400">{{ error }}</p>
 
         <div class="flex justify-end gap-2">
           <button

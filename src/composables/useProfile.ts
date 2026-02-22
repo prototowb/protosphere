@@ -3,8 +3,11 @@ import { backend } from '@/lib/backend'
 import { useAuthStore } from '@/stores/auth'
 import type { Profile } from '@/lib/types'
 
+// Shared across all useProfile() call sites — any update is immediately
+// visible in AppShell's user bar, SettingsPage, etc.
+const profile = ref<Profile | null>(null)
+
 export function useProfile() {
-  const profile = ref<Profile | null>(null)
   const loading = ref(false)
   const error = ref('')
 
@@ -24,7 +27,7 @@ export function useProfile() {
     }
   }
 
-  async function updateProfile(updates: Partial<Pick<Profile, 'display_name' | 'bio' | 'status_text' | 'avatar_url'>>) {
+  async function updateProfile(updates: Partial<Pick<Profile, 'username' | 'display_name' | 'bio' | 'status_text' | 'avatar_url'>>) {
     const authStore = useAuthStore()
     if (!authStore.user?.id) return
 

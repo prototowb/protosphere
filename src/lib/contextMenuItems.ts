@@ -1,5 +1,5 @@
 import type { ContextMenuItem } from '@/stores/contextMenu'
-import type { Message, Member, Profile, Channel, ChannelCategory, MemberRole } from '@/lib/types'
+import type { Message, Member, Profile, Channel, ChannelCategory, MemberRole, UserStatus } from '@/lib/types'
 
 // Separator helper
 const sep: ContextMenuItem = { label: '', separator: true, action: () => {} }
@@ -17,12 +17,14 @@ export function messageContextItems(
     onUnpin: () => void
     onCopyText: () => void
     onAddReaction: () => void
+    onCopyId: () => void
   },
 ): ContextMenuItem[] {
   const items: ContextMenuItem[] = [
     { label: 'Reply', action: opts.onReply },
     { label: 'Add Reaction', action: opts.onAddReaction },
     { label: 'Copy Text', action: opts.onCopyText },
+    { label: 'Copy Message ID', action: opts.onCopyId },
   ]
 
   if (opts.isAuthor) {
@@ -50,6 +52,8 @@ export function memberContextItems(
     myRole: MemberRole
     onViewProfile: () => void
     onOpenDM: () => void
+    onCopyUsername: () => void
+    onEditStatusMessage?: () => void
     onChangeRole?: (role: MemberRole) => void
     onKick?: () => void
     onBan?: () => void
@@ -61,6 +65,12 @@ export function memberContextItems(
 
   if (!opts.isMe) {
     items.push({ label: 'Message', action: opts.onOpenDM })
+  }
+
+  items.push({ label: 'Copy Username', action: opts.onCopyUsername })
+
+  if (opts.isMe && opts.onEditStatusMessage) {
+    items.push({ label: 'Edit Status Message', action: opts.onEditStatusMessage })
   }
 
   // Role management
@@ -89,10 +99,12 @@ export function channelContextItems(
     onEditChannel?: () => void
     onDeleteChannel?: () => void
     onMarkRead: () => void
+    onCopyId: () => void
   },
 ): ContextMenuItem[] {
   const items: ContextMenuItem[] = [
     { label: 'Mark as Read', action: opts.onMarkRead },
+    { label: 'Copy Channel ID', action: opts.onCopyId },
   ]
 
   if (opts.canManage) {
@@ -109,14 +121,22 @@ export function categoryContextItems(
   _category: ChannelCategory,
   opts: {
     canManage: boolean
+    isCollapsed: boolean
+    onToggleCollapse: () => void
     onRename?: () => void
     onDelete?: () => void
   },
 ): ContextMenuItem[] {
-  if (!opts.canManage) return []
-  const items: ContextMenuItem[] = []
-  if (opts.onRename) items.push({ label: 'Rename Category', action: opts.onRename })
-  if (opts.onDelete) items.push({ label: 'Delete Category', danger: true, action: opts.onDelete })
+  const items: ContextMenuItem[] = [
+    { label: opts.isCollapsed ? 'Expand Category' : 'Collapse Category', action: opts.onToggleCollapse },
+  ]
+
+  if (opts.canManage) {
+    items.push(sep)
+    if (opts.onRename) items.push({ label: 'Rename Category', action: opts.onRename })
+    if (opts.onDelete) items.push({ label: 'Delete Category', danger: true, action: opts.onDelete })
+  }
+
   return items
 }
 
@@ -128,6 +148,7 @@ export function serverHeaderContextItems(opts: {
   onCreateChannel?: () => void
   onCreateCategory?: () => void
   onServerSettings?: () => void
+  onMarkAllRead?: () => void
   onLeave?: () => void
   onDelete?: () => void
 }): ContextMenuItem[] {
@@ -139,6 +160,11 @@ export function serverHeaderContextItems(opts: {
     if (opts.onCreateChannel) items.push({ label: 'Create Channel', action: opts.onCreateChannel })
     if (opts.onCreateCategory) items.push({ label: 'Create Category', action: opts.onCreateCategory })
     if (opts.onServerSettings) items.push({ label: 'Server Settings', action: opts.onServerSettings })
+  }
+
+  if (opts.onMarkAllRead) {
+    items.push(sep)
+    items.push({ label: 'Mark All as Read', action: opts.onMarkAllRead })
   }
 
   items.push(sep)
@@ -212,4 +238,21 @@ export function dmMessageContextItems(opts: {
   }
 
   return items
+}
+
+// ── User Bar Context ────────────────────────────────────────
+export function userBarContextItems(opts: {
+  onSetStatus: (status: UserStatus) => void
+  onCopyUsername: () => void
+  onSettings: () => void
+}): ContextMenuItem[] {
+  return [
+    { label: 'Online', action: () => opts.onSetStatus('online') },
+    { label: 'Idle', action: () => opts.onSetStatus('idle') },
+    { label: 'Do Not Disturb', action: () => opts.onSetStatus('dnd') },
+    { label: 'Invisible', action: () => opts.onSetStatus('offline') },
+    sep,
+    { label: 'Copy Username', action: opts.onCopyUsername },
+    { label: 'User Settings', action: opts.onSettings },
+  ]
 }

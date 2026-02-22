@@ -18,6 +18,7 @@ import { useReactions } from '@/composables/useReactions'
 import { useMessageSearch } from '@/composables/useMessageSearch'
 import { useTyping } from '@/composables/useTyping'
 import { useDMs } from '@/composables/useDMs'
+import { useProfile } from '@/composables/useProfile'
 import { useUnread } from '@/composables/useUnread'
 import { useMentions } from '@/composables/useMentions'
 import { renderMessage } from '@/lib/mentions'
@@ -26,6 +27,7 @@ import { useReactionsStore } from '@/stores/reactions'
 import { useToastStore } from '@/stores/toast'
 import { useContextMenuStore } from '@/stores/contextMenu'
 import { messageContextItems, memberContextItems, channelContextItems, categoryContextItems, serverHeaderContextItems } from '@/lib/contextMenuItems'
+import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 import type { Message, Profile, Member, MemberRole, Channel, ChannelCategory } from '@/lib/types'
 
 const route = useRoute()
@@ -45,6 +47,7 @@ const reactionsStore = useReactionsStore()
 const toastStore = useToastStore()
 const contextMenuStore = useContextMenuStore()
 const { openDM } = useDMs()
+const { updateProfile } = useProfile()
 const { typingUsers, onTyping, onSent, startListening, stopListening } = useTyping(
   () => channelsStore.activeChannelId,
   () => myMember.value?.profile.display_name ?? authStore.user?.email?.split('@')[0] ?? 'Someone',
@@ -93,6 +96,7 @@ function saveCollapsedCategories(sid: string, cats: Set<string>) {
 const collapsedCategories = ref<Set<string>>(new Set())
 const draggedChannelId = ref<string | null>(null)
 const dragOverChannelId = ref<string | null>(null)
+const dragOverCategoryId = ref<string | null>(null)
 
 // Slowmode
 const slowmodeRemaining = ref(0)
@@ -168,6 +172,17 @@ const pinnedMessages = ref<(Message & { profile: Profile })[]>([])
 
 // Member profile panel
 const selectedMember = ref<(Member & { profile: Profile }) | null>(null)
+
+// Confirm dialog
+const confirmDialog = ref<{
+  title: string
+  message: string
+  confirmLabel: string
+  danger: boolean
+  requireInput?: string
+  inputPlaceholder?: string
+  onConfirm: (input: string) => void
+} | null>(null)
 
 function loadServer() {
   serverId.value = route.params.serverId as string
@@ -385,9 +400,18 @@ async function submitEdit() {
   cancelEdit()
 }
 
-async function handleDeleteMessage(messageId: string) {
-  if (!channelsStore.activeChannelId) return
-  await deleteMessage(channelsStore.activeChannelId, messageId)
+function handleDeleteMessage(messageId: string) {
+  confirmDialog.value = {
+    title: 'Delete Message',
+    message: 'Are you sure you want to delete this message? This cannot be undone.',
+    confirmLabel: 'Delete',
+    danger: true,
+    onConfirm: async () => {
+      confirmDialog.value = null
+      if (!channelsStore.activeChannelId) return
+      await deleteMessage(channelsStore.activeChannelId, messageId)
+    },
+  }
 }
 
 function formatTime(iso: string) {
@@ -458,20 +482,39 @@ async function handleEditChannel() {
   toastStore.show('Channel updated', 'success')
 }
 
-async function handleDeleteChannel(channelId: string) {
-  await deleteChannel(channelId)
-  toastStore.show('Channel deleted', 'success')
-  // Navigate to default channel if we deleted the active one
-  if (channelsStore.activeChannelId === null && channelsStore.channels.length > 0) {
-    const defaultCh = channelsStore.channels.find((c) => c.is_default) || channelsStore.channels[0]
-    if (defaultCh) router.replace(`/channels/${serverId.value}/${defaultCh.id}`)
+function handleDeleteChannel(chId: string) {
+  const ch = channelsStore.channels.find((c) => c.id === chId)
+  confirmDialog.value = {
+    title: 'Delete Channel',
+    message: `Are you sure you want to delete #${ch?.name ?? 'this channel'}? This cannot be undone.`,
+    confirmLabel: 'Delete Channel',
+    danger: true,
+    onConfirm: async () => {
+      confirmDialog.value = null
+      await deleteChannel(chId)
+      toastStore.show('Channel deleted', 'success')
+      if (channelsStore.activeChannelId === null && channelsStore.channels.length > 0) {
+        const defaultCh = channelsStore.channels.find((c) => c.is_default) || channelsStore.channels[0]
+        if (defaultCh) router.replace(`/channels/${serverId.value}/${defaultCh.id}`)
+      }
+    },
   }
 }
 
-async function handleDeleteCategory(categoryId: string) {
-  await deleteCategory(categoryId)
-  fetchChannels(serverId.value)
-  toastStore.show('Category deleted', 'success')
+function handleDeleteCategory(categoryId: string) {
+  const cat = categoriesStore.categories.find((c) => c.id === categoryId)
+  confirmDialog.value = {
+    title: 'Delete Category',
+    message: `Are you sure you want to delete "${cat?.name ?? 'this category'}"? Channels in this category will become uncategorized.`,
+    confirmLabel: 'Delete',
+    danger: true,
+    onConfirm: async () => {
+      confirmDialog.value = null
+      await deleteCategory(categoryId)
+      fetchChannels(serverId.value)
+      toastStore.show('Category deleted', 'success')
+    },
+  }
 }
 
 function startCategoryRename(categoryId: string) {
@@ -496,12 +539,14 @@ function cancelCategoryRename() {
 function onCategoryContext(event: MouseEvent, cat: ChannelCategory) {
   contextMenuStore.show(event, categoryContextItems(cat, {
     canManage: canManageChannels.value,
+    isCollapsed: collapsedCategories.value.has(cat.id),
+    onToggleCollapse: () => toggleCategory(cat.id),
     onRename: () => startCategoryRename(cat.id),
     onDelete: () => handleDeleteCategory(cat.id),
   }))
 }
 
-// ── Channel drag-and-drop reordering (owner only) ────────
+// ── Channel drag-and-drop reordering ─────────────────────
 function onChannelDragStart(channelId: string) {
   draggedChannelId.value = channelId
 }
@@ -509,6 +554,7 @@ function onChannelDragStart(channelId: string) {
 function onChannelDragOver(channelId: string) {
   if (draggedChannelId.value && draggedChannelId.value !== channelId) {
     dragOverChannelId.value = channelId
+    dragOverCategoryId.value = null
   }
 }
 
@@ -516,30 +562,45 @@ function onChannelDragLeave() {
   dragOverChannelId.value = null
 }
 
+function onCategoryDragOver(categoryId: string) {
+  if (draggedChannelId.value) {
+    dragOverCategoryId.value = categoryId
+    dragOverChannelId.value = null
+  }
+}
+
+function onCategoryDragLeave() {
+  dragOverCategoryId.value = null
+}
+
 async function onChannelDrop(targetChannelId: string) {
   const fromId = draggedChannelId.value
   draggedChannelId.value = null
   dragOverChannelId.value = null
+  dragOverCategoryId.value = null
   if (!fromId || fromId === targetChannelId || !canManageChannels.value) return
 
   const from = channelsStore.channels.find((c) => c.id === fromId)
   const to = channelsStore.channels.find((c) => c.id === targetChannelId)
-  if (!from || !to || from.category_id !== to.category_id) return
+  if (!from || !to) return
 
-  // Reorder within the group
+  // If moving to a different category, update category_id first
+  if (from.category_id !== to.category_id) {
+    await updateChannel(fromId, { category_id: to.category_id })
+  }
+
+  // Reorder within the target category (read fresh from store after possible update)
   const group = channelsStore.channels
-    .filter((c) => c.category_id === from.category_id)
+    .filter((c) => c.category_id === to.category_id)
     .sort((a, b) => a.position - b.position)
 
   const fromIdx = group.findIndex((c) => c.id === fromId)
   const toIdx = group.findIndex((c) => c.id === targetChannelId)
   if (fromIdx === -1 || toIdx === -1) return
 
-  // Splice
-  group.splice(fromIdx, 1)
-  group.splice(toIdx, 0, from)
+  const [moved] = group.splice(fromIdx, 1)
+  group.splice(toIdx, 0, moved!)
 
-  // Assign new positions and persist
   for (let i = 0; i < group.length; i++) {
     const ch = group[i]
     if (ch && ch.position !== i) {
@@ -548,9 +609,25 @@ async function onChannelDrop(targetChannelId: string) {
   }
 }
 
+async function onCategoryDrop(categoryId: string) {
+  const fromId = draggedChannelId.value
+  draggedChannelId.value = null
+  dragOverCategoryId.value = null
+  dragOverChannelId.value = null
+  if (!fromId || !canManageChannels.value) return
+
+  const from = channelsStore.channels.find((c) => c.id === fromId)
+  if (!from || from.category_id === categoryId) return
+
+  // Place at end of target category
+  const group = channelsStore.channels.filter((c) => c.category_id === categoryId)
+  await updateChannel(fromId, { category_id: categoryId, position: group.length })
+}
+
 function onChannelDragEnd() {
   draggedChannelId.value = null
   dragOverChannelId.value = null
+  dragOverCategoryId.value = null
 }
 
 function toggleCategory(categoryId: string) {
@@ -563,15 +640,35 @@ function toggleCategory(categoryId: string) {
 }
 
 
-async function handleLeaveServer() {
-  await leaveServer(serverId.value)
-  router.push('/channels/@me')
+function handleLeaveServer() {
+  confirmDialog.value = {
+    title: 'Leave Server',
+    message: `Are you sure you want to leave "${currentServer.value?.name ?? 'this server'}"?`,
+    confirmLabel: 'Leave',
+    danger: true,
+    onConfirm: async () => {
+      confirmDialog.value = null
+      await leaveServer(serverId.value)
+      router.push('/channels/@me')
+    },
+  }
 }
 
-async function handleDeleteServer() {
-  await deleteServer(serverId.value)
-  toastStore.show('Server deleted', 'success')
-  router.push('/channels/@me')
+function handleDeleteServer() {
+  const name = currentServer.value?.name ?? ''
+  confirmDialog.value = {
+    title: 'Delete Server',
+    message: `This will permanently delete "${name}" and all its channels and messages. Type the server name to confirm.`,
+    confirmLabel: 'Delete Server',
+    danger: true,
+    requireInput: name,
+    onConfirm: async () => {
+      confirmDialog.value = null
+      await deleteServer(serverId.value)
+      toastStore.show('Server deleted', 'success')
+      router.push('/channels/@me')
+    },
+  }
 }
 
 async function handleRegenerateInvite() {
@@ -600,18 +697,39 @@ async function handleRoleChange(userId: string, role: MemberRole) {
   }
 }
 
-async function handleKick(userId: string) {
-  await kickMember(serverId.value, userId)
-  await fetchMembers(serverId.value)
-  selectedMember.value = null
-  toastStore.show('Member kicked', 'success')
+function handleKick(userId: string) {
+  const member = members.value.find((m) => m.user_id === userId)
+  confirmDialog.value = {
+    title: 'Kick Member',
+    message: `Are you sure you want to kick ${member?.profile.display_name ?? 'this member'} from the server?`,
+    confirmLabel: 'Kick',
+    danger: true,
+    onConfirm: async () => {
+      confirmDialog.value = null
+      await kickMember(serverId.value, userId)
+      await fetchMembers(serverId.value)
+      selectedMember.value = null
+      toastStore.show('Member kicked', 'success')
+    },
+  }
 }
 
-async function handleBan(userId: string) {
-  await banMember(serverId.value, userId)
-  await fetchMembers(serverId.value)
-  selectedMember.value = null
-  toastStore.show('Member banned', 'success')
+function handleBan(userId: string) {
+  const member = members.value.find((m) => m.user_id === userId)
+  confirmDialog.value = {
+    title: 'Ban Member',
+    message: `Are you sure you want to ban ${member?.profile.display_name ?? 'this member'}? They will not be able to rejoin.`,
+    confirmLabel: 'Ban',
+    danger: true,
+    inputPlaceholder: 'Reason for ban (optional)',
+    onConfirm: async (reason: string) => {
+      confirmDialog.value = null
+      await banMember(serverId.value, userId, reason || undefined)
+      await fetchMembers(serverId.value)
+      selectedMember.value = null
+      toastStore.show('Member banned', 'success')
+    },
+  }
 }
 
 // ── Reactions ─────────────────────────────────────────────
@@ -668,6 +786,7 @@ function onMessageContext(event: MouseEvent, msg: Message & { profile: Profile }
     onPin: () => handlePinMessage(msg.id),
     onUnpin: () => handleUnpinMessage(msg.id),
     onCopyText: () => { navigator.clipboard.writeText(msg.content); toastStore.show('Copied to clipboard', 'success') },
+    onCopyId: () => { navigator.clipboard.writeText(msg.id); toastStore.show('Message ID copied', 'success') },
     onAddReaction: () => {
       pickerAnchorRect.value = { top: event.clientY, right: window.innerWidth - event.clientX }
       emojiPickerForMsg.value = msg.id
@@ -685,6 +804,21 @@ function onMemberContext(event: MouseEvent, member: Member & { profile: Profile 
       const groupId = await openDM(member.user_id)
       router.push(`/channels/@me/${groupId}`)
     },
+    onCopyUsername: () => { navigator.clipboard.writeText(member.profile.username); toastStore.show('Username copied', 'success') },
+    onEditStatusMessage: isMe ? () => {
+      confirmDialog.value = {
+        title: 'Edit Status Message',
+        message: 'Set a custom status message visible to other members.',
+        confirmLabel: 'Save',
+        danger: false,
+        inputPlaceholder: member.profile.status_text || 'What\'s on your mind?',
+        onConfirm: async (input: string) => {
+          confirmDialog.value = null
+          await updateProfile({ status_text: input })
+          await fetchMembers(serverId.value)
+        },
+      }
+    } : undefined,
     onChangeRole: (role: MemberRole) => handleRoleChange(member.user_id, role),
     onKick: () => handleKick(member.user_id),
     onBan: () => handleBan(member.user_id),
@@ -697,6 +831,7 @@ function onChannelContext(event: MouseEvent, channel: Channel) {
     onEditChannel: () => openEditChannel(channel.id),
     onDeleteChannel: () => handleDeleteChannel(channel.id),
     onMarkRead: () => { markRead(channel.id); toastStore.show('Marked as read', 'info') },
+    onCopyId: () => { navigator.clipboard.writeText(channel.id); toastStore.show('Channel ID copied', 'success') },
   }))
 }
 
@@ -708,6 +843,11 @@ function onServerHeaderContext(event: MouseEvent) {
     onCreateChannel: () => { showCreateChannel.value = true },
     onCreateCategory: () => { showCreateCategory.value = true },
     onServerSettings: () => { router.push(`/servers/${serverId.value}/settings`) },
+    onMarkAllRead: () => {
+      channelsStore.channels.forEach((c) => markRead(c.id))
+      refreshUnread(channelsStore.channels.map((c) => c.id))
+      toastStore.show('All channels marked as read', 'info')
+    },
     onLeave: () => handleLeaveServer(),
     onDelete: () => handleDeleteServer(),
   }))
@@ -818,8 +958,12 @@ function onServerHeaderContext(event: MouseEvent) {
         <div v-for="cat in categoriesStore.categories" :key="cat.id" class="mt-2">
           <!-- Category header -->
           <div
-            class="group flex items-center gap-1 px-1 py-0.5"
+            class="group flex items-center gap-1 rounded px-1 py-0.5 transition-colors"
+            :class="dragOverCategoryId === cat.id ? 'bg-accent/20 outline outline-1 outline-accent' : ''"
             @contextmenu.prevent="onCategoryContext($event, cat)"
+            @dragover.prevent="onCategoryDragOver(cat.id)"
+            @dragleave="onCategoryDragLeave"
+            @drop.prevent="onCategoryDrop(cat.id)"
           >
             <template v-if="renamingCategoryId === cat.id">
               <input
@@ -863,7 +1007,7 @@ function onServerHeaderContext(event: MouseEvent) {
               v-for="channel in channelsStore.channels.filter(c => c.category_id === cat.id).sort((a,b) => a.position - b.position)"
               :key="channel.id"
               :to="`/channels/${serverId}/${channel.id}`"
-              :draggable="isOwner"
+              :draggable="canManageChannels"
               @contextmenu.prevent="onChannelContext($event, channel)"
               @dragstart.stop="onChannelDragStart(channel.id)"
               @dragover.prevent.stop="onChannelDragOver(channel.id)"
@@ -874,7 +1018,7 @@ function onServerHeaderContext(event: MouseEvent) {
               :class="[
                 channelsStore.activeChannelId === channel.id ? 'bg-bg-hover text-text-primary font-medium' : 'text-text-secondary',
                 dragOverChannelId === channel.id ? 'border-t-2 border-accent' : '',
-                isOwner ? 'cursor-grab' : '',
+                canManageChannels ? 'cursor-grab' : '',
               ]"
             >
               <span class="text-text-muted">#</span>
@@ -1229,6 +1373,7 @@ function onServerHeaderContext(event: MouseEvent) {
               />
               <div class="min-w-0 flex-1">
                 <p class="truncate text-sm font-medium">{{ member.profile.display_name }}</p>
+                <p v-if="member.profile.status_text" class="truncate text-xs text-text-muted">{{ member.profile.status_text }}</p>
               </div>
             </button>
           </div>
@@ -1288,6 +1433,15 @@ function onServerHeaderContext(event: MouseEvent) {
         <div v-if="selectedMember.profile.status_text" class="mt-2">
           <p class="text-xs text-text-muted">{{ selectedMember.profile.status_text }}</p>
         </div>
+
+        <!-- Send Message button (non-self) -->
+        <button
+          v-if="selectedMember.user_id !== authStore.user?.id"
+          @click="async () => { const gid = await openDM(selectedMember!.user_id); selectedMember = null; router.push(`/channels/@me/${gid}`) }"
+          class="mt-3 w-full rounded bg-accent px-3 py-2 text-sm font-medium text-white hover:bg-accent-hover"
+        >
+          Send Message
+        </button>
 
         <!-- Role management (owner/admin only, not for self) -->
         <div v-if="canChangeRole(selectedMember)" class="mt-4 border-t border-bg-tertiary pt-4">
@@ -1497,4 +1651,17 @@ function onServerHeaderContext(event: MouseEvent) {
       @click="emojiPickerForMsg = null; pickerAnchorRect = null"
     />
   </Teleport>
+
+  <!-- Confirm dialog -->
+  <ConfirmDialog
+    v-if="confirmDialog"
+    :title="confirmDialog.title"
+    :message="confirmDialog.message"
+    :confirm-label="confirmDialog.confirmLabel"
+    :danger="confirmDialog.danger"
+    :require-input="confirmDialog.requireInput"
+    :input-placeholder="confirmDialog.inputPlaceholder"
+    @confirm="confirmDialog.onConfirm"
+    @cancel="confirmDialog = null"
+  />
 </template>

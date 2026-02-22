@@ -7,9 +7,9 @@ defineProps<{
 }>()
 
 const sizeClasses = {
-  sm: 'h-2 w-2',
-  md: 'h-3 w-3',
-  lg: 'h-4 w-4',
+  sm: 'h-4 w-4',
+  md: 'h-6 w-6',
+  lg: 'h-8 w-8',
 } as const
 
 const statusClasses = {

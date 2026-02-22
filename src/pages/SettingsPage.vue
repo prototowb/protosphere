@@ -11,6 +11,7 @@ const { logout } = useAuth()
 const { profile, loading, error, fetchProfile, updateProfile, uploadAvatar } = useProfile()
 const toastStore = useToastStore()
 
+const username = ref('')
 const displayName = ref('')
 const bio = ref('')
 const statusText = ref('')
@@ -19,6 +20,7 @@ const saving = ref(false)
 onMounted(async () => {
   await fetchProfile()
   if (profile.value) {
+    username.value = profile.value.username
     displayName.value = profile.value.display_name
     bio.value = profile.value.bio
     statusText.value = profile.value.status_text
@@ -28,6 +30,7 @@ onMounted(async () => {
 async function handleSave() {
   saving.value = true
   await updateProfile({
+    username: username.value,
     display_name: displayName.value,
     bio: bio.value,
     status_text: statusText.value,
@@ -104,15 +107,17 @@ async function handleLogout() {
         </div>
 
         <form @submit.prevent="handleSave" class="space-y-4">
-          <!-- Username (read-only) -->
+          <!-- Username -->
           <div>
-            <label class="mb-1 block text-sm text-text-secondary">Username</label>
+            <label for="username" class="mb-1 block text-sm text-text-secondary">Username</label>
             <input
-              :value="profile.username"
-              disabled
-              class="w-full rounded border border-bg-tertiary bg-bg-primary px-3 py-2 text-text-muted opacity-60"
+              id="username"
+              v-model="username"
+              type="text"
+              required
+              maxlength="32"
+              class="w-full rounded border border-bg-tertiary bg-bg-primary px-3 py-2 text-text-primary outline-none focus:border-accent"
             />
-            <p class="mt-1 text-xs text-text-muted">Username cannot be changed yet</p>
           </div>
 
           <!-- Display Name -->

@@ -14,7 +14,9 @@ import { useMentionsStore } from '@/stores/mentions'
 import { useDmUnread } from '@/composables/useDmUnread'
 import { useContextMenuStore } from '@/stores/contextMenu'
 import { useToastStore } from '@/stores/toast'
-import { serverIconContextItems } from '@/lib/contextMenuItems'
+import { serverIconContextItems, userBarContextItems } from '@/lib/contextMenuItems'
+import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
+import type { UserStatus } from '@/lib/types'
 
 const router = useRouter()
 const route = useRoute()
@@ -24,7 +26,7 @@ const serversStore = useServersStore()
 const { profile, fetchProfile } = useProfile()
 const { fetchServers, createServer, joinServer } = useServers()
 
-const { currentStatus } = usePresence()
+const { currentStatus, setManualStatus } = usePresence()
 const mentionsStore = useMentionsStore()
 const { totalDmUnread } = useDmUnread()
 const contextMenuStore = useContextMenuStore()
@@ -41,6 +43,44 @@ const showCreateServer = ref(false)
 const showJoinServer = ref(false)
 const showServerMenu = ref(false)
 const serverError = ref('')
+
+// Status picker
+const showStatusPicker = ref(false)
+const STATUS_OPTIONS: { status: UserStatus; label: string; color: string }[] = [
+  { status: 'online', label: 'Online', color: 'bg-presence-online' },
+  { status: 'idle', label: 'Idle', color: 'bg-presence-idle' },
+  { status: 'dnd', label: 'Do Not Disturb', color: 'bg-presence-dnd' },
+  { status: 'offline', label: 'Invisible', color: 'bg-presence-offline' },
+]
+
+function handleSetManualStatus(status: UserStatus) {
+  setManualStatus(status)
+  showStatusPicker.value = false
+}
+
+// Confirm dialog for destructive server icon actions
+const confirmDialog = ref<{
+  title: string
+  message: string
+  confirmLabel: string
+  danger: boolean
+  requireInput?: string
+  inputPlaceholder?: string
+  onConfirm: (input: string) => void
+} | null>(null)
+
+function onUserBarContext(event: MouseEvent) {
+  contextMenuStore.show(event, userBarContextItems({
+    onSetStatus: (status: UserStatus) => setManualStatus(status),
+    onCopyUsername: () => {
+      if (profile.value?.username) {
+        navigator.clipboard.writeText(profile.value.username)
+        toastStore.show('Username copied!', 'success')
+      }
+    },
+    onSettings: () => router.push('/settings'),
+  }))
+}
 
 onMounted(() => {
   if (authStore.user?.id) {
@@ -62,16 +102,19 @@ async function handleCreateServer(name: string, description: string) {
   }
 }
 
-async function handleJoinServer(inviteCode: string) {
+async function handleJoinServer(inviteCode: string, done: (error?: string) => void) {
   serverError.value = ''
   try {
     const server = await joinServer(inviteCode)
+    done()
     showJoinServer.value = false
     if (server) {
       router.push(`/channels/${server.id}/${server.id}`)
     }
   } catch (e: unknown) {
-    serverError.value = e instanceof Error ? e.message : 'Failed to join server'
+    const msg = e instanceof Error ? e.message : 'Failed to join server'
+    serverError.value = msg
+    done(msg)
   }
 }
 
@@ -95,17 +138,36 @@ function onServerIconContext(event: MouseEvent, server: typeof serversStore.serv
       mentionsStore.mentionsByServer[server.id] = 0
       toastStore.show('Marked as read', 'info')
     },
-    onLeave: async () => {
-      const { leaveServer } = useServers()
-      await leaveServer(server.id)
-      toastStore.show('Left server', 'success')
-      router.push('/channels/@me')
+    onLeave: () => {
+      confirmDialog.value = {
+        title: 'Leave Server',
+        message: `Are you sure you want to leave "${server.name}"?`,
+        confirmLabel: 'Leave',
+        danger: true,
+        onConfirm: async () => {
+          confirmDialog.value = null
+          const { leaveServer } = useServers()
+          await leaveServer(server.id)
+          toastStore.show('Left server', 'success')
+          router.push('/channels/@me')
+        },
+      }
     },
-    onDelete: async () => {
-      const { deleteServer } = useServers()
-      await deleteServer(server.id)
-      toastStore.show('Server deleted', 'success')
-      router.push('/channels/@me')
+    onDelete: () => {
+      confirmDialog.value = {
+        title: 'Delete Server',
+        message: `This will permanently delete "${server.name}" and all its channels and messages. Type the server name to confirm.`,
+        confirmLabel: 'Delete Server',
+        danger: true,
+        requireInput: server.name,
+        onConfirm: async () => {
+          confirmDialog.value = null
+          const { deleteServer } = useServers()
+          await deleteServer(server.id)
+          toastStore.show('Server deleted', 'success')
+          router.push('/channels/@me')
+        },
+      }
     },
   }))
 }
@@ -237,13 +299,19 @@ function getServerInitial(name: string) {
       </nav>
 
       <!-- User info bar -->
-      <div class="flex items-center gap-2 border-t border-bg-tertiary px-3 py-2">
-        <UserAvatar
-          :src="profile?.avatar_url"
-          :alt="profile?.display_name ?? '?'"
-          :status="currentStatus"
-          size="sm"
-        />
+      <div class="relative flex items-center gap-2 border-t border-bg-tertiary px-3 py-2" @contextmenu.prevent="onUserBarContext($event)">
+        <button
+          @click="showStatusPicker = !showStatusPicker"
+          class="flex-shrink-0"
+          title="Set status"
+        >
+          <UserAvatar
+            :src="profile?.avatar_url"
+            :alt="profile?.display_name ?? '?'"
+            :status="currentStatus"
+            size="sm"
+          />
+        </button>
         <div class="min-w-0 flex-1">
           <p class="truncate text-sm font-medium">{{ profile?.display_name ?? authStore.user?.email ?? 'User' }}</p>
           <p v-if="profile?.status_text" class="truncate text-xs text-text-muted">{{ profile.status_text }}</p>
@@ -258,6 +326,23 @@ function getServerInitial(name: string) {
             <circle cx="12" cy="12" r="3"/>
           </svg>
         </button>
+
+        <!-- Status picker popover -->
+        <div
+          v-if="showStatusPicker"
+          class="absolute bottom-full left-0 z-40 mb-2 w-48 rounded-lg bg-bg-primary p-1 shadow-lg"
+        >
+          <button
+            v-for="opt in STATUS_OPTIONS"
+            :key="opt.status"
+            @click="handleSetManualStatus(opt.status)"
+            class="flex w-full items-center gap-2 rounded px-3 py-2 text-sm text-text-primary hover:bg-bg-hover"
+          >
+            <span class="h-2.5 w-2.5 rounded-full" :class="opt.color" />
+            {{ opt.label }}
+          </button>
+        </div>
+        <div v-if="showStatusPicker" class="fixed inset-0 z-30" @click="showStatusPicker = false" />
       </div>
     </aside>
 
@@ -283,7 +368,7 @@ function getServerInitial(name: string) {
     <!-- Member Sidebar -->
     <aside
       v-if="ui.memberSidebarOpen"
-      class="w-60 bg-bg-secondary"
+      class="w-60 overflow-y-auto bg-bg-secondary"
     >
       <slot name="members">
         <div class="p-4">
@@ -330,6 +415,19 @@ function getServerInitial(name: string) {
         </div>
       </div>
     </div>
+
+    <!-- Confirm dialog -->
+    <ConfirmDialog
+      v-if="confirmDialog"
+      :title="confirmDialog.title"
+      :message="confirmDialog.message"
+      :confirm-label="confirmDialog.confirmLabel"
+      :danger="confirmDialog.danger"
+      :require-input="confirmDialog.requireInput"
+      :input-placeholder="confirmDialog.inputPlaceholder"
+      @confirm="confirmDialog.onConfirm"
+      @cancel="confirmDialog = null"
+    />
 
     <!-- Close server menu on outside click -->
     <div

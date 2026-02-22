@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(docker:*)",
+      "Bash(where.exe supabase:*)",
+      "Bash(\"/c/Users/tobia/scoop/shims/supabase\":*)",
+      "Bash(cd:*)",
+      "Bash(cmd:*)",
+      "Bash(pwsh:*)",
+      "Bash(\"/c/Users/tobia/scoop/shims/supabase\" status:*)",
+      "Bash(\"/c/Users/tobia/scoop/shims/supabase\" db:*)"
+    ]
+  }
+}
