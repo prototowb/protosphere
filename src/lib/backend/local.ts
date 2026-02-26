@@ -1,4 +1,4 @@
-import type { Profile, Server, Channel, ChannelCategory, Member, Message, Reaction, Ban, DirectMessageGroup, DirectMessageMember, DirectMessage, Role, UserRole, ChannelRoleOverride } from '@/lib/types'
+import type { Profile, Server, Channel, ChannelCategory, Member, Message, Reaction, Ban, DirectMessageGroup, DirectMessageMember, DirectMessage, Role, UserRole, ChannelRoleOverride, CommunitySettings } from '@/lib/types'
 import type { AuthSession, Backend } from './types'
 import { serializePermissions, PermissionPresets, Permission } from '@/lib/permissions'
 
@@ -19,6 +19,7 @@ const KEYS = {
   roles: 'protosphere_roles',
   user_roles: 'protosphere_user_roles',
   channel_overrides: 'protosphere_channel_overrides',
+  community: 'protosphere_community',
 } as const
 
 interface StoredUser {
@@ -196,6 +197,9 @@ export function createLocalBackend(): Backend {
           invite_code: generateInviteCode(),
           is_public: false,
           member_count: 1,
+          visibility: data.visibility ?? 'public',
+          space_type: data.space_type ?? 'general',
+          sort_order: servers.length,
           created_at: new Date().toISOString(),
         }
         servers.push(server)
@@ -859,6 +863,40 @@ export function createLocalBackend(): Backend {
         let overrides = readJson<ChannelRoleOverride[]>(KEYS.channel_overrides, [])
         overrides = overrides.filter((o) => !(o.channel_id === channelId && o.role_id === roleId))
         writeJson(KEYS.channel_overrides, overrides)
+      },
+    },
+
+    community: {
+      async get() {
+        const stored = readJson<CommunitySettings | null>(KEYS.community, null)
+        if (stored) return stored
+        const defaults: CommunitySettings = {
+          id: 'local',
+          name: 'My Community',
+          description: '',
+          logo_url: null,
+          banner_url: null,
+          registration_mode: 'open',
+          rules: '',
+          welcome_message: '',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }
+        writeJson(KEYS.community, defaults)
+        return defaults
+      },
+
+      async update(updates) {
+        const stored = readJson<CommunitySettings | null>(KEYS.community, null)
+        const now = new Date().toISOString()
+        const current: CommunitySettings = stored ?? {
+          id: 'local', name: 'My Community', description: '', logo_url: null,
+          banner_url: null, registration_mode: 'open', rules: '', welcome_message: '',
+          created_at: now, updated_at: now,
+        }
+        const updated: CommunitySettings = { ...current, ...updates, updated_at: now }
+        writeJson(KEYS.community, updated)
+        return updated
       },
     },
   }
