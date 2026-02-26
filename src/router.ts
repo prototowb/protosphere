@@ -1,11 +1,16 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 
-const publicRoutes = ['login', 'register']
+const publicRoutes = ['login', 'register', 'landing']
 
 const router = createRouter({
   history: createWebHistory(),
   routes: [
+    {
+      path: '/',
+      name: 'landing',
+      component: () => import('@/pages/LandingPage.vue'),
+    },
     {
       path: '/login',
       name: 'login',
@@ -30,6 +35,7 @@ const router = createRouter({
       path: '/channels/:serverId/:channelId',
       name: 'server-channel',
       component: () => import('@/pages/ServerPage.vue'),
+      alias: '/spaces/:serverId/:channelId',
     },
     {
       path: '/settings',
@@ -47,13 +53,14 @@ const router = createRouter({
       component: () => import('@/pages/ServerSettingsPage.vue'),
     },
     {
+      path: '/admin/community',
+      name: 'community-settings',
+      component: () => import('@/pages/CommunitySettingsPage.vue'),
+    },
+    {
       path: '/invite/:code',
       name: 'invite',
       component: () => import('@/pages/InvitePage.vue'),
-    },
-    {
-      path: '/',
-      redirect: '/channels/@me',
     },
     {
       path: '/:pathMatch(.*)*',
@@ -76,7 +83,7 @@ router.beforeEach((to) => {
     return { name: 'login', query: { redirect: to.fullPath } }
   }
 
-  // Redirect authenticated users away from login/register
+  // Redirect authenticated users away from public pages
   if (authStore.isAuthenticated && isPublic) {
     return { name: 'dms' }
   }

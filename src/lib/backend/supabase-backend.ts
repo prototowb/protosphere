@@ -1,4 +1,4 @@
-import type { Profile, Server, Channel, ChannelCategory, Member, Message, Reaction, Ban, DirectMessageGroup, DirectMessage, Role, UserRole, ChannelRoleOverride } from '@/lib/types'
+import type { Profile, Server, Channel, ChannelCategory, Member, Message, Reaction, Ban, DirectMessageGroup, DirectMessage, Role, UserRole, ChannelRoleOverride, CommunitySettings } from '@/lib/types'
 import type { Backend } from './types'
 import { supabase } from '@/lib/supabase'
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -689,6 +689,30 @@ export function createSupabaseBackend(): Backend {
           .eq('channel_id', channelId)
           .eq('role_id', roleId)
         if (error) throw error
+      },
+    },
+
+    community: {
+      async get() {
+        const { data, error } = await client
+          .from('community_settings')
+          .select('*')
+          .single()
+        if (error) throw error
+        return data as CommunitySettings
+      },
+
+      async update(updates) {
+        const { data: existing } = await client.from('community_settings').select('id').single()
+        if (!existing) throw new Error('Community settings not found')
+        const { data, error } = await client
+          .from('community_settings')
+          .update({ ...updates, updated_at: new Date().toISOString() })
+          .eq('id', (existing as { id: string }).id)
+          .select()
+          .single()
+        if (error) throw error
+        return data as CommunitySettings
       },
     },
   }

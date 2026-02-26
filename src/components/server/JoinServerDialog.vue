@@ -24,7 +24,7 @@ function handleSubmit() {
 <template>
   <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/60" @click.self="emit('close')">
     <div class="w-full max-w-md rounded-lg bg-bg-secondary p-6">
-      <h2 class="mb-4 text-xl font-bold">Join a Server</h2>
+      <h2 class="mb-4 text-xl font-bold">Join a Space</h2>
 
       <form @submit.prevent="handleSubmit" class="space-y-4">
         <div>
@@ -54,7 +54,7 @@ function handleSubmit() {
             :disabled="loading || !inviteCode.trim()"
             class="rounded bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50"
           >
-            {{ loading ? 'Joining...' : 'Join Server' }}
+            {{ loading ? 'Joining...' : 'Join Space' }}
           </button>
         </div>
       </form>
