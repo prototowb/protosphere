@@ -1,6 +1,7 @@
 import { backend } from '@/lib/backend'
 import { useAuthStore } from '@/stores/auth'
 import { useServersStore } from '@/stores/servers'
+import type { SpaceVisibility } from '@/lib/types'
 
 export function useServers() {
   const authStore = useAuthStore()
@@ -11,9 +12,9 @@ export function useServers() {
     serversStore.servers = await backend.servers.list(authStore.user.id)
   }
 
-  async function createServer(name: string, description?: string) {
+  async function createServer(name: string, description?: string, visibility?: SpaceVisibility) {
     if (!authStore.user?.id) return
-    const server = await backend.servers.create({ name, description }, authStore.user.id)
+    const server = await backend.servers.create({ name, description, visibility }, authStore.user.id)
     serversStore.servers.push(server)
     return server
   }

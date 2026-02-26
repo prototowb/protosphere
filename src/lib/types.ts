@@ -7,6 +7,12 @@ export type MemberRole = 'owner' | 'admin' | 'moderator' | 'member'
 
 export type ChannelType = 'text'
 
+export type SpaceVisibility = 'public' | 'private' | 'restricted'
+
+export type SpaceType = 'general' | 'announcement' | 'archive'
+
+export type RegistrationMode = 'open' | 'approval' | 'invite_only' | 'closed'
+
 export interface Profile {
   id: string
   username: string
@@ -28,7 +34,23 @@ export interface Server {
   invite_code: string | null
   is_public: boolean
   member_count: number
+  visibility: SpaceVisibility
+  space_type: SpaceType
+  sort_order: number
   created_at: string
+}
+
+export interface CommunitySettings {
+  id: string
+  name: string
+  description: string
+  logo_url: string | null
+  banner_url: string | null
+  registration_mode: RegistrationMode
+  rules: string
+  welcome_message: string
+  created_at: string
+  updated_at: string
 }
 
 export interface ChannelCategory {
@@ -123,4 +145,30 @@ export interface Ban {
   banned_by: string
   reason: string
   created_at: string
+}
+
+export interface Role {
+  id: string
+  server_id: string
+  name: string
+  color: string | null
+  icon: string | null
+  position: number
+  permissions: string  // decimal string representation of a BIGINT
+  is_default: boolean
+  is_system: boolean
+  created_at: string
+}
+
+export interface UserRole {
+  user_id: string
+  role_id: string
+  assigned_at: string
+}
+
+export interface ChannelRoleOverride {
+  channel_id: string
+  role_id: string
+  allow: string  // decimal string representation of a BIGINT
+  deny: string   // decimal string representation of a BIGINT
 }

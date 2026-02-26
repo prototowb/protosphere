@@ -1,5 +1,6 @@
-import type { Profile, Server, Channel, ChannelCategory, Member, Message, Reaction, Ban, DirectMessageGroup, DirectMessageMember, DirectMessage } from '@/lib/types'
+import type { Profile, Server, Channel, ChannelCategory, Member, Message, Reaction, Ban, DirectMessageGroup, DirectMessageMember, DirectMessage, Role, UserRole, ChannelRoleOverride, CommunitySettings } from '@/lib/types'
 import type { AuthSession, Backend } from './types'
+import { serializePermissions, PermissionPresets, Permission } from '@/lib/permissions'
 
 const KEYS = {
   users: 'protosphere_users',
@@ -15,6 +16,10 @@ const KEYS = {
   dm_groups: 'protosphere_dm_groups',
   dm_members: 'protosphere_dm_members',
   dm_messages: 'protosphere_dm_messages',
+  roles: 'protosphere_roles',
+  user_roles: 'protosphere_user_roles',
+  channel_overrides: 'protosphere_channel_overrides',
+  community: 'protosphere_community',
 } as const
 
 interface StoredUser {
@@ -192,6 +197,9 @@ export function createLocalBackend(): Backend {
           invite_code: generateInviteCode(),
           is_public: false,
           member_count: 1,
+          visibility: data.visibility ?? 'public',
+          space_type: data.space_type ?? 'general',
+          sort_order: servers.length,
           created_at: new Date().toISOString(),
         }
         servers.push(server)
@@ -223,6 +231,23 @@ export function createLocalBackend(): Backend {
           created_at: new Date().toISOString(),
         })
         writeJson(KEYS.channels, channels)
+
+        // Seed system roles
+        const now2 = new Date().toISOString()
+        const ownerRoleId = crypto.randomUUID()
+        const newRoles: Role[] = [
+          { id: ownerRoleId, server_id: server.id, name: 'Owner', color: '#f97316', icon: null, position: 0, permissions: serializePermissions(Permission.ADMINISTRATOR), is_default: false, is_system: true, created_at: now2 },
+          { id: crypto.randomUUID(), server_id: server.id, name: 'Admin', color: '#3b82f6', icon: null, position: 10, permissions: serializePermissions(PermissionPresets.ADMIN), is_default: false, is_system: true, created_at: now2 },
+          { id: crypto.randomUUID(), server_id: server.id, name: 'Moderator', color: '#a855f7', icon: null, position: 20, permissions: serializePermissions(PermissionPresets.MODERATOR), is_default: false, is_system: true, created_at: now2 },
+          { id: crypto.randomUUID(), server_id: server.id, name: 'Member', color: null, icon: null, position: 30, permissions: serializePermissions(PermissionPresets.MEMBER), is_default: true, is_system: true, created_at: now2 },
+        ]
+        const existingRoles = readJson<Role[]>(KEYS.roles, [])
+        writeJson(KEYS.roles, [...existingRoles, ...newRoles])
+
+        // Assign Owner role to the creator
+        const existingUserRoles = readJson<UserRole[]>(KEYS.user_roles, [])
+        existingUserRoles.push({ user_id: ownerId, role_id: ownerRoleId, assigned_at: now2 })
+        writeJson(KEYS.user_roles, existingUserRoles)
 
         return server
       },
@@ -363,6 +388,17 @@ export function createLocalBackend(): Backend {
         if (server) {
           server.member_count += 1
           writeJson(KEYS.servers, servers)
+        }
+
+        // Assign default role
+        const allRoles = readJson<Role[]>(KEYS.roles, [])
+        const defaultRole = allRoles.find((r) => r.server_id === serverId && r.is_default)
+        if (defaultRole) {
+          const userRoles = readJson<UserRole[]>(KEYS.user_roles, [])
+          if (!userRoles.some((ur) => ur.user_id === userId && ur.role_id === defaultRole.id)) {
+            userRoles.push({ user_id: userId, role_id: defaultRole.id, assigned_at: new Date().toISOString() })
+            writeJson(KEYS.user_roles, userRoles)
+          }
         }
 
         return member
@@ -727,6 +763,140 @@ export function createLocalBackend(): Backend {
         let messages = readJson<DirectMessage[]>(KEYS.dm_messages, [])
         messages = messages.filter((m) => m.id !== id)
         writeJson(KEYS.dm_messages, messages)
+      },
+    },
+
+    roles: {
+      async list(serverId: string) {
+        const roles = readJson<Role[]>(KEYS.roles, [])
+        return roles.filter((r) => r.server_id === serverId).sort((a, b) => a.position - b.position)
+      },
+
+      async create(data) {
+        const roles = readJson<Role[]>(KEYS.roles, [])
+        const serverRoles = roles.filter((r) => r.server_id === data.server_id)
+        const role: Role = {
+          id: crypto.randomUUID(),
+          server_id: data.server_id,
+          name: data.name,
+          color: data.color ?? null,
+          icon: data.icon ?? null,
+          position: data.position ?? serverRoles.length * 10,
+          permissions: data.permissions ?? '0',
+          is_default: data.is_default ?? false,
+          is_system: false,
+          created_at: new Date().toISOString(),
+        }
+        roles.push(role)
+        writeJson(KEYS.roles, roles)
+        return role
+      },
+
+      async update(id, updates) {
+        const roles = readJson<Role[]>(KEYS.roles, [])
+        const role = roles.find((r) => r.id === id)
+        if (!role) throw new Error('Role not found')
+        Object.assign(role, updates)
+        writeJson(KEYS.roles, roles)
+        return role
+      },
+
+      async delete(id) {
+        // Remove user_roles assignments first
+        let userRoles = readJson<UserRole[]>(KEYS.user_roles, [])
+        userRoles = userRoles.filter((ur) => ur.role_id !== id)
+        writeJson(KEYS.user_roles, userRoles)
+
+        let channelOverrides = readJson<ChannelRoleOverride[]>(KEYS.channel_overrides, [])
+        channelOverrides = channelOverrides.filter((co) => co.role_id !== id)
+        writeJson(KEYS.channel_overrides, channelOverrides)
+
+        let roles = readJson<Role[]>(KEYS.roles, [])
+        roles = roles.filter((r) => r.id !== id)
+        writeJson(KEYS.roles, roles)
+      },
+
+      async listUserRoles(serverId: string, userId: string) {
+        const allRoles = readJson<Role[]>(KEYS.roles, [])
+        const userRoles = readJson<UserRole[]>(KEYS.user_roles, [])
+        const userRoleIds = new Set(userRoles.filter((ur) => ur.user_id === userId).map((ur) => ur.role_id))
+        return allRoles.filter((r) => r.server_id === serverId && userRoleIds.has(r.id))
+      },
+
+      async assignRole(userId: string, roleId: string) {
+        const userRoles = readJson<UserRole[]>(KEYS.user_roles, [])
+        const existing = userRoles.find((ur) => ur.user_id === userId && ur.role_id === roleId)
+        if (existing) return existing
+        const assignment: UserRole = { user_id: userId, role_id: roleId, assigned_at: new Date().toISOString() }
+        userRoles.push(assignment)
+        writeJson(KEYS.user_roles, userRoles)
+        return assignment
+      },
+
+      async removeRole(userId: string, roleId: string) {
+        let userRoles = readJson<UserRole[]>(KEYS.user_roles, [])
+        userRoles = userRoles.filter((ur) => !(ur.user_id === userId && ur.role_id === roleId))
+        writeJson(KEYS.user_roles, userRoles)
+      },
+
+      async listChannelOverrides(channelId: string) {
+        const overrides = readJson<ChannelRoleOverride[]>(KEYS.channel_overrides, [])
+        return overrides.filter((o) => o.channel_id === channelId)
+      },
+
+      async setChannelOverride(channelId: string, roleId: string, allow: string, deny: string) {
+        const overrides = readJson<ChannelRoleOverride[]>(KEYS.channel_overrides, [])
+        const existing = overrides.find((o) => o.channel_id === channelId && o.role_id === roleId)
+        if (existing) {
+          existing.allow = allow
+          existing.deny = deny
+          writeJson(KEYS.channel_overrides, overrides)
+          return existing
+        }
+        const override: ChannelRoleOverride = { channel_id: channelId, role_id: roleId, allow, deny }
+        overrides.push(override)
+        writeJson(KEYS.channel_overrides, overrides)
+        return override
+      },
+
+      async deleteChannelOverride(channelId: string, roleId: string) {
+        let overrides = readJson<ChannelRoleOverride[]>(KEYS.channel_overrides, [])
+        overrides = overrides.filter((o) => !(o.channel_id === channelId && o.role_id === roleId))
+        writeJson(KEYS.channel_overrides, overrides)
+      },
+    },
+
+    community: {
+      async get() {
+        const stored = readJson<CommunitySettings | null>(KEYS.community, null)
+        if (stored) return stored
+        const defaults: CommunitySettings = {
+          id: 'local',
+          name: 'My Community',
+          description: '',
+          logo_url: null,
+          banner_url: null,
+          registration_mode: 'open',
+          rules: '',
+          welcome_message: '',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }
+        writeJson(KEYS.community, defaults)
+        return defaults
+      },
+
+      async update(updates) {
+        const stored = readJson<CommunitySettings | null>(KEYS.community, null)
+        const now = new Date().toISOString()
+        const current: CommunitySettings = stored ?? {
+          id: 'local', name: 'My Community', description: '', logo_url: null,
+          banner_url: null, registration_mode: 'open', rules: '', welcome_message: '',
+          created_at: now, updated_at: now,
+        }
+        const updated: CommunitySettings = { ...current, ...updates, updated_at: now }
+        writeJson(KEYS.community, updated)
+        return updated
       },
     },
   }

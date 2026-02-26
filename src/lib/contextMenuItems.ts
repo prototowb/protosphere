@@ -49,7 +49,7 @@ export function memberContextItems(
   member: Member & { profile: Profile },
   opts: {
     isMe: boolean
-    myRole: MemberRole
+    canManageRoles: boolean
     onViewProfile: () => void
     onOpenDM: () => void
     onCopyUsername: () => void
@@ -74,11 +74,11 @@ export function memberContextItems(
   }
 
   // Role management
-  const canManage = !opts.isMe && (opts.myRole === 'owner' || (opts.myRole === 'admin' && (member.role === 'member' || member.role === 'moderator')))
+  const canManage = !opts.isMe && opts.canManageRoles
   if (canManage && opts.onChangeRole) {
     items.push(sep)
     if (member.role !== 'moderator') items.push({ label: 'Make Moderator', action: () => opts.onChangeRole!('moderator') })
-    if (member.role !== 'admin' && opts.myRole === 'owner') items.push({ label: 'Make Admin', action: () => opts.onChangeRole!('admin') })
+    if (member.role !== 'admin') items.push({ label: 'Make Admin', action: () => opts.onChangeRole!('admin') })
     if (member.role !== 'member') items.push({ label: 'Set to Member', action: () => opts.onChangeRole!('member') })
   }
 
@@ -153,13 +153,13 @@ export function serverHeaderContextItems(opts: {
   onDelete?: () => void
 }): ContextMenuItem[] {
   const items: ContextMenuItem[] = [
-    { label: 'Invite People', action: opts.onInvite },
+    { label: 'Invite to Space', action: opts.onInvite },
   ]
 
   if (opts.canManageChannels) {
     if (opts.onCreateChannel) items.push({ label: 'Create Channel', action: opts.onCreateChannel })
     if (opts.onCreateCategory) items.push({ label: 'Create Category', action: opts.onCreateCategory })
-    if (opts.onServerSettings) items.push({ label: 'Server Settings', action: opts.onServerSettings })
+    if (opts.onServerSettings) items.push({ label: 'Space Settings', action: opts.onServerSettings })
   }
 
   if (opts.onMarkAllRead) {
@@ -169,9 +169,9 @@ export function serverHeaderContextItems(opts: {
 
   items.push(sep)
   if (opts.isOwner) {
-    if (opts.onDelete) items.push({ label: 'Delete Server', danger: true, action: opts.onDelete })
+    if (opts.onDelete) items.push({ label: 'Delete Space', danger: true, action: opts.onDelete })
   } else {
-    if (opts.onLeave) items.push({ label: 'Leave Server', danger: true, action: opts.onLeave })
+    if (opts.onLeave) items.push({ label: 'Leave Space', danger: true, action: opts.onLeave })
   }
 
   return items
@@ -187,20 +187,20 @@ export function serverIconContextItems(opts: {
   onDelete?: () => void
 }): ContextMenuItem[] {
   const items: ContextMenuItem[] = [
-    { label: 'Invite People', action: opts.onInvite },
+    { label: 'Invite to Space', action: opts.onInvite },
   ]
 
   if (opts.isOwner && opts.onServerSettings) {
-    items.push({ label: 'Server Settings', action: opts.onServerSettings })
+    items.push({ label: 'Space Settings', action: opts.onServerSettings })
   }
 
   items.push({ label: 'Mark as Read', action: opts.onMarkRead })
   items.push(sep)
 
   if (opts.isOwner) {
-    if (opts.onDelete) items.push({ label: 'Delete Server', danger: true, action: opts.onDelete })
+    if (opts.onDelete) items.push({ label: 'Delete Space', danger: true, action: opts.onDelete })
   } else {
-    if (opts.onLeave) items.push({ label: 'Leave Server', danger: true, action: opts.onLeave })
+    if (opts.onLeave) items.push({ label: 'Leave Space', danger: true, action: opts.onLeave })
   }
 
   return items

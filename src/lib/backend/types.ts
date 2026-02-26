@@ -1,4 +1,4 @@
-import type { Profile, Server, Channel, ChannelCategory, Member, Message, Reaction, Ban, DirectMessageGroup, DirectMessage } from '@/lib/types'
+import type { Profile, Server, Channel, ChannelCategory, Member, Message, Reaction, Ban, DirectMessageGroup, DirectMessage, Role, UserRole, ChannelRoleOverride, CommunitySettings, SpaceVisibility, SpaceType } from '@/lib/types'
 
 export interface AuthUser {
   id: string
@@ -33,7 +33,7 @@ export interface Backend {
   servers: {
     list(userId: string): Promise<Server[]>
     get(id: string): Promise<Server>
-    create(data: { name: string; description?: string; icon_url?: string | null }, ownerId: string): Promise<Server>
+    create(data: { name: string; description?: string; icon_url?: string | null; visibility?: SpaceVisibility; space_type?: SpaceType; sort_order?: number }, ownerId: string): Promise<Server>
     update(id: string, updates: Partial<Pick<Server, 'name' | 'description' | 'icon_url' | 'is_public'>>): Promise<Server>
     delete(id: string): Promise<void>
     getByInviteCode(code: string): Promise<Server>
@@ -85,5 +85,21 @@ export interface Backend {
     sendMessage(dmGroupId: string, authorId: string, content: string, replyToId?: string | null): Promise<DirectMessage & { profile: Profile }>
     editMessage(id: string, content: string): Promise<DirectMessage>
     deleteMessage(id: string): Promise<void>
+  }
+  community: {
+    get(): Promise<CommunitySettings>
+    update(updates: Partial<Pick<CommunitySettings, 'name' | 'description' | 'logo_url' | 'banner_url' | 'registration_mode' | 'rules' | 'welcome_message'>>): Promise<CommunitySettings>
+  }
+  roles: {
+    list(serverId: string): Promise<Role[]>
+    create(data: { server_id: string; name: string; color?: string | null; icon?: string | null; permissions?: string; position?: number; is_default?: boolean }): Promise<Role>
+    update(id: string, updates: Partial<Pick<Role, 'name' | 'color' | 'icon' | 'position' | 'permissions' | 'is_default'>>): Promise<Role>
+    delete(id: string): Promise<void>
+    listUserRoles(serverId: string, userId: string): Promise<Role[]>
+    assignRole(userId: string, roleId: string): Promise<UserRole>
+    removeRole(userId: string, roleId: string): Promise<void>
+    listChannelOverrides(channelId: string): Promise<ChannelRoleOverride[]>
+    setChannelOverride(channelId: string, roleId: string, allow: string, deny: string): Promise<ChannelRoleOverride>
+    deleteChannelOverride(channelId: string, roleId: string): Promise<void>
   }
 }
