@@ -1,4 +1,4 @@
-import type { Profile, Server, Channel, ChannelCategory, Member, Message, Reaction, Ban, DirectMessageGroup, DirectMessageMember, DirectMessage, Role, UserRole, ChannelRoleOverride, CommunitySettings } from '@/lib/types'
+import type { Profile, Server, Channel, ChannelCategory, Member, Message, Reaction, Ban, DirectMessageGroup, DirectMessageMember, DirectMessage, Role, UserRole, ChannelRoleOverride, CommunitySettings, AuditLog, Report, Mute, AutomodRule } from '@/lib/types'
 import type { AuthSession, Backend } from './types'
 import { serializePermissions, PermissionPresets, Permission } from '@/lib/permissions'
 
@@ -20,6 +20,10 @@ const KEYS = {
   user_roles: 'protosphere_user_roles',
   channel_overrides: 'protosphere_channel_overrides',
   community: 'protosphere_community',
+  audit_log: 'protosphere_audit_log',
+  reports: 'protosphere_reports',
+  mutes: 'protosphere_mutes',
+  automod_rules: 'protosphere_automod_rules',
 } as const
 
 interface StoredUser {
@@ -897,6 +901,194 @@ export function createLocalBackend(): Backend {
         const updated: CommunitySettings = { ...current, ...updates, updated_at: now }
         writeJson(KEYS.community, updated)
         return updated
+      },
+    },
+
+    audit_log: {
+      async log(serverId, actorId, action, targetType, targetId, details = {}) {
+        const logs = readJson<AuditLog[]>(KEYS.audit_log, [])
+        const entry: AuditLog = {
+          id: crypto.randomUUID(),
+          server_id: serverId,
+          actor_id: actorId,
+          action: action as any,
+          target_type: targetType as any,
+          target_id: targetId,
+          details,
+          created_at: new Date().toISOString(),
+        }
+        logs.push(entry)
+        writeJson(KEYS.audit_log, logs)
+        return entry
+      },
+
+      async list(serverId, offset = 0, limit = 50) {
+        const logs = readJson<AuditLog[]>(KEYS.audit_log, [])
+        let filtered = logs
+        if (serverId) filtered = filtered.filter((l) => l.server_id === serverId)
+        return filtered.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).slice(offset, offset + limit)
+      },
+    },
+
+    reports: {
+      async list(serverId, status, offset = 0, limit = 50) {
+        const reports = readJson<Report[]>(KEYS.reports, [])
+        const profiles = readJson<Profile[]>(KEYS.profiles, [])
+        let filtered = reports
+        if (serverId) filtered = filtered.filter((r) => r.server_id === serverId)
+        if (status) filtered = filtered.filter((r) => r.status === status)
+        return filtered.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).slice(offset, offset + limit).map((r) => ({
+          ...r,
+          reporter: profiles.find((p) => p.id === r.reporter_id) as Profile,
+          reviewer: r.reviewed_by ? (profiles.find((p) => p.id === r.reviewed_by) ?? null) : null,
+        }))
+      },
+
+      async create(data) {
+        const reports = readJson<Report[]>(KEYS.reports, [])
+        const report: Report = {
+          id: crypto.randomUUID(),
+          reporter_id: data.reporter_id,
+          reported_type: data.reported_type,
+          reported_id: data.reported_id,
+          server_id: data.server_id ?? null,
+          category: data.category,
+          description: data.description,
+          status: 'pending',
+          reviewed_by: null,
+          resolution: '',
+          created_at: new Date().toISOString(),
+          resolved_at: null,
+        }
+        reports.push(report)
+        writeJson(KEYS.reports, reports)
+        return report
+      },
+
+      async update(id, updates) {
+        const reports = readJson<Report[]>(KEYS.reports, [])
+        const idx = reports.findIndex((r) => r.id === id)
+        if (idx === -1) throw new Error('Report not found')
+        const current = reports[idx]!  // Non-null assertion: idx is definitely in range
+        const updated: Report = {
+          id: current.id,
+          reporter_id: current.reporter_id,
+          reported_type: current.reported_type,
+          reported_id: current.reported_id,
+          server_id: current.server_id,
+          category: current.category,
+          description: current.description,
+          status: (updates.status ?? current.status) as 'pending' | 'reviewing' | 'resolved' | 'dismissed',
+          reviewed_by: updates.reviewed_by !== undefined ? updates.reviewed_by : current.reviewed_by,
+          resolution: updates.resolution ?? current.resolution,
+          created_at: current.created_at,
+          resolved_at: updates.status === 'resolved' || updates.status === 'dismissed' ? new Date().toISOString() : current.resolved_at,
+        }
+        reports[idx] = updated
+        writeJson(KEYS.reports, reports)
+        return updated
+      },
+    },
+
+    mutes: {
+      async list(serverId) {
+        const mutes = readJson<Mute[]>(KEYS.mutes, [])
+        const profiles = readJson<Profile[]>(KEYS.profiles, [])
+        return mutes
+          .filter((m) => m.server_id === serverId && (!m.expires_at || new Date(m.expires_at) > new Date()))
+          .map((m) => {
+            const user = profiles.find((p) => p.id === m.user_id) as Profile
+            const muted_by_profile = profiles.find((p) => p.id === m.muted_by) as Profile
+            return {
+              server_id: m.server_id,
+              user_id: m.user_id,
+              muted_by: m.muted_by,
+              reason: m.reason,
+              expires_at: m.expires_at,
+              created_at: m.created_at,
+              user,
+              muted_by_profile,
+            } as any
+          })
+      },
+
+      async add(serverId, userId, mutedBy, reason = '', expiresAt = null) {
+        const mutes = readJson<Mute[]>(KEYS.mutes, [])
+        const mute: Mute = {
+          server_id: serverId,
+          user_id: userId,
+          muted_by: mutedBy,
+          reason,
+          expires_at: expiresAt,
+          created_at: new Date().toISOString(),
+        }
+        const idx = mutes.findIndex((m) => m.server_id === serverId && m.user_id === userId)
+        if (idx !== -1) mutes[idx] = mute
+        else mutes.push(mute)
+        writeJson(KEYS.mutes, mutes)
+        return mute
+      },
+
+      async remove(serverId, userId) {
+        const mutes = readJson<Mute[]>(KEYS.mutes, [])
+        const filtered = mutes.filter((m) => !(m.server_id === serverId && m.user_id === userId))
+        writeJson(KEYS.mutes, filtered)
+      },
+
+      async check(serverId, userId) {
+        const mutes = readJson<Mute[]>(KEYS.mutes, [])
+        const mute = mutes.find((m) => m.server_id === serverId && m.user_id === userId && (!m.expires_at || new Date(m.expires_at) > new Date()))
+        return mute ?? null
+      },
+    },
+
+    automod_rules: {
+      async list(serverId) {
+        const rules = readJson<AutomodRule[]>(KEYS.automod_rules, [])
+        return rules.filter((r) => r.server_id === serverId).sort((a, b) => a.name.localeCompare(b.name))
+      },
+
+      async create(data) {
+        const rules = readJson<AutomodRule[]>(KEYS.automod_rules, [])
+        const rule: AutomodRule = {
+          id: crypto.randomUUID(),
+          server_id: data.server_id,
+          name: data.name,
+          rule_type: data.rule_type as 'word_filter' | 'spam_detect' | 'link_filter' | 'caps_filter',
+          config: data.config ?? {},
+          action: (data.action ?? 'flag') as 'flag' | 'delete' | 'mute',
+          enabled: true,
+          created_at: new Date().toISOString(),
+        }
+        rules.push(rule)
+        writeJson(KEYS.automod_rules, rules)
+        return rule
+      },
+
+      async update(id, updates) {
+        const rules = readJson<AutomodRule[]>(KEYS.automod_rules, [])
+        const idx = rules.findIndex((r) => r.id === id)
+        if (idx === -1) throw new Error('Rule not found')
+        const current = rules[idx]!  // Non-null assertion: idx is definitely in range
+        const updated: AutomodRule = {
+          id: current.id,
+          server_id: current.server_id,
+          name: updates.name ?? current.name,
+          rule_type: updates.rule_type ?? current.rule_type,
+          config: updates.config ?? current.config,
+          action: updates.action ?? current.action,
+          enabled: updates.enabled ?? current.enabled,
+          created_at: current.created_at,
+        }
+        rules[idx] = updated
+        writeJson(KEYS.automod_rules, rules)
+        return updated
+      },
+
+      async delete(id) {
+        const rules = readJson<AutomodRule[]>(KEYS.automod_rules, [])
+        const filtered = rules.filter((r) => r.id !== id)
+        writeJson(KEYS.automod_rules, filtered)
       },
     },
   }
