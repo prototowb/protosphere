@@ -58,6 +58,11 @@ const router = createRouter({
       component: () => import('@/pages/CommunitySettingsPage.vue'),
     },
     {
+      path: '/admin/modqueue',
+      name: 'mod-queue',
+      component: () => import('@/pages/ModQueuePage.vue'),
+    },
+    {
       path: '/invite/:code',
       name: 'invite',
       component: () => import('@/pages/InvitePage.vue'),

@@ -18,6 +18,7 @@ export function messageContextItems(
     onCopyText: () => void
     onAddReaction: () => void
     onCopyId: () => void
+    onReport?: () => void
   },
 ): ContextMenuItem[] {
   const items: ContextMenuItem[] = [
@@ -41,6 +42,11 @@ export function messageContextItems(
     items.push({ label: 'Delete Message', danger: true, action: opts.onDelete })
   }
 
+  if (!opts.isAuthor && opts.onReport) {
+    items.push(sep)
+    items.push({ label: 'Report Message', action: opts.onReport })
+  }
+
   return items
 }
 
@@ -57,6 +63,8 @@ export function memberContextItems(
     onChangeRole?: (role: MemberRole) => void
     onKick?: () => void
     onBan?: () => void
+    onMute?: () => void
+    onReport?: () => void
   },
 ): ContextMenuItem[] {
   const items: ContextMenuItem[] = [
@@ -82,10 +90,16 @@ export function memberContextItems(
     if (member.role !== 'member') items.push({ label: 'Set to Member', action: () => opts.onChangeRole!('member') })
   }
 
-  if (canManage && (opts.onKick || opts.onBan)) {
+  if (canManage && (opts.onMute || opts.onKick || opts.onBan)) {
     items.push(sep)
+    if (opts.onMute) items.push({ label: 'Mute', action: opts.onMute })
     if (opts.onKick) items.push({ label: 'Kick', danger: true, action: opts.onKick })
     if (opts.onBan) items.push({ label: 'Ban', danger: true, action: opts.onBan })
+  }
+
+  if (!opts.isMe && opts.onReport) {
+    items.push(sep)
+    items.push({ label: 'Report User', action: opts.onReport })
   }
 
   return items

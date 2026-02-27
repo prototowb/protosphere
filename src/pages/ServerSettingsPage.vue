@@ -10,6 +10,7 @@ import { backend } from '@/lib/backend'
 import { Permission, hasPermission, deserializePermissions, serializePermissions } from '@/lib/permissions'
 import type { PermissionBits } from '@/lib/permissions'
 import type { Ban, Profile, Role } from '@/lib/types'
+import AuditLogViewer from '@/components/moderation/AuditLogViewer.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -20,7 +21,7 @@ const { fetchServers, updateServer, deleteServer, unbanMember } = useServers()
 const { fetchServerRoles, createRole, updateRole, deleteRole } = useRoles()
 
 const serverId = ref(route.params.serverId as string)
-const activeTab = ref<'overview' | 'roles' | 'bans'>('overview')
+const activeTab = ref<'overview' | 'roles' | 'bans' | 'audit-log'>('overview')
 
 // ── Overview tab ──────────────────────────────────────────────────────────────
 const name = ref('')
@@ -262,13 +263,13 @@ function getServerInitial(n: string) {
       <!-- Tabs -->
       <div class="mb-6 flex gap-1 border-b border-bg-tertiary">
         <button
-          v-for="tab in (['overview', 'roles', 'bans'] as const)"
+          v-for="tab in (['overview', 'roles', 'bans', 'audit-log'] as const)"
           :key="tab"
           @click="activeTab = tab; closeEditRole()"
           class="px-4 py-2 text-sm capitalize transition-colors"
           :class="activeTab === tab ? 'border-b-2 border-accent text-accent' : 'text-text-muted hover:text-text-primary'"
         >
-          {{ tab }}
+          {{ tab === 'audit-log' ? 'Audit Log' : tab }}
         </button>
       </div>
 
@@ -457,6 +458,11 @@ function getServerInitial(n: string) {
         <div v-else class="flex flex-1 items-center justify-center text-sm text-text-muted">
           Select a role to edit permissions
         </div>
+      </div>
+
+      <!-- ── Audit Log tab ─────────────────────────────────────────────────── -->
+      <div v-else-if="activeTab === 'audit-log'">
+        <AuditLogViewer :server-id="serverId" />
       </div>
 
       <!-- ── Bans tab ──────────────────────────────────────────────────────── -->

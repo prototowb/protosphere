@@ -1,7 +1,9 @@
 import { backend } from '@/lib/backend'
+import { useAuthStore } from '@/stores/auth'
 import { useChannelsStore } from '@/stores/channels'
 
 export function useChannels() {
+  const authStore = useAuthStore()
   const channelsStore = useChannelsStore()
 
   async function fetchChannels(serverId: string) {
@@ -16,6 +18,9 @@ export function useChannels() {
       category_id: categoryId ?? null,
     })
     channelsStore.channels.push(channel)
+    if (authStore.user?.id) {
+      backend.audit_log.log(serverId, authStore.user.id, 'channel.create', 'channel', channel.id, { name }).catch(() => {})
+    }
     return channel
   }
 
@@ -26,11 +31,14 @@ export function useChannels() {
     return channel
   }
 
-  async function deleteChannel(id: string) {
+  async function deleteChannel(id: string, serverId?: string) {
     await backend.channels.delete(id)
     channelsStore.channels = channelsStore.channels.filter((c) => c.id !== id)
     if (channelsStore.activeChannelId === id) {
       channelsStore.activeChannelId = null
+    }
+    if (serverId && authStore.user?.id) {
+      backend.audit_log.log(serverId, authStore.user.id, 'channel.delete', 'channel', id).catch(() => {})
     }
   }
 

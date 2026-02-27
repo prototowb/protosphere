@@ -37,15 +37,18 @@ export function useMessages() {
     }
   }
 
-  async function deleteMessage(channelId: string, messageId: string) {
+  async function deleteMessage(channelId: string, messageId: string, serverId?: string, actorId?: string) {
     await backend.messages.delete(messageId)
     const list = messagesStore.messagesByChannel[channelId]
     if (list) {
       messagesStore.messagesByChannel[channelId] = list.filter((m) => m.id !== messageId)
     }
+    if (serverId && actorId) {
+      backend.audit_log.log(serverId, actorId, 'message.delete', 'message', messageId, { channel_id: channelId }).catch(() => {})
+    }
   }
 
-  async function pinMessage(channelId: string, messageId: string) {
+  async function pinMessage(channelId: string, messageId: string, serverId?: string, actorId?: string) {
     const updated = await backend.messages.pin(messageId)
     const list = messagesStore.messagesByChannel[channelId]
     if (list) {
@@ -55,9 +58,12 @@ export function useMessages() {
         list[idx] = { ...existing, is_pinned: updated.is_pinned }
       }
     }
+    if (serverId && actorId) {
+      backend.audit_log.log(serverId, actorId, 'message.pin', 'message', messageId, { channel_id: channelId }).catch(() => {})
+    }
   }
 
-  async function unpinMessage(channelId: string, messageId: string) {
+  async function unpinMessage(channelId: string, messageId: string, serverId?: string, actorId?: string) {
     const updated = await backend.messages.unpin(messageId)
     const list = messagesStore.messagesByChannel[channelId]
     if (list) {
@@ -66,6 +72,9 @@ export function useMessages() {
         const existing = list[idx] as Message & { profile: Profile }
         list[idx] = { ...existing, is_pinned: updated.is_pinned }
       }
+    }
+    if (serverId && actorId) {
+      backend.audit_log.log(serverId, actorId, 'message.unpin', 'message', messageId, { channel_id: channelId }).catch(() => {})
     }
   }
 

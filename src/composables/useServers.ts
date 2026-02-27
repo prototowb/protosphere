@@ -54,16 +54,22 @@ export function useServers() {
   }
 
   async function kickMember(serverId: string, userId: string) {
+    if (!authStore.user?.id) return
     await backend.members.leave(serverId, userId)
+    // Fire-and-forget audit log — don't block the operation
+    backend.audit_log.log(serverId, authStore.user.id, 'member.kick', 'member', userId).catch(() => {})
   }
 
   async function banMember(serverId: string, userId: string, reason?: string) {
     if (!authStore.user?.id) return
     await backend.bans.add(serverId, userId, authStore.user.id, reason)
+    backend.audit_log.log(serverId, authStore.user.id, 'member.ban', 'member', userId, { reason: reason ?? null }).catch(() => {})
   }
 
   async function unbanMember(serverId: string, userId: string) {
+    if (!authStore.user?.id) return
     await backend.bans.remove(serverId, userId)
+    backend.audit_log.log(serverId, authStore.user.id, 'member.unban', 'member', userId).catch(() => {})
   }
 
   async function regenerateInviteCode(serverId: string) {
