@@ -1,4 +1,4 @@
-import type { Profile, Server, Channel, ChannelCategory, Member, Message, Reaction, Ban, DirectMessageGroup, DirectMessage, Role, UserRole, ChannelRoleOverride, CommunitySettings, SpaceVisibility, SpaceType, AuditLog, Report, Mute, AutomodRule, ReportCategory } from '@/lib/types'
+import type { Profile, Server, Channel, ChannelCategory, Member, Message, Reaction, Ban, DirectMessageGroup, DirectMessage, Role, UserRole, ChannelRoleOverride, CommunitySettings, SpaceVisibility, SpaceType, AuditLog, AuditLogAction, Report, ReportCategory, ReportStatus, Mute, AutomodRule } from '@/lib/types'
 
 export interface AuthUser {
   id: string
@@ -103,23 +103,25 @@ export interface Backend {
     deleteChannelOverride(channelId: string, roleId: string): Promise<void>
   }
   audit_log: {
-    log(serverId: string | null, actorId: string, action: string, targetType: string, targetId: string, details?: Record<string, unknown>): Promise<AuditLog>
+    log(serverId: string | null, actorId: string, action: AuditLogAction, targetType: AuditLog['target_type'], targetId: string, details?: Record<string, unknown>): Promise<AuditLog>
     list(serverId?: string | null, offset?: number, limit?: number): Promise<AuditLog[]>
   }
   reports: {
-    list(serverId?: string | null, status?: string, offset?: number, limit?: number): Promise<Array<Report & { reporter: Profile; reviewer: Profile | null }>>
+    // reporter_profile = the user who filed the report; reviewer_profile = the mod who reviewed it
+    list(serverId?: string | null, status?: ReportStatus, offset?: number, limit?: number): Promise<Array<Report & { reporter_profile: Profile; reviewer_profile: Profile | null }>>
     create(data: { reporter_id: string; reported_type: 'message' | 'user'; reported_id: string; server_id?: string | null; category: ReportCategory; description: string }): Promise<Report>
-    update(id: string, updates: { status?: string; reviewed_by?: string | null; resolution?: string }): Promise<Report>
+    update(id: string, updates: { status?: ReportStatus; reviewed_by?: string | null; resolution?: string }): Promise<Report>
   }
   mutes: {
-    list(serverId: string): Promise<Array<Mute & { user: Profile; muted_by_profile: Profile }>>
+    // user_profile = the muted user; muted_by_profile = the mod who muted them
+    list(serverId: string): Promise<Array<Mute & { user_profile: Profile; muted_by_profile: Profile }>>
     add(serverId: string, userId: string, mutedBy: string, reason?: string, expiresAt?: string | null): Promise<Mute>
     remove(serverId: string, userId: string): Promise<void>
     check(serverId: string, userId: string): Promise<Mute | null>
   }
   automod_rules: {
     list(serverId: string): Promise<AutomodRule[]>
-    create(data: { server_id: string; name: string; rule_type: string; config?: Record<string, unknown>; action?: string }): Promise<AutomodRule>
+    create(data: Omit<AutomodRule, 'id' | 'created_at' | 'enabled'> & { enabled?: boolean }): Promise<AutomodRule>
     update(id: string, updates: Partial<Pick<AutomodRule, 'name' | 'rule_type' | 'config' | 'action' | 'enabled'>>): Promise<AutomodRule>
     delete(id: string): Promise<void>
   }

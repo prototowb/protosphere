@@ -734,12 +734,12 @@ export function createSupabaseBackend(): Backend {
 
     reports: {
       async list(serverId, status, offset = 0, limit = 50) {
-        let query = client.from('reports').select('*, reporter:reporter_id(id,username,display_name,avatar_url), reviewer:reviewed_by(id,username,display_name,avatar_url)')
+        let query = client.from('reports').select('*, reporter_profile:reporter_id(id,username,display_name,avatar_url), reviewer_profile:reviewed_by(id,username,display_name,avatar_url)')
         if (serverId) query = query.eq('server_id', serverId)
         if (status) query = query.eq('status', status)
         const { data, error } = await query.order('created_at', { ascending: false }).range(offset, offset + limit - 1)
         if (error) throw error
-        return (data as any[]).map((r) => ({ ...r, reporter: r.reporter as Profile, reviewer: r.reviewer as Profile | null }))
+        return (data as any[]).map((r) => ({ ...r, reporter_profile: r.reporter_profile as Profile, reviewer_profile: r.reviewer_profile as Profile | null }))
       },
 
       async create(data) {
@@ -761,11 +761,11 @@ export function createSupabaseBackend(): Backend {
         const now = new Date().toISOString()
         const { data, error } = await client
           .from('mutes')
-          .select('*, user:user_id(id,username,display_name,avatar_url), muted_by:muted_by(id,username,display_name,avatar_url)')
+          .select('*, user_profile:user_id(id,username,display_name,avatar_url), muted_by_profile:muted_by(id,username,display_name,avatar_url)')
           .eq('server_id', serverId)
           .or(`expires_at.is.null,expires_at.gt.${now}`)
         if (error) throw error
-        return (data as any[]).map((m) => ({ ...m, user: m.user as Profile, muted_by_profile: m.muted_by as Profile }))
+        return (data as any[]).map((m) => ({ ...m, user_profile: m.user_profile as Profile, muted_by_profile: m.muted_by_profile as Profile }))
       },
 
       async add(serverId, userId, mutedBy, reason = '', expiresAt = null) {

@@ -911,8 +911,8 @@ export function createLocalBackend(): Backend {
           id: crypto.randomUUID(),
           server_id: serverId,
           actor_id: actorId,
-          action: action as any,
-          target_type: targetType as any,
+          action,
+          target_type: targetType,
           target_id: targetId,
           details,
           created_at: new Date().toISOString(),
@@ -939,8 +939,8 @@ export function createLocalBackend(): Backend {
         if (status) filtered = filtered.filter((r) => r.status === status)
         return filtered.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).slice(offset, offset + limit).map((r) => ({
           ...r,
-          reporter: profiles.find((p) => p.id === r.reporter_id) as Profile,
-          reviewer: r.reviewed_by ? (profiles.find((p) => p.id === r.reviewed_by) ?? null) : null,
+          reporter_profile: profiles.find((p) => p.id === r.reporter_id) as Profile,
+          reviewer_profile: r.reviewed_by ? (profiles.find((p) => p.id === r.reviewed_by) ?? null) : null,
         }))
       },
 
@@ -996,20 +996,11 @@ export function createLocalBackend(): Backend {
         const profiles = readJson<Profile[]>(KEYS.profiles, [])
         return mutes
           .filter((m) => m.server_id === serverId && (!m.expires_at || new Date(m.expires_at) > new Date()))
-          .map((m) => {
-            const user = profiles.find((p) => p.id === m.user_id) as Profile
-            const muted_by_profile = profiles.find((p) => p.id === m.muted_by) as Profile
-            return {
-              server_id: m.server_id,
-              user_id: m.user_id,
-              muted_by: m.muted_by,
-              reason: m.reason,
-              expires_at: m.expires_at,
-              created_at: m.created_at,
-              user,
-              muted_by_profile,
-            } as any
-          })
+          .map((m) => ({
+            ...m,
+            user_profile: profiles.find((p) => p.id === m.user_id) as Profile,
+            muted_by_profile: profiles.find((p) => p.id === m.muted_by) as Profile,
+          }))
       },
 
       async add(serverId, userId, mutedBy, reason = '', expiresAt = null) {
@@ -1054,10 +1045,10 @@ export function createLocalBackend(): Backend {
           id: crypto.randomUUID(),
           server_id: data.server_id,
           name: data.name,
-          rule_type: data.rule_type as 'word_filter' | 'spam_detect' | 'link_filter' | 'caps_filter',
+          rule_type: data.rule_type,
           config: data.config ?? {},
-          action: (data.action ?? 'flag') as 'flag' | 'delete' | 'mute',
-          enabled: true,
+          action: data.action ?? 'flag',
+          enabled: data.enabled ?? true,
           created_at: new Date().toISOString(),
         }
         rules.push(rule)
