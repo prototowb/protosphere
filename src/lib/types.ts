@@ -172,3 +172,78 @@ export interface ChannelRoleOverride {
   allow: string  // decimal string representation of a BIGINT
   deny: string   // decimal string representation of a BIGINT
 }
+
+// ── Moderation & Safety ──────────────────────────────────────
+
+export type AuditLogAction =
+  | 'member.kick'
+  | 'member.ban'
+  | 'member.unban'
+  | 'message.delete'
+  | 'message.pin'
+  | 'message.unpin'
+  | 'channel.create'
+  | 'channel.update'
+  | 'channel.delete'
+  | 'role.create'
+  | 'role.update'
+  | 'role.delete'
+  | 'role.assign'
+  | 'role.remove'
+  | 'server.update'
+  | 'mute.add'
+  | 'mute.remove'
+
+export interface AuditLog {
+  id: string
+  server_id: string | null
+  actor_id: string
+  action: AuditLogAction
+  target_type: 'member' | 'message' | 'channel' | 'role' | 'server'
+  target_id: string
+  details: Record<string, unknown>
+  created_at: string
+}
+
+export type ReportCategory = 'spam' | 'harassment' | 'nsfw' | 'misinformation' | 'other'
+
+export type ReportStatus = 'pending' | 'reviewing' | 'resolved' | 'dismissed'
+
+export interface Report {
+  id: string
+  reporter_id: string
+  reported_type: 'message' | 'user'
+  reported_id: string
+  server_id: string | null
+  category: ReportCategory
+  description: string
+  status: ReportStatus
+  reviewed_by: string | null
+  resolution: string
+  created_at: string
+  resolved_at: string | null
+}
+
+export interface Mute {
+  server_id: string
+  user_id: string
+  muted_by: string
+  reason: string
+  expires_at: string | null
+  created_at: string
+}
+
+export type AutomodRuleType = 'word_filter' | 'spam_detect' | 'link_filter' | 'caps_filter'
+
+export type AutomodAction = 'flag' | 'delete' | 'mute'
+
+export interface AutomodRule {
+  id: string
+  server_id: string
+  name: string
+  rule_type: AutomodRuleType
+  config: Record<string, unknown>
+  action: AutomodAction
+  enabled: boolean
+  created_at: string
+}

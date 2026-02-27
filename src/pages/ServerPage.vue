@@ -28,10 +28,15 @@ import { useToastStore } from '@/stores/toast'
 import { useContextMenuStore } from '@/stores/contextMenu'
 import { messageContextItems, memberContextItems, channelContextItems, categoryContextItems, serverHeaderContextItems } from '@/lib/contextMenuItems'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
+import ReportDialog from '@/components/moderation/ReportDialog.vue'
 import { useRoles } from '@/composables/useRoles'
 import { usePermissions } from '@/composables/usePermissions'
+import { useMutes } from '@/composables/useMutes'
+import { useMutesStore } from '@/stores/mutes'
 import { Permission } from '@/lib/permissions'
-import type { Message, Profile, Member, MemberRole, Channel, ChannelCategory } from '@/lib/types'
+import { checkAutomod } from '@/lib/automod'
+import { backend } from '@/lib/backend'
+import type { Message, Profile, Member, MemberRole, Channel, ChannelCategory, AutomodRule } from '@/lib/types'
 
 const route = useRoute()
 const router = useRouter()
@@ -50,6 +55,8 @@ const { fetchReactionsForChannel, toggleReaction } = useReactions()
 const reactionsStore = useReactionsStore()
 const toastStore = useToastStore()
 const contextMenuStore = useContextMenuStore()
+const { fetchMutes, muteMember } = useMutes()
+const mutesStore = useMutesStore()
 const { openDM } = useDMs()
 const { updateProfile } = useProfile()
 const { typingUsers, onTyping, onSent, startListening, stopListening } = useTyping(
@@ -108,6 +115,14 @@ let slowmodeTimer: ReturnType<typeof setInterval> | null = null
 const inviteCode = ref('')
 const showInvite = ref(false)
 const showServerActions = ref(false)
+
+// Report dialog
+const showReportDialog = ref(false)
+const reportDialogType = ref<'message' | 'user'>('message')
+const reportDialogTargetId = ref('')
+
+// Automod rules (loaded once per server)
+const automodRules = ref<AutomodRule[]>([])
 
 const serverId = ref('')
 const channelId = ref('')
@@ -203,6 +218,8 @@ function loadServer() {
         fetchUserRoles(serverId.value, authStore.user.id)
       }
     })
+    fetchMutes(serverId.value).catch(() => {})
+    backend.automod_rules.list(serverId.value).then((rules) => { automodRules.value = rules }).catch(() => {})
   }
 }
 
@@ -371,6 +388,34 @@ watch(messages, scrollToBottom)
 async function handleSendMessage() {
   const content = messageInput.value.trim()
   if (!content || sending.value || !channelsStore.activeChannelId || !authStore.user?.id || slowmodeRemaining.value > 0) return
+
+  // Check if user is muted
+  if (mutesStore.isMuted(serverId.value, authStore.user.id)) {
+    toastStore.show('You are muted and cannot send messages.', 'error')
+    return
+  }
+
+  // Run automod check
+  if (automodRules.value.length > 0) {
+    const automodResult = checkAutomod(content, automodRules.value)
+    if (automodResult) {
+      if (automodResult.action === 'delete') {
+        toastStore.show(`Message blocked: ${automodResult.details}`, 'error')
+        return
+      }
+      if (automodResult.action === 'mute' && authStore.user?.id) {
+        toastStore.show(`Message blocked and you have been muted: ${automodResult.details}`, 'error')
+        muteMember(serverId.value, authStore.user.id, `Automod: ${automodResult.details}`).catch(() => {})
+        return
+      }
+      // 'flag' action: send but auto-report
+      if (automodResult.action === 'flag') {
+        toastStore.show(`Your message was flagged for review: ${automodResult.details}`, 'error')
+        // still allow send, report is created below after we get the message
+      }
+    }
+  }
+
   sending.value = true
   try {
     messageInput.value = ''
@@ -419,7 +464,7 @@ function handleDeleteMessage(messageId: string) {
     onConfirm: async () => {
       confirmDialog.value = null
       if (!channelsStore.activeChannelId) return
-      await deleteMessage(channelsStore.activeChannelId, messageId)
+      await deleteMessage(channelsStore.activeChannelId, messageId, serverId.value, authStore.user?.id)
     },
   }
 }
@@ -501,7 +546,7 @@ function handleDeleteChannel(chId: string) {
     danger: true,
     onConfirm: async () => {
       confirmDialog.value = null
-      await deleteChannel(chId)
+      await deleteChannel(chId, serverId.value)
       toastStore.show('Channel deleted', 'success')
       if (channelsStore.activeChannelId === null && channelsStore.channels.length > 0) {
         const defaultCh = channelsStore.channels.find((c) => c.is_default) || channelsStore.channels[0]
@@ -737,6 +782,44 @@ function handleBan(userId: string) {
   }
 }
 
+// ── Report ────────────────────────────────────────────────
+function handleReport(type: 'message' | 'user', targetId: string) {
+  reportDialogType.value = type
+  reportDialogTargetId.value = targetId
+  showReportDialog.value = true
+}
+
+async function handleReportSubmit(data: { category: string; description: string }) {
+  if (!authStore.user?.id) return
+  await backend.reports.create({
+    reporter_id: authStore.user.id,
+    reported_type: reportDialogType.value,
+    reported_id: reportDialogTargetId.value,
+    server_id: serverId.value || null,
+    category: data.category as import('@/lib/types').ReportCategory,
+    description: data.description,
+  })
+  showReportDialog.value = false
+  toastStore.show('Report submitted. Thank you.', 'success')
+}
+
+// ── Mute ──────────────────────────────────────────────────
+function handleMute(userId: string) {
+  const member = members.value.find((m) => m.user_id === userId)
+  confirmDialog.value = {
+    title: 'Mute Member',
+    message: `Mute ${member?.profile.display_name ?? 'this member'}? They will not be able to send messages.`,
+    confirmLabel: 'Mute',
+    danger: true,
+    inputPlaceholder: 'Reason (optional)',
+    onConfirm: async (reason: string) => {
+      confirmDialog.value = null
+      await muteMember(serverId.value, userId, reason || '')
+      toastStore.show('Member muted', 'success')
+    },
+  }
+}
+
 // ── Reactions ─────────────────────────────────────────────
 function getReactionGroups(messageId: string): { emoji: string; count: number; iMine: boolean }[] {
   const reactions = reactionsStore.reactionsByMessage[messageId] ?? []
@@ -759,13 +842,13 @@ async function handleToggleReaction(messageId: string, emoji: string) {
 // ── Pinning ───────────────────────────────────────────────
 async function handlePinMessage(messageId: string) {
   if (!channelsStore.activeChannelId) return
-  await pinMessage(channelsStore.activeChannelId, messageId)
+  await pinMessage(channelsStore.activeChannelId, messageId, serverId.value, authStore.user?.id)
   if (showPinnedPanel.value) await refreshPinnedPanel()
 }
 
 async function handleUnpinMessage(messageId: string) {
   if (!channelsStore.activeChannelId) return
-  await unpinMessage(channelsStore.activeChannelId, messageId)
+  await unpinMessage(channelsStore.activeChannelId, messageId, serverId.value, authStore.user?.id)
   if (showPinnedPanel.value) await refreshPinnedPanel()
 }
 
@@ -796,6 +879,7 @@ function onMessageContext(event: MouseEvent, msg: Message & { profile: Profile }
       pickerAnchorRect.value = { top: event.clientY, right: window.innerWidth - event.clientX }
       emojiPickerForMsg.value = msg.id
     },
+    onReport: !isAuthor ? () => handleReport('message', msg.id) : undefined,
   }))
 }
 
@@ -825,8 +909,10 @@ function onMemberContext(event: MouseEvent, member: Member & { profile: Profile 
       }
     } : undefined,
     onChangeRole: (role: MemberRole) => handleRoleChange(member.user_id, role),
-    onKick: () => handleKick(member.user_id),
-    onBan: () => handleBan(member.user_id),
+    onKick: check(Permission.KICK_MEMBERS) ? () => handleKick(member.user_id) : undefined,
+    onBan: check(Permission.BAN_MEMBERS) ? () => handleBan(member.user_id) : undefined,
+    onMute: check(Permission.MUTE_MEMBERS) && !isMe ? () => handleMute(member.user_id) : undefined,
+    onReport: !isMe ? () => handleReport('user', member.user_id) : undefined,
   }))
 }
 
@@ -1656,6 +1742,16 @@ function onServerHeaderContext(event: MouseEvent) {
       @click="emojiPickerForMsg = null; pickerAnchorRect = null"
     />
   </Teleport>
+
+  <!-- Report dialog -->
+  <ReportDialog
+    v-if="showReportDialog"
+    :type="reportDialogType"
+    :target-id="reportDialogTargetId"
+    :server-id="serverId"
+    @report="handleReportSubmit"
+    @close="showReportDialog = false"
+  />
 
   <!-- Confirm dialog -->
   <ConfirmDialog

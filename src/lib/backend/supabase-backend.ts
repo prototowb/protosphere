@@ -1,4 +1,4 @@
-import type { Profile, Server, Channel, ChannelCategory, Member, Message, Reaction, Ban, DirectMessageGroup, DirectMessage, Role, UserRole, ChannelRoleOverride, CommunitySettings } from '@/lib/types'
+import type { Profile, Server, Channel, ChannelCategory, Member, Message, Reaction, Ban, DirectMessageGroup, DirectMessage, Role, UserRole, ChannelRoleOverride, CommunitySettings, AuditLog, Report, Mute, AutomodRule } from '@/lib/types'
 import type { Backend } from './types'
 import { supabase } from '@/lib/supabase'
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -713,6 +713,108 @@ export function createSupabaseBackend(): Backend {
           .single()
         if (error) throw error
         return data as CommunitySettings
+      },
+    },
+
+    audit_log: {
+      async log(serverId, actorId, action, targetType, targetId, details = {}) {
+        const { data, error } = await client.from('audit_log').insert({ server_id: serverId, actor_id: actorId, action, target_type: targetType, target_id: targetId, details }).select().single()
+        if (error) throw error
+        return data as AuditLog
+      },
+
+      async list(serverId, offset = 0, limit = 50) {
+        let query = client.from('audit_log').select('*')
+        if (serverId) query = query.eq('server_id', serverId)
+        const { data, error } = await query.order('created_at', { ascending: false }).range(offset, offset + limit - 1)
+        if (error) throw error
+        return data as AuditLog[]
+      },
+    },
+
+    reports: {
+      async list(serverId, status, offset = 0, limit = 50) {
+        let query = client.from('reports').select('*, reporter_profile:reporter_id(id,username,display_name,avatar_url), reviewer_profile:reviewed_by(id,username,display_name,avatar_url)')
+        if (serverId) query = query.eq('server_id', serverId)
+        if (status) query = query.eq('status', status)
+        const { data, error } = await query.order('created_at', { ascending: false }).range(offset, offset + limit - 1)
+        if (error) throw error
+        return (data as any[]).map((r) => ({ ...r, reporter_profile: r.reporter_profile as Profile, reviewer_profile: r.reviewer_profile as Profile | null }))
+      },
+
+      async create(data) {
+        const { data: report, error } = await client.from('reports').insert(data).select().single()
+        if (error) throw error
+        return report as Report
+      },
+
+      async update(id, updates) {
+        const resolved_at = updates.status === 'resolved' || updates.status === 'dismissed' ? new Date().toISOString() : undefined
+        const { data, error } = await client.from('reports').update({ ...updates, ...(resolved_at ? { resolved_at } : {}) }).eq('id', id).select().single()
+        if (error) throw error
+        return data as Report
+      },
+    },
+
+    mutes: {
+      async list(serverId) {
+        const now = new Date().toISOString()
+        const { data, error } = await client
+          .from('mutes')
+          .select('*, user_profile:user_id(id,username,display_name,avatar_url), muted_by_profile:muted_by(id,username,display_name,avatar_url)')
+          .eq('server_id', serverId)
+          .or(`expires_at.is.null,expires_at.gt.${now}`)
+        if (error) throw error
+        return (data as any[]).map((m) => ({ ...m, user_profile: m.user_profile as Profile, muted_by_profile: m.muted_by_profile as Profile }))
+      },
+
+      async add(serverId, userId, mutedBy, reason = '', expiresAt = null) {
+        const { data, error } = await client.from('mutes').upsert({ server_id: serverId, user_id: userId, muted_by: mutedBy, reason, expires_at: expiresAt }).select().single()
+        if (error) throw error
+        return data as Mute
+      },
+
+      async remove(serverId, userId) {
+        const { error } = await client.from('mutes').delete().eq('server_id', serverId).eq('user_id', userId)
+        if (error) throw error
+      },
+
+      async check(serverId, userId) {
+        const now = new Date().toISOString()
+        const { data, error } = await client
+          .from('mutes')
+          .select('*')
+          .eq('server_id', serverId)
+          .eq('user_id', userId)
+          .or(`expires_at.is.null,expires_at.gt.${now}`)
+          .single()
+        if (error && error.code !== 'PGRST116') throw error
+        return data ? (data as Mute) : null
+      },
+    },
+
+    automod_rules: {
+      async list(serverId) {
+        const { data, error } = await client.from('automod_rules').select('*').eq('server_id', serverId).order('name')
+        if (error) throw error
+        return data as AutomodRule[]
+      },
+
+      async create(data) {
+        const { data: rule, error } = await client.from('automod_rules').insert(data).select().single()
+        if (error) throw error
+        return rule as AutomodRule
+      },
+
+      async update(id, updates) {
+        const { data, error } = await client.from('automod_rules').update(updates).eq('id', id).select().single()
+        if (error) throw error
+        return data as AutomodRule
+      },
+
+      async delete(id) {
+        const { error } = await client.from('automod_rules').delete().eq('id', id)
+        if (error) throw error
       },
     },
   }
