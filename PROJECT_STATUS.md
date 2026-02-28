@@ -5,7 +5,7 @@
 ## Current State
 
 ```yaml
-project_phase: "M15 Complete — Supabase Real-time & Integration"
+project_phase: "Release Ready — M11–M15 Complete + Release Fixes"
 protogear_enabled: true
 framework: "Vue 3 + TypeScript 5.9 + Vite 7 + Tailwind CSS 4 + Pinia + Supabase"
 project_type: "Single-Community Communication Platform"
@@ -353,6 +353,8 @@ supabase/migrations/
 
 ## Recent Updates
 
+- 2026-02-28: Release fixes — ThreadPanel and DMPage now have real-time message subscriptions (startMessages/startDmMessages). DMPage typing wired to Realtime Broadcast in Supabase mode. Migration 019 adds `direct_messages` to supabase_realtime publication.
+- 2026-02-28: M11–M15 complete. Roles & permissions, community identity, moderation, engagement features, Supabase real-time across all clients.
 - 2026-02-22: Vision pivot — Protosphere becomes single-community platform. M11-M15 planned.
 - 2026-02-22: PTSPH-043–047 — M10: local Supabase dev setup, join dialog fix, signup redirect, server creation auto-join + default channel, DM RLS fix.
 - 2026-02-21: PTSPH-035–042 — M9.5: toast system, context menus, markdown, member sorting, category persistence, channel descriptions, DM unread, message search.
