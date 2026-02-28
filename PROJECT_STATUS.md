@@ -5,12 +5,12 @@
 ## Current State
 
 ```yaml
-project_phase: "M10 Complete — Pivoting to Single-Community Architecture"
+project_phase: "M14 Complete — Engagement Features"
 protogear_enabled: true
 framework: "Vue 3 + TypeScript 5.9 + Vite 7 + Tailwind CSS 4 + Pinia + Supabase"
 project_type: "Single-Community Communication Platform"
 initialization_date: "2026-02-20"
-current_milestone: "M11 — Roles & Permissions Engine"
+current_milestone: "M15 — Supabase Real-time & Integration"
 local_supabase: true
 ```
 
@@ -36,61 +36,61 @@ Backend adapter auto-detects mode via `VITE_SUPABASE_URL` env var. Local mode us
 
 ## Active Tickets
 
-### M11 — Roles & Permissions Engine
+### M11 — Roles & Permissions Engine ✅
 
 **Goal:** Replace hardcoded `owner > admin > moderator > member` with flexible custom roles + permission bitfields.
 
 | Ticket | Title | Status | Description |
 |--------|-------|--------|-------------|
-| PTSPH-100 | Permission bitfield library | Not Started | `src/lib/permissions.ts`: Permission constants, `hasPermission()`, `computePermissions()`, preset templates |
-| PTSPH-101 | Missing channel_categories migration | Not Started | `006_channel_categories.sql` — table exists in code but has no Supabase migration |
-| PTSPH-102 | Roles schema migration | Not Started | `007_roles_permissions.sql`: `roles`, `user_roles`, `channel_role_overrides` tables + data migration from `members.role` |
-| PTSPH-103 | Backend interface: roles | Not Started | Add `roles` namespace to `Backend` interface; implement in both `local.ts` and `supabase-backend.ts` |
-| PTSPH-104 | Roles store & composables | Not Started | `stores/roles.ts`, `composables/useRoles.ts`, `composables/usePermissions.ts` with `can(permission)` |
-| PTSPH-105 | Migrate UI permission checks | Not Started | Replace all hardcoded `myRole ===` patterns with `can(Permission.X)` in ServerPage, AppShell, contextMenuItems |
-| PTSPH-106 | Role management UI | Not Started | Roles tab in space settings: CRUD, drag-to-reorder, permission checkboxes, color picker; multi-role member assignment |
-| PTSPH-107 | RLS policies for permissions | Not Started | `008_rls_roles.sql`: `user_has_permission()` function, rewrite RLS policies |
+| PTSPH-100 | Permission bitfield library | ✅ Done | `src/lib/permissions.ts`: Permission constants, `hasPermission()`, `computePermissions()`, preset templates |
+| PTSPH-101 | Missing channel_categories migration | ✅ Done | `006_channel_categories.sql` |
+| PTSPH-102 | Roles schema migration | ✅ Done | `007_roles_permissions.sql`: `roles`, `user_roles`, `channel_role_overrides` + data migration |
+| PTSPH-103 | Backend interface: roles | ✅ Done | `roles` namespace in both `local.ts` and `supabase-backend.ts` |
+| PTSPH-104 | Roles store & composables | ✅ Done | `stores/roles.ts`, `useRoles.ts`, `usePermissions.ts` |
+| PTSPH-105 | Migrate UI permission checks | ✅ Done | All `myRole ===` patterns replaced with `can(Permission.X)` |
+| PTSPH-106 | Role management UI | ✅ Done | Roles tab in space settings, color picker, drag-to-reorder |
+| PTSPH-107 | RLS policies for permissions | ✅ Done | `008_rls_roles.sql` |
 
-### M12 — Spaces & Community Identity
+### M12 — Spaces & Community Identity ✅
 
 **Goal:** Reframe app as single community with spaces. Add branding, visibility controls, onboarding.
 
 | Ticket | Title | Status | Description |
 |--------|-------|--------|-------------|
-| PTSPH-110 | Community settings entity | Not Started | `community_settings` table, migration, types, backend `community` namespace, store, composable |
-| PTSPH-111 | Server → Space rename (UI) | Not Started | Rename "Server" to "Space" in all UI. Route paths → `/spaces/:spaceId/:channelId`. Router aliases for compat |
-| PTSPH-112 | Space visibility & types | Not Started | `visibility` (public/private/restricted) + `space_type` (general/announcement/archive) columns on servers |
-| PTSPH-113 | Community sidebar redesign | Not Started | Replace server icon sidebar with community-branded header + categorized space list |
-| PTSPH-114 | Community admin panel | Not Started | `CommunitySettingsPage.vue`: edit name, logo, banner, registration mode, rules, welcome message |
-| PTSPH-115 | Onboarding flow | Not Started | Landing page, welcome screen, rules acceptance, registration approval mode |
-| PTSPH-116 | Space access control | Not Started | Private/restricted space visibility + join gating by role |
+| PTSPH-110 | Community settings entity | ✅ Done | `community_settings` table, `useCommunity.ts`, `stores/community.ts` |
+| PTSPH-111 | Server → Space rename (UI) | ✅ Done | UI labels updated throughout |
+| PTSPH-112 | Space visibility & types | ✅ Done | `visibility` + `space_type` columns on servers |
+| PTSPH-113 | Community sidebar redesign | ✅ Done | `CommunitySidebar.vue` replaces old icon sidebar |
+| PTSPH-114 | Community admin panel | ✅ Done | `CommunitySettingsPage.vue` at `/admin/community` |
+| PTSPH-115 | Onboarding flow | ✅ Done | `LandingPage.vue`, welcome screen, registration approval support |
+| PTSPH-116 | Space access control | ✅ Done | Visibility + join gating by role |
 
-### M13 — Moderation & Safety
+### M13 — Moderation & Safety ✅
 
 **Goal:** Audit logging, reporting, mod queue, mutes, auto-moderation.
 
 | Ticket | Title | Status | Description |
 |--------|-------|--------|-------------|
-| PTSPH-120 | Audit log infrastructure | Not Started | `audit_log` table, types, backend namespace, helper utility |
-| PTSPH-121 | Wire moderation to audit log | Not Started | Wrap kick/ban/unban/role-change/channel-CRUD/message-delete with audit entries |
-| PTSPH-122 | Audit log viewer | Not Started | `AuditLogViewer.vue` in space settings, paginated, filterable |
-| PTSPH-123 | Report system | Not Started | `reports` table, "Report" in context menus, report dialog with categories |
-| PTSPH-124 | Mod queue | Not Started | `ModQueuePage.vue`: pending reports, context, resolve/dismiss/warn/mute/kick/ban |
-| PTSPH-125 | Mute system | Not Started | `mutes` table, "Mute" in member context menu, optional duration, auto-unmute |
-| PTSPH-126 | Auto-moderation | Not Started | `automod_rules` table, `automod.ts`: word filter, spam detection, config UI |
+| PTSPH-120 | Audit log infrastructure | ✅ Done | `audit_log` table, `auditLog.ts` helper, backend namespace |
+| PTSPH-121 | Wire moderation to audit log | ✅ Done | kick/ban/unban/role-change/channel-CRUD/message-delete emit audit entries |
+| PTSPH-122 | Audit log viewer | ✅ Done | `AuditLogViewer.vue` in space settings (Audit Log tab) |
+| PTSPH-123 | Report system | ✅ Done | `reports` table, `ReportDialog.vue`, "Report" in context menus |
+| PTSPH-124 | Mod queue | ✅ Done | `ModQueuePage.vue` at `/admin/modqueue` |
+| PTSPH-125 | Mute system | ✅ Done | `mutes` table, `useMutes.ts`, mute check on send, "Mute" in context menu |
+| PTSPH-126 | Auto-moderation | ✅ Done | `automod_rules` table, `automod.ts`: word filter + spam detection, config in settings |
 
-### M14 — Engagement Features
+### M14 — Engagement Features ✅
 
 **Goal:** Threads, polls, events, announcement spaces.
 
 | Ticket | Title | Status | Description |
 |--------|-------|--------|-------------|
-| PTSPH-130 | Thread data model & backend | Not Started | `parent_message_id` + `is_thread` on channels; `threads.create()`, `threads.listByChannel()` |
-| PTSPH-131 | Thread UI | Not Started | "Create Thread" on messages, thread panel, reuse message list |
-| PTSPH-132 | Poll data model & backend | Not Started | `polls`, `poll_options`, `poll_votes` tables; `polls.create()`, `polls.vote()`, `polls.getResults()` |
-| PTSPH-133 | Poll UI | Not Started | Poll creation dialog, progress bar embed in messages, close action |
-| PTSPH-134 | Announcement spaces | Not Started | `space_type === 'announcement'`: only `MANAGE_MESSAGES` users can post |
-| PTSPH-135 | Events system | Not Started | `events`, `event_rsvps` tables; event creation, list, RSVP |
+| PTSPH-130 | Thread data model & backend | ✅ Done | `parent_message_id` + `parent_channel_id` on channels; `threads` namespace |
+| PTSPH-131 | Thread UI | ✅ Done | "Create Thread" on messages, `ThreadPanel.vue` in members sidebar |
+| PTSPH-132 | Poll data model & backend | ✅ Done | `polls`, `poll_options`, `poll_votes` tables; `polls` namespace |
+| PTSPH-133 | Poll UI | ✅ Done | `CreatePollDialog.vue`, `PollCard.vue`, polls panel in sidebar |
+| PTSPH-134 | Announcement spaces | ✅ Done | `space_type === 'announcement'`: `canPostInChannel` guard on `MANAGE_MESSAGES` |
+| PTSPH-135 | Events system | ✅ Done | `events` + `event_rsvps` tables; `EventsPanel.vue` with RSVP buttons |
 
 ### M15 — Supabase Real-time & Integration
 
@@ -120,6 +120,54 @@ M12 (Spaces & Community) ───┤                       ├─→ M15 (Supab
 ---
 
 ## Completed Milestones
+
+### M14 — Engagement Features (2026-02-28)
+
+| Ticket | Title | Completed |
+|--------|-------|-----------|
+| PTSPH-130 | Thread data model & backend | 2026-02-28 |
+| PTSPH-131 | Thread UI (ThreadPanel) | 2026-02-28 |
+| PTSPH-132 | Poll data model & backend | 2026-02-28 |
+| PTSPH-133 | Poll UI (CreatePollDialog, PollCard, polls sidebar panel) | 2026-02-28 |
+| PTSPH-134 | Announcement spaces (canPostInChannel guard) | 2026-02-28 |
+| PTSPH-135 | Events system (EventsPanel, RSVP) | 2026-02-28 |
+
+### M13 — Moderation & Safety (2026-02-28)
+
+| Ticket | Title | Completed |
+|--------|-------|-----------|
+| PTSPH-120 | Audit log infrastructure | 2026-02-28 |
+| PTSPH-121 | Wire moderation to audit log | 2026-02-28 |
+| PTSPH-122 | Audit log viewer | 2026-02-28 |
+| PTSPH-123 | Report system | 2026-02-28 |
+| PTSPH-124 | Mod queue page | 2026-02-28 |
+| PTSPH-125 | Mute system | 2026-02-28 |
+| PTSPH-126 | Auto-moderation | 2026-02-28 |
+
+### M12 — Spaces & Community Identity (2026-02-28)
+
+| Ticket | Title | Completed |
+|--------|-------|-----------|
+| PTSPH-110 | Community settings entity | 2026-02-28 |
+| PTSPH-111 | Server → Space rename (UI) | 2026-02-28 |
+| PTSPH-112 | Space visibility & types | 2026-02-28 |
+| PTSPH-113 | Community sidebar redesign | 2026-02-28 |
+| PTSPH-114 | Community admin panel | 2026-02-28 |
+| PTSPH-115 | Onboarding flow | 2026-02-28 |
+| PTSPH-116 | Space access control | 2026-02-28 |
+
+### M11 — Roles & Permissions Engine (2026-02-28)
+
+| Ticket | Title | Completed |
+|--------|-------|-----------|
+| PTSPH-100 | Permission bitfield library | 2026-02-28 |
+| PTSPH-101 | Missing channel_categories migration | 2026-02-28 |
+| PTSPH-102 | Roles schema migration | 2026-02-28 |
+| PTSPH-103 | Backend interface: roles | 2026-02-28 |
+| PTSPH-104 | Roles store & composables | 2026-02-28 |
+| PTSPH-105 | Migrate UI permission checks | 2026-02-28 |
+| PTSPH-106 | Role management UI | 2026-02-28 |
+| PTSPH-107 | RLS policies for permissions | 2026-02-28 |
 
 ### M10 — Feature Polish & Extension
 

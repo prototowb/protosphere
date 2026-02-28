@@ -19,6 +19,7 @@ export function messageContextItems(
     onAddReaction: () => void
     onCopyId: () => void
     onReport?: () => void
+    onCreateThread?: () => void
   },
 ): ContextMenuItem[] {
   const items: ContextMenuItem[] = [
@@ -27,6 +28,10 @@ export function messageContextItems(
     { label: 'Copy Text', action: opts.onCopyText },
     { label: 'Copy Message ID', action: opts.onCopyId },
   ]
+
+  if (opts.canModerate && opts.onCreateThread) {
+    items.push({ label: 'Create Thread', action: opts.onCreateThread })
+  }
 
   if (opts.isAuthor) {
     items.push(sep)
