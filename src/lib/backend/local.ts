@@ -1,4 +1,4 @@
-import type { Profile, Server, Channel, ChannelCategory, Member, Message, Reaction, Ban, DirectMessageGroup, DirectMessageMember, DirectMessage, Role, UserRole, ChannelRoleOverride, CommunitySettings, AuditLog, Report, Mute, AutomodRule } from '@/lib/types'
+import type { Profile, Server, Channel, ChannelCategory, Member, Message, Reaction, Ban, DirectMessageGroup, DirectMessageMember, DirectMessage, Role, UserRole, ChannelRoleOverride, CommunitySettings, AuditLog, Report, Mute, AutomodRule, Poll, PollOption, PollVote, AppEvent, EventRsvp } from '@/lib/types'
 import type { AuthSession, Backend } from './types'
 import { serializePermissions, PermissionPresets, Permission } from '@/lib/permissions'
 
@@ -24,6 +24,11 @@ const KEYS = {
   reports: 'protosphere_reports',
   mutes: 'protosphere_mutes',
   automod_rules: 'protosphere_automod_rules',
+  polls: 'protosphere_polls',
+  poll_options: 'protosphere_poll_options',
+  poll_votes: 'protosphere_poll_votes',
+  events: 'protosphere_events',
+  event_rsvps: 'protosphere_event_rsvps',
 } as const
 
 interface StoredUser {
@@ -232,6 +237,8 @@ export function createLocalBackend(): Backend {
           is_default: true,
           slowmode_seconds: 0,
           category_id: null,
+          parent_message_id: null,
+          parent_channel_id: null,
           created_at: new Date().toISOString(),
         })
         writeJson(KEYS.channels, channels)
@@ -303,7 +310,7 @@ export function createLocalBackend(): Backend {
       async list(serverId: string) {
         const channels = readJson<Channel[]>(KEYS.channels, [])
         return channels
-          .filter((c) => c.server_id === serverId)
+          .filter((c) => c.server_id === serverId && c.parent_message_id === null)
           .sort((a, b) => a.position - b.position)
       },
 
@@ -328,6 +335,8 @@ export function createLocalBackend(): Backend {
           is_default: data.is_default ?? false,
           slowmode_seconds: 0,
           category_id: data.category_id ?? null,
+          parent_message_id: null,
+          parent_channel_id: null,
           created_at: new Date().toISOString(),
         }
         channels.push(channel)
@@ -1080,6 +1089,161 @@ export function createLocalBackend(): Backend {
         const rules = readJson<AutomodRule[]>(KEYS.automod_rules, [])
         const filtered = rules.filter((r) => r.id !== id)
         writeJson(KEYS.automod_rules, filtered)
+      },
+    },
+
+    threads: {
+      async create(serverId, parentChannelId, parentMessageId, name) {
+        const channels = readJson<Channel[]>(KEYS.channels, [])
+        const thread: Channel = {
+          id: crypto.randomUUID(),
+          server_id: serverId,
+          name,
+          description: '',
+          type: 'text',
+          position: 0,
+          is_default: false,
+          slowmode_seconds: 0,
+          category_id: null,
+          parent_message_id: parentMessageId,
+          parent_channel_id: parentChannelId,
+          created_at: new Date().toISOString(),
+        }
+        channels.push(thread)
+        writeJson(KEYS.channels, channels)
+        return thread
+      },
+
+      async listByChannel(channelId) {
+        const channels = readJson<Channel[]>(KEYS.channels, [])
+        return channels.filter((c) => c.parent_channel_id === channelId)
+      },
+    },
+
+    polls: {
+      async create(channelId, question, optionTexts, createdBy) {
+        const polls = readJson<Poll[]>(KEYS.polls, [])
+        const poll: Poll = {
+          id: crypto.randomUUID(),
+          channel_id: channelId,
+          question,
+          created_by: createdBy,
+          closed_at: null,
+          created_at: new Date().toISOString(),
+        }
+        polls.push(poll)
+        writeJson(KEYS.polls, polls)
+
+        const allOptions = readJson<PollOption[]>(KEYS.poll_options, [])
+        const options: PollOption[] = optionTexts.map((text, i) => ({
+          id: crypto.randomUUID(),
+          poll_id: poll.id,
+          text,
+          position: i,
+        }))
+        allOptions.push(...options)
+        writeJson(KEYS.poll_options, allOptions)
+        return { ...poll, options }
+      },
+
+      async vote(pollId, optionId, userId) {
+        const votes = readJson<PollVote[]>(KEYS.poll_votes, [])
+        const existing = votes.findIndex((v) => v.poll_id === pollId && v.user_id === userId)
+        const vote: PollVote = {
+          poll_id: pollId,
+          user_id: userId,
+          option_id: optionId,
+          created_at: new Date().toISOString(),
+        }
+        if (existing !== -1) votes[existing] = vote
+        else votes.push(vote)
+        writeJson(KEYS.poll_votes, votes)
+        return vote
+      },
+
+      async getResults(pollId, userId) {
+        const polls = readJson<Poll[]>(KEYS.polls, [])
+        const poll = polls.find((p) => p.id === pollId)
+        if (!poll) throw new Error('Poll not found')
+        const allOptions = readJson<PollOption[]>(KEYS.poll_options, [])
+        const allVotes = readJson<PollVote[]>(KEYS.poll_votes, [])
+        const options = allOptions.filter((o) => o.poll_id === pollId).sort((a, b) => a.position - b.position)
+        const votes = allVotes.filter((v) => v.poll_id === pollId)
+        const myVote = votes.find((v) => v.user_id === userId)?.option_id ?? null
+        return {
+          poll,
+          options: options.map((o) => ({ ...o, vote_count: votes.filter((v) => v.option_id === o.id).length })),
+          myVote,
+          total_votes: votes.length,
+        }
+      },
+
+      async close(pollId) {
+        const polls = readJson<Poll[]>(KEYS.polls, [])
+        const poll = polls.find((p) => p.id === pollId)
+        if (!poll) throw new Error('Poll not found')
+        poll.closed_at = new Date().toISOString()
+        writeJson(KEYS.polls, polls)
+        return poll
+      },
+
+      async listByChannel(channelId) {
+        const polls = readJson<Poll[]>(KEYS.polls, [])
+        const allOptions = readJson<PollOption[]>(KEYS.poll_options, [])
+        const allVotes = readJson<PollVote[]>(KEYS.poll_votes, [])
+        return polls
+          .filter((p) => p.channel_id === channelId)
+          .sort((a, b) => a.created_at.localeCompare(b.created_at))
+          .map((poll) => {
+            const options = allOptions.filter((o) => o.poll_id === poll.id).sort((a, b) => a.position - b.position)
+            const votes = allVotes.filter((v) => v.poll_id === poll.id)
+            return {
+              poll,
+              options: options.map((o) => ({ ...o, vote_count: votes.filter((v) => v.option_id === o.id).length })),
+              myVote: null,
+              total_votes: votes.length,
+            }
+          })
+      },
+    },
+
+    events: {
+      async list(serverId) {
+        const events = readJson<AppEvent[]>(KEYS.events, [])
+        return events.filter((e) => e.server_id === serverId).sort((a, b) => a.start_at.localeCompare(b.start_at))
+      },
+
+      async create(data) {
+        const events = readJson<AppEvent[]>(KEYS.events, [])
+        const event: AppEvent = {
+          id: crypto.randomUUID(),
+          server_id: data.server_id,
+          channel_id: data.channel_id ?? null,
+          title: data.title,
+          description: data.description ?? '',
+          start_at: data.start_at,
+          end_at: data.end_at ?? null,
+          created_by: data.created_by,
+          created_at: new Date().toISOString(),
+        }
+        events.push(event)
+        writeJson(KEYS.events, events)
+        return event
+      },
+
+      async rsvp(eventId, userId, status) {
+        const rsvps = readJson<EventRsvp[]>(KEYS.event_rsvps, [])
+        const existing = rsvps.findIndex((r) => r.event_id === eventId && r.user_id === userId)
+        const rsvp: EventRsvp = { event_id: eventId, user_id: userId, status, created_at: new Date().toISOString() }
+        if (existing !== -1) rsvps[existing] = rsvp
+        else rsvps.push(rsvp)
+        writeJson(KEYS.event_rsvps, rsvps)
+        return rsvp
+      },
+
+      async getRsvps(eventId) {
+        const rsvps = readJson<EventRsvp[]>(KEYS.event_rsvps, [])
+        return rsvps.filter((r) => r.event_id === eventId)
       },
     },
   }

@@ -71,6 +71,8 @@ export interface Channel {
   is_default: boolean
   slowmode_seconds: number
   category_id: string | null
+  parent_message_id: string | null
+  parent_channel_id: string | null
   created_at: string
 }
 
@@ -245,5 +247,60 @@ export interface AutomodRule {
   config: Record<string, unknown>
   action: AutomodAction
   enabled: boolean
+  created_at: string
+}
+
+// ── Polls ──────────────────────────────────────────────────
+
+export interface Poll {
+  id: string
+  channel_id: string
+  question: string
+  created_by: string
+  closed_at: string | null
+  created_at: string
+}
+
+export interface PollOption {
+  id: string
+  poll_id: string
+  text: string
+  position: number
+}
+
+export interface PollVote {
+  poll_id: string
+  user_id: string
+  option_id: string
+  created_at: string
+}
+
+export interface PollWithResults {
+  poll: Poll
+  options: (PollOption & { vote_count: number })[]
+  myVote: string | null
+  total_votes: number
+}
+
+// ── Events ─────────────────────────────────────────────────
+
+export type RsvpStatus = 'going' | 'maybe' | 'not_going'
+
+export interface AppEvent {
+  id: string
+  server_id: string
+  channel_id: string | null
+  title: string
+  description: string
+  start_at: string
+  end_at: string | null
+  created_by: string
+  created_at: string
+}
+
+export interface EventRsvp {
+  event_id: string
+  user_id: string
+  status: RsvpStatus
   created_at: string
 }

@@ -1,4 +1,4 @@
-import type { Profile, Server, Channel, ChannelCategory, Member, Message, Reaction, Ban, DirectMessageGroup, DirectMessage, Role, UserRole, ChannelRoleOverride, CommunitySettings, AuditLog, Report, Mute, AutomodRule } from '@/lib/types'
+import type { Profile, Server, Channel, ChannelCategory, Member, Message, Reaction, Ban, DirectMessageGroup, DirectMessage, Role, UserRole, ChannelRoleOverride, CommunitySettings, AuditLog, Report, Mute, AutomodRule, Poll, PollOption, PollVote, AppEvent, EventRsvp } from '@/lib/types'
 import type { Backend } from './types'
 import { supabase } from '@/lib/supabase'
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -210,6 +210,7 @@ export function createSupabaseBackend(): Backend {
           .from('channels')
           .select('*')
           .eq('server_id', serverId)
+          .is('parent_message_id', null)
           .order('position')
         if (error) throw error
         return data as Channel[]
@@ -815,6 +816,134 @@ export function createSupabaseBackend(): Backend {
       async delete(id) {
         const { error } = await client.from('automod_rules').delete().eq('id', id)
         if (error) throw error
+      },
+    },
+
+    threads: {
+      async create(serverId, parentChannelId, parentMessageId, name) {
+        const { data, error } = await client
+          .from('channels')
+          .insert({ server_id: serverId, name, description: '', type: 'text', position: 0, is_default: false, slowmode_seconds: 0, parent_message_id: parentMessageId, parent_channel_id: parentChannelId })
+          .select()
+          .single()
+        if (error) throw error
+        return data as Channel
+      },
+
+      async listByChannel(channelId) {
+        const { data, error } = await client
+          .from('channels')
+          .select('*')
+          .eq('parent_channel_id', channelId)
+        if (error) throw error
+        return data as Channel[]
+      },
+    },
+
+    polls: {
+      async create(channelId, question, optionTexts, createdBy) {
+        const { data: poll, error: pe } = await client
+          .from('polls')
+          .insert({ channel_id: channelId, question, created_by: createdBy })
+          .select()
+          .single()
+        if (pe) throw pe
+        const optionRows = optionTexts.map((text, i) => ({ poll_id: (poll as Poll).id, text, position: i }))
+        const { data: options, error: oe } = await client.from('poll_options').insert(optionRows).select()
+        if (oe) throw oe
+        return { ...(poll as Poll), options: options as PollOption[] }
+      },
+
+      async vote(pollId, optionId, userId) {
+        const { data, error } = await client
+          .from('poll_votes')
+          .upsert({ poll_id: pollId, user_id: userId, option_id: optionId })
+          .select()
+          .single()
+        if (error) throw error
+        return data as PollVote
+      },
+
+      async getResults(pollId, userId) {
+        const [{ data: poll, error: pe }, { data: options, error: oe }, { data: votes, error: ve }] = await Promise.all([
+          client.from('polls').select('*').eq('id', pollId).single(),
+          client.from('poll_options').select('*').eq('poll_id', pollId).order('position'),
+          client.from('poll_votes').select('*').eq('poll_id', pollId),
+        ])
+        if (pe) throw pe
+        if (oe) throw oe
+        if (ve) throw ve
+        const typedVotes = votes as PollVote[]
+        const myVote = typedVotes.find((v) => v.user_id === userId)?.option_id ?? null
+        return {
+          poll: poll as Poll,
+          options: (options as PollOption[]).map((o) => ({ ...o, vote_count: typedVotes.filter((v) => v.option_id === o.id).length })),
+          myVote,
+          total_votes: typedVotes.length,
+        }
+      },
+
+      async close(pollId) {
+        const { data, error } = await client
+          .from('polls')
+          .update({ closed_at: new Date().toISOString() })
+          .eq('id', pollId)
+          .select()
+          .single()
+        if (error) throw error
+        return data as Poll
+      },
+
+      async listByChannel(channelId) {
+        const { data: polls, error: pe } = await client
+          .from('polls').select('*').eq('channel_id', channelId).order('created_at')
+        if (pe) throw pe
+        const pollIds = (polls as Poll[]).map((p) => p.id)
+        if (pollIds.length === 0) return []
+        const [{ data: options }, { data: votes }] = await Promise.all([
+          client.from('poll_options').select('*').in('poll_id', pollIds).order('position'),
+          client.from('poll_votes').select('*').in('poll_id', pollIds),
+        ])
+        return (polls as Poll[]).map((poll) => {
+          const pollOptions = (options as PollOption[]).filter((o) => o.poll_id === poll.id)
+          const pollVotes = (votes as PollVote[]).filter((v) => v.poll_id === poll.id)
+          return {
+            poll,
+            options: pollOptions.map((o) => ({ ...o, vote_count: pollVotes.filter((v) => v.option_id === o.id).length })),
+            myVote: null,
+            total_votes: pollVotes.length,
+          }
+        })
+      },
+    },
+
+    events: {
+      async list(serverId) {
+        const { data, error } = await client.from('events').select('*').eq('server_id', serverId).order('start_at')
+        if (error) throw error
+        return data as AppEvent[]
+      },
+
+      async create(data) {
+        const { data: event, error } = await client.from('events').insert(data).select().single()
+        if (error) throw error
+        return event as AppEvent
+      },
+
+      async rsvp(eventId, userId, status) {
+        const { data, error } = await client
+          .from('event_rsvps')
+          .upsert({ event_id: eventId, user_id: userId, status })
+          .select()
+          .single()
+        if (error) throw error
+        return data as EventRsvp
+      },
+
+      async getRsvps(eventId) {
+        const { data, error } = await client.from('event_rsvps').select('*').eq('event_id', eventId)
+        if (error) throw error
+        return data as EventRsvp[]
       },
     },
   }

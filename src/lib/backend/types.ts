@@ -1,4 +1,4 @@
-import type { Profile, Server, Channel, ChannelCategory, Member, Message, Reaction, Ban, DirectMessageGroup, DirectMessage, Role, UserRole, ChannelRoleOverride, CommunitySettings, SpaceVisibility, SpaceType, AuditLog, AuditLogAction, Report, ReportCategory, ReportStatus, Mute, AutomodRule } from '@/lib/types'
+import type { Profile, Server, Channel, ChannelCategory, Member, Message, Reaction, Ban, DirectMessageGroup, DirectMessage, Role, UserRole, ChannelRoleOverride, CommunitySettings, SpaceVisibility, SpaceType, AuditLog, AuditLogAction, Report, ReportCategory, ReportStatus, Mute, AutomodRule, Poll, PollOption, PollVote, PollWithResults, AppEvent, EventRsvp, RsvpStatus } from '@/lib/types'
 
 export interface AuthUser {
   id: string
@@ -124,5 +124,22 @@ export interface Backend {
     create(data: Omit<AutomodRule, 'id' | 'created_at' | 'enabled'> & { enabled?: boolean }): Promise<AutomodRule>
     update(id: string, updates: Partial<Pick<AutomodRule, 'name' | 'rule_type' | 'config' | 'action' | 'enabled'>>): Promise<AutomodRule>
     delete(id: string): Promise<void>
+  }
+  threads: {
+    create(serverId: string, parentChannelId: string, parentMessageId: string, name: string): Promise<Channel>
+    listByChannel(channelId: string): Promise<Channel[]>
+  }
+  polls: {
+    create(channelId: string, question: string, options: string[], createdBy: string): Promise<Poll & { options: PollOption[] }>
+    vote(pollId: string, optionId: string, userId: string): Promise<PollVote>
+    getResults(pollId: string, userId: string): Promise<PollWithResults>
+    close(pollId: string): Promise<Poll>
+    listByChannel(channelId: string): Promise<PollWithResults[]>
+  }
+  events: {
+    list(serverId: string): Promise<AppEvent[]>
+    create(data: { server_id: string; channel_id?: string | null; title: string; description?: string; start_at: string; end_at?: string | null; created_by: string }): Promise<AppEvent>
+    rsvp(eventId: string, userId: string, status: RsvpStatus): Promise<EventRsvp>
+    getRsvps(eventId: string): Promise<EventRsvp[]>
   }
 }

@@ -29,14 +29,21 @@ import { useContextMenuStore } from '@/stores/contextMenu'
 import { messageContextItems, memberContextItems, channelContextItems, categoryContextItems, serverHeaderContextItems } from '@/lib/contextMenuItems'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 import ReportDialog from '@/components/moderation/ReportDialog.vue'
+import ThreadPanel from '@/components/chat/ThreadPanel.vue'
+import PollCard from '@/components/chat/PollCard.vue'
+import CreatePollDialog from '@/components/chat/CreatePollDialog.vue'
+import EventsPanel from '@/components/community/EventsPanel.vue'
 import { useRoles } from '@/composables/useRoles'
 import { usePermissions } from '@/composables/usePermissions'
 import { useMutes } from '@/composables/useMutes'
 import { useMutesStore } from '@/stores/mutes'
+import { useThreads } from '@/composables/useThreads'
+import { usePolls } from '@/composables/usePolls'
+import { useEvents } from '@/composables/useEvents'
 import { Permission } from '@/lib/permissions'
 import { checkAutomod } from '@/lib/automod'
 import { backend } from '@/lib/backend'
-import type { Message, Profile, Member, MemberRole, Channel, ChannelCategory, AutomodRule } from '@/lib/types'
+import type { Message, Profile, Member, MemberRole, Channel, ChannelCategory, AutomodRule, RsvpStatus } from '@/lib/types'
 
 const route = useRoute()
 const router = useRouter()
@@ -57,6 +64,9 @@ const toastStore = useToastStore()
 const contextMenuStore = useContextMenuStore()
 const { fetchMutes, muteMember } = useMutes()
 const mutesStore = useMutesStore()
+const { fetchThreadsForChannel, createThread } = useThreads()
+const { polls, fetchPolls, createPoll, vote: votePoll, closePoll } = usePolls()
+const { events, rsvpsByEvent, fetchEvents, createEvent, rsvp: rsvpEvent, loadRsvps } = useEvents()
 const { openDM } = useDMs()
 const { updateProfile } = useProfile()
 const { typingUsers, onTyping, onSent, startListening, stopListening } = useTyping(
@@ -123,6 +133,16 @@ const reportDialogTargetId = ref('')
 
 // Automod rules (loaded once per server)
 const automodRules = ref<AutomodRule[]>([])
+
+// Engagement panels
+const activeThread = ref<Channel | null>(null)
+const showPollsPanel = ref(false)
+const showEventsPanel = ref(false)
+const showCreatePoll = ref(false)
+
+// Announcement space: only MANAGE_MESSAGES holders can post
+const isAnnouncementSpace = computed(() => currentServer.value?.space_type === 'announcement')
+const canPostInChannel = computed(() => !isAnnouncementSpace.value || canModerate.value)
 
 const serverId = ref('')
 const channelId = ref('')
@@ -220,6 +240,7 @@ function loadServer() {
     })
     fetchMutes(serverId.value).catch(() => {})
     backend.automod_rules.list(serverId.value).then((rules) => { automodRules.value = rules }).catch(() => {})
+    fetchEvents(serverId.value).catch(() => {})
   }
 }
 
@@ -280,6 +301,8 @@ watch(() => channelsStore.activeChannelId, (id) => {
       refreshUnread(channelsStore.channels.map((c) => c.id))
     })
     fetchReactionsForChannel(id)
+    fetchPolls(id).catch(() => {})
+    fetchThreadsForChannel(id).catch(() => {})
   }
 }, { immediate: true })
 
@@ -388,6 +411,7 @@ watch(messages, scrollToBottom)
 async function handleSendMessage() {
   const content = messageInput.value.trim()
   if (!content || sending.value || !channelsStore.activeChannelId || !authStore.user?.id || slowmodeRemaining.value > 0) return
+  if (!canPostInChannel.value) return
 
   // Check if user is muted
   if (mutesStore.isMuted(serverId.value, authStore.user.id)) {
@@ -782,6 +806,25 @@ function handleBan(userId: string) {
   }
 }
 
+// ── Thread ────────────────────────────────────────────────
+function handleCreateThread(msg: Message & { profile: Profile }) {
+  confirmDialog.value = {
+    title: 'Create Thread',
+    message: `Start a thread from this message.`,
+    confirmLabel: 'Create',
+    danger: false,
+    inputPlaceholder: 'Thread name',
+    onConfirm: async (name: string) => {
+      confirmDialog.value = null
+      if (!name.trim() || !channelsStore.activeChannelId) return
+      const thread = await createThread(serverId.value, channelsStore.activeChannelId, msg.id, name.trim())
+      activeThread.value = thread
+      showPollsPanel.value = false
+      showEventsPanel.value = false
+    },
+  }
+}
+
 // ── Report ────────────────────────────────────────────────
 function handleReport(type: 'message' | 'user', targetId: string) {
   reportDialogType.value = type
@@ -859,7 +902,44 @@ async function refreshPinnedPanel() {
 
 async function togglePinnedPanel() {
   showPinnedPanel.value = !showPinnedPanel.value
-  if (showPinnedPanel.value) await refreshPinnedPanel()
+  if (showPinnedPanel.value) {
+    activeThread.value = null
+    showPollsPanel.value = false
+    showEventsPanel.value = false
+    await refreshPinnedPanel()
+  }
+}
+
+// ── Poll handlers ──────────────────────────────────────────
+async function handlePollVote(pollId: string, optionId: string) {
+  if (!authStore.user?.id) return
+  await votePoll(pollId, optionId, authStore.user.id)
+}
+
+async function handlePollClose(pollId: string) {
+  if (!channelsStore.activeChannelId) return
+  await closePoll(pollId, channelsStore.activeChannelId)
+}
+
+async function handleCreatePollSubmit(data: { question: string; options: string[] }) {
+  if (!channelsStore.activeChannelId || !authStore.user?.id) return
+  await createPoll(channelsStore.activeChannelId, data.question, data.options, authStore.user.id)
+  showCreatePoll.value = false
+  showPollsPanel.value = true
+  showPinnedPanel.value = false
+  activeThread.value = null
+  showEventsPanel.value = false
+}
+
+// ── Events handlers ────────────────────────────────────────
+function handleCreateEvent(data: { server_id: string; channel_id: string | null; title: string; description: string; start_at: string; end_at: string | null }) {
+  if (!authStore.user?.id) return
+  createEvent({ ...data, created_by: authStore.user.id }).catch(() => {})
+}
+
+function handleEventRsvp(data: { eventId: string; status: RsvpStatus }) {
+  if (!authStore.user?.id) return
+  rsvpEvent(data.eventId, authStore.user.id, data.status).catch(() => {})
 }
 
 // ── Context Menus ─────────────────────────────────────────
@@ -880,6 +960,7 @@ function onMessageContext(event: MouseEvent, msg: Message & { profile: Profile }
       emojiPickerForMsg.value = msg.id
     },
     onReport: !isAuthor ? () => handleReport('message', msg.id) : undefined,
+    onCreateThread: canModerate.value ? () => handleCreateThread(msg) : undefined,
   }))
 }
 
@@ -1157,6 +1238,28 @@ function onServerHeaderContext(event: MouseEvent) {
               <path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2l-2-2z"/>
             </svg>
           </button>
+          <!-- Polls panel toggle -->
+          <button
+            @click="showPollsPanel = !showPollsPanel; if (showPollsPanel) { showPinnedPanel = false; activeThread = null; showEventsPanel = false }"
+            :class="showPollsPanel ? 'text-text-primary bg-bg-hover' : 'text-text-muted hover:text-text-primary hover:bg-bg-hover'"
+            class="rounded p-1.5"
+            title="Polls"
+          >
+            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>
+            </svg>
+          </button>
+          <!-- Events panel toggle -->
+          <button
+            @click="showEventsPanel = !showEventsPanel; if (showEventsPanel) { showPinnedPanel = false; activeThread = null; showPollsPanel = false }"
+            :class="showEventsPanel ? 'text-text-primary bg-bg-hover' : 'text-text-muted hover:text-text-primary hover:bg-bg-hover'"
+            class="rounded p-1.5"
+            title="Events"
+          >
+            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+            </svg>
+          </button>
         </div>
       </header>
     </template>
@@ -1373,12 +1476,25 @@ function onServerHeaderContext(event: MouseEvent) {
             ref="messageInputEl"
             v-model="messageInput"
             type="text"
-            :placeholder="slowmodeRemaining > 0 ? `Slowmode active — wait ${slowmodeRemaining}s` : `Message #${activeChannel?.name ?? 'general'}`"
-            :disabled="!activeChannel || slowmodeRemaining > 0"
+            :placeholder="!canPostInChannel ? 'This is an announcement channel — only moderators can post' : slowmodeRemaining > 0 ? `Slowmode active — wait ${slowmodeRemaining}s` : `Message #${activeChannel?.name ?? 'general'}`"
+            :disabled="!activeChannel || slowmodeRemaining > 0 || !canPostInChannel"
             class="flex-1 bg-transparent text-text-primary placeholder-text-muted outline-none disabled:cursor-not-allowed disabled:opacity-60"
             @keydown.enter.prevent="handleSendMessage"
             @input="onTyping"
           />
+          <!-- Poll button -->
+          <button
+            v-if="canPostInChannel"
+            type="button"
+            @click="showCreatePoll = true"
+            :class="showCreatePoll ? 'text-accent' : 'text-text-muted hover:text-text-primary'"
+            class="flex-shrink-0 rounded p-1 transition-colors"
+            title="Create Poll"
+          >
+            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
+              <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>
+            </svg>
+          </button>
           <button
             type="submit"
             :disabled="!messageInput.trim() || sending || !activeChannel || slowmodeRemaining > 0"
@@ -1440,6 +1556,53 @@ function onServerHeaderContext(event: MouseEvent) {
           </div>
         </div>
       </div>
+
+      <!-- Thread panel -->
+      <ThreadPanel
+        v-else-if="activeThread"
+        :thread="activeThread"
+        :can-post="canPostInChannel"
+        @close="activeThread = null"
+      />
+
+      <!-- Polls panel -->
+      <div v-else-if="showPollsPanel" class="flex h-full flex-col">
+        <div class="flex items-center justify-between border-b border-bg-tertiary px-4 py-3">
+          <h3 class="text-sm font-semibold">Polls</h3>
+          <button @click="showPollsPanel = false" class="rounded p-1 text-text-muted hover:bg-bg-hover hover:text-text-primary">
+            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        </div>
+        <div class="flex-1 overflow-y-auto p-4 space-y-3">
+          <p v-if="polls.length === 0" class="py-6 text-center text-sm text-text-muted">No polls in this channel.</p>
+          <PollCard
+            v-for="pr in polls"
+            :key="pr.poll.id"
+            :poll-result="pr"
+            :user-id="authStore.user?.id ?? ''"
+            :can-close="canModerate"
+            @vote="handlePollVote(pr.poll.id, $event)"
+            @close="handlePollClose(pr.poll.id)"
+          />
+        </div>
+      </div>
+
+      <!-- Events panel -->
+      <EventsPanel
+        v-else-if="showEventsPanel"
+        :events="events"
+        :rsvps-by-event="rsvpsByEvent"
+        :user-id="authStore.user?.id ?? ''"
+        :server-id="serverId"
+        :channels="channelsStore.channels"
+        :can-create="canModerate"
+        @close="showEventsPanel = false"
+        @create="handleCreateEvent"
+        @rsvp="handleEventRsvp"
+        @load-rsvps="loadRsvps($event)"
+      />
 
       <!-- Default member list -->
       <div v-else class="p-4">
@@ -1751,6 +1914,13 @@ function onServerHeaderContext(event: MouseEvent) {
     :server-id="serverId"
     @report="handleReportSubmit"
     @close="showReportDialog = false"
+  />
+
+  <!-- Create Poll dialog -->
+  <CreatePollDialog
+    v-if="showCreatePoll"
+    @create="handleCreatePollSubmit"
+    @close="showCreatePoll = false"
   />
 
   <!-- Confirm dialog -->
