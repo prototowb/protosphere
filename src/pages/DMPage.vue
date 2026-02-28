@@ -14,8 +14,10 @@ import { useContextMenuStore } from '@/stores/contextMenu'
 import { dmMessageContextItems, dmConversationContextItems } from '@/lib/contextMenuItems'
 import { useDmUnread } from '@/composables/useDmUnread'
 import { useTyping } from '@/composables/useTyping'
+import { useRealtime } from '@/composables/useRealtime'
 import { useMessageSearch } from '@/composables/useMessageSearch'
 import { useProfile } from '@/composables/useProfile'
+import { isLocalMode } from '@/lib/backend'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 import type { DirectMessage, Profile } from '@/lib/types'
 
@@ -28,10 +30,12 @@ const contextMenuStore = useContextMenuStore()
 const { fetchGroups, openDM, fetchMessages, sendMessage, editMessage, deleteMessage, searchUsers } = useDMs()
 const { unreadDmGroupIds, markDmRead, refreshDmUnread } = useDmUnread()
 const { profile: myProfile, fetchProfile: fetchMyProfile } = useProfile()
-const { typingUsers, onTyping, onSent, startListening, stopListening } = useTyping(
+const { typingUsers, onTyping: localOnTyping, onSent: localOnSent, startListening, stopListening } = useTyping(
   () => store.activeDmGroupId,
   () => myProfile.value?.display_name ?? authStore.user?.email?.split('@')[0] ?? 'Someone',
 )
+const { startDmMessages, stopDmMessages, startTypingChannel, broadcastTyping, broadcastStopTyping, stopTypingChannel } = useRealtime()
+const realtimeTypingUsers = ref<string[]>([])
 const { query: dmSearchQuery, results: dmSearchResults, isOpen: dmSearchOpen, open: openDmSearch, close: closeDmSearch } = useMessageSearch(() => messages.value)
 
 const messageInput = ref('')
@@ -115,6 +119,8 @@ onMounted(async () => {
 
 onUnmounted(() => {
   stopListening()
+  stopDmMessages()
+  stopTypingChannel()
 })
 
 watch(dmGroupId, (id) => {
@@ -130,6 +136,22 @@ watch(dmGroupId, (id) => {
 function loadMessages(id: string) {
   store.activeDmGroupId = id
   fetchMessages(id).then(() => scrollToBottom())
+  if (!isLocalMode) {
+    stopDmMessages()
+    stopTypingChannel()
+    realtimeTypingUsers.value = []
+    startDmMessages(id)
+    startTypingChannel(id, (names) => { realtimeTypingUsers.value = names })
+  }
+}
+
+const displayTypingUsers = computed(() => isLocalMode ? typingUsers.value : realtimeTypingUsers.value)
+
+function handleInput() {
+  localOnTyping()
+  if (!isLocalMode && authStore.user?.id) {
+    broadcastTyping(authStore.user.id, myProfile.value?.display_name ?? authStore.user.email?.split('@')[0] ?? 'Someone')
+  }
 }
 
 watch(messages, scrollToBottom)
@@ -150,7 +172,10 @@ async function handleSend() {
   try {
     messageInput.value = ''
     replyingTo.value = null
-    onSent()
+    localOnSent()
+    if (!isLocalMode && authStore.user?.id) {
+      broadcastStopTyping(authStore.user.id, myProfile.value?.display_name ?? 'Someone')
+    }
     await sendMessage(dmGroupId.value, content, replyId)
   } finally {
     sending.value = false
@@ -529,9 +554,9 @@ function onDmConversationContext(event: MouseEvent, groupId: string) {
           </button>
         </div>
         <!-- Typing indicator -->
-        <div v-if="typingUsers.length > 0" class="px-1 pb-1 text-xs text-text-muted">
-          <span class="font-medium text-text-secondary">{{ typingUsers.join(', ') }}</span>
-          {{ typingUsers.length === 1 ? 'is' : 'are' }} typing
+        <div v-if="displayTypingUsers.length > 0" class="px-1 pb-1 text-xs text-text-muted">
+          <span class="font-medium text-text-secondary">{{ displayTypingUsers.join(', ') }}</span>
+          {{ displayTypingUsers.length === 1 ? 'is' : 'are' }} typing
           <span class="animate-pulse">...</span>
         </div>
         <form @submit.prevent="handleSend" class="flex items-center gap-2 rounded-lg bg-bg-tertiary px-4 py-3">
@@ -556,7 +581,7 @@ function onDmConversationContext(event: MouseEvent, groupId: string) {
             type="text"
             :placeholder="`Message ${activeGroup?.otherUser.display_name ?? ''}`"
             class="flex-1 bg-transparent text-text-primary placeholder-text-muted outline-none"
-            @input="onTyping"
+            @input="handleInput"
             @keydown.enter.prevent="handleSend"
           />
           <button

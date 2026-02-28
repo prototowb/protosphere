@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onUnmounted } from 'vue'
 import { useMessagesStore } from '@/stores/messages'
 import { useMessages } from '@/composables/useMessages'
+import { useRealtime } from '@/composables/useRealtime'
 import { useAuthStore } from '@/stores/auth'
 import UserAvatar from '@/components/user/UserAvatar.vue'
 import type { Channel, Profile, Message } from '@/lib/types'
@@ -12,6 +13,7 @@ const emit = defineEmits<{ close: [] }>()
 const authStore = useAuthStore()
 const messagesStore = useMessagesStore()
 const { fetchMessages, sendMessage } = useMessages()
+const { startMessages, stopMessages } = useRealtime()
 
 const input = ref('')
 const sending = ref(false)
@@ -22,7 +24,12 @@ const messages = computed(() =>
 
 watch(() => props.thread.id, async (id) => {
   await fetchMessages(id)
+  startMessages(id)
 }, { immediate: true })
+
+onUnmounted(() => {
+  stopMessages()
+})
 
 async function submit() {
   const content = input.value.trim()

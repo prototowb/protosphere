@@ -7,11 +7,13 @@
 import { supabase } from '@/lib/supabase'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 import { useMessagesStore } from '@/stores/messages'
+import { useDmsStore } from '@/stores/dms'
 import { usePresenceStore } from '@/stores/presence'
-import type { Message, Profile, UserStatus } from '@/lib/types'
+import type { Message, Profile, DirectMessage, UserStatus } from '@/lib/types'
 
 // ── Module-level channel refs ──────────────────────────────────────────────
 let _messagesChannel: RealtimeChannel | null = null
+let _dmMessagesChannel: RealtimeChannel | null = null
 let _presenceChannel: RealtimeChannel | null = null
 let _typingChannel: RealtimeChannel | null = null
 
@@ -89,6 +91,63 @@ export function useRealtime() {
     if (_messagesChannel && supabase) {
       supabase.removeChannel(_messagesChannel)
       _messagesChannel = null
+    }
+  }
+
+  // ── DM Messages ───────────────────────────────────────────────────────────
+  function startDmMessages(groupId: string) {
+    if (!supabase) return
+    stopDmMessages()
+    const dmsStore = useDmsStore()
+
+    _dmMessagesChannel = supabase
+      .channel(`dm_messages:${groupId}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'direct_messages', filter: `dm_group_id=eq.${groupId}` },
+        async (payload) => {
+          const { data } = await supabase!
+            .from('direct_messages')
+            .select('*, profile:profiles(*)')
+            .eq('id', (payload.new as { id: string }).id)
+            .single()
+          if (!data) return
+          const list = dmsStore.messagesByGroup[groupId]
+          if (list && !list.find((m) => m.id === (data as DirectMessage).id)) {
+            list.push(data as DirectMessage & { profile: Profile })
+          }
+        },
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'direct_messages', filter: `dm_group_id=eq.${groupId}` },
+        (payload) => {
+          const list = dmsStore.messagesByGroup[groupId]
+          if (!list) return
+          const updated = payload.new as DirectMessage
+          const idx = list.findIndex((m) => m.id === updated.id)
+          if (idx !== -1) {
+            Object.assign(list[idx]!, { content: updated.content, edited_at: updated.edited_at })
+          }
+        },
+      )
+      .on(
+        'postgres_changes',
+        { event: 'DELETE', schema: 'public', table: 'direct_messages', filter: `dm_group_id=eq.${groupId}` },
+        (payload) => {
+          const list = dmsStore.messagesByGroup[groupId]
+          if (!list) return
+          const deleted = payload.old as { id: string }
+          dmsStore.messagesByGroup[groupId] = list.filter((m) => m.id !== deleted.id)
+        },
+      )
+      .subscribe()
+  }
+
+  function stopDmMessages() {
+    if (_dmMessagesChannel && supabase) {
+      supabase.removeChannel(_dmMessagesChannel)
+      _dmMessagesChannel = null
     }
   }
 
@@ -194,6 +253,7 @@ export function useRealtime() {
 
   function stopAll() {
     stopMessages()
+    stopDmMessages()
     stopPresence()
     stopTypingChannel()
   }
@@ -201,6 +261,8 @@ export function useRealtime() {
   return {
     startMessages,
     stopMessages,
+    startDmMessages,
+    stopDmMessages,
     startPresence,
     stopPresence,
     startTypingChannel,
