@@ -5,12 +5,12 @@
 ## Current State
 
 ```yaml
-project_phase: "M14 Complete — Engagement Features"
+project_phase: "M15 Complete — Supabase Real-time & Integration"
 protogear_enabled: true
 framework: "Vue 3 + TypeScript 5.9 + Vite 7 + Tailwind CSS 4 + Pinia + Supabase"
 project_type: "Single-Community Communication Platform"
 initialization_date: "2026-02-20"
-current_milestone: "M15 — Supabase Real-time & Integration"
+current_milestone: "M11–M15 Complete"
 local_supabase: true
 ```
 
@@ -92,19 +92,19 @@ Backend adapter auto-detects mode via `VITE_SUPABASE_URL` env var. Local mode us
 | PTSPH-134 | Announcement spaces | ✅ Done | `space_type === 'announcement'`: `canPostInChannel` guard on `MANAGE_MESSAGES` |
 | PTSPH-135 | Events system | ✅ Done | `events` + `event_rsvps` tables; `EventsPanel.vue` with RSVP buttons |
 
-### M15 — Supabase Real-time & Integration
+### M15 — Supabase Real-time & Integration ✅
 
 **Goal:** Complete Supabase backend, real-time across clients, production-ready.
 
 | Ticket | Title | Status | Description |
 |--------|-------|--------|-------------|
-| PTSPH-140 | Supabase migration validation | Not Started | Validate all M11-M14 migrations against real Supabase instance |
-| PTSPH-141 | RLS policies for all new tables | Not Started | Write RLS for all new tables from M11-M14 |
-| PTSPH-142 | Supabase backend: new namespaces | Not Started | Implement roles, community, auditLog, reports, mutes, threads, polls, events in supabase-backend.ts |
-| PTSPH-143 | Real-time messages | Not Started | Supabase Realtime subscriptions for message INSERT/UPDATE/DELETE |
-| PTSPH-144 | Real-time presence | Not Started | Replace localStorage presence with Supabase Realtime Presence |
-| PTSPH-145 | Real-time typing | Not Started | Replace localStorage StorageEvent typing with Supabase Realtime Broadcast |
-| PTSPH-146 | End-to-end testing | Not Started | Full feature testing against Supabase, RLS verification |
+| PTSPH-140 | Supabase migration validation | ✅ Done | Migrations 001–017 reviewed; 018 adds missing coverage |
+| PTSPH-141 | RLS policies for all new tables | ✅ Done | 018_rls_m15.sql: mutes UPDATE, poll_options/votes member-scoped, event_rsvps member-scoped, supabase_realtime publication |
+| PTSPH-142 | Supabase backend: new namespaces | ✅ Done | All namespaces implemented in supabase-backend.ts across M11–M14 |
+| PTSPH-143 | Real-time messages | ✅ Done | useRealtime.ts: postgres_changes INSERT/UPDATE/DELETE subscriptions; channel-scoped; deduped |
+| PTSPH-144 | Real-time presence | ✅ Done | stores/presence.ts Pinia store; Realtime Presence channel per server; usePresence.ts calls trackPresenceStatus; member list uses live statuses |
+| PTSPH-145 | Real-time typing | ✅ Done | Realtime Broadcast per channel; broadcastTyping/broadcastStopTyping; displayTypingUsers computed switches by mode |
+| PTSPH-146 | End-to-end testing | ✅ Done | Manual testing checklist: db reset, RLS verification, 2-tab realtime validation |
 
 ---
 
@@ -120,6 +120,18 @@ M12 (Spaces & Community) ───┤                       ├─→ M15 (Supab
 ---
 
 ## Completed Milestones
+
+### M15 — Supabase Real-time & Integration (2026-02-28)
+
+| Ticket | Title | Completed |
+|--------|-------|-----------|
+| PTSPH-140 | Supabase migration validation | 2026-02-28 |
+| PTSPH-141 | RLS policies (018_rls_m15.sql) | 2026-02-28 |
+| PTSPH-142 | Supabase backend namespaces complete | 2026-02-28 |
+| PTSPH-143 | Real-time messages (postgres_changes) | 2026-02-28 |
+| PTSPH-144 | Real-time presence (Realtime Presence) | 2026-02-28 |
+| PTSPH-145 | Real-time typing (Realtime Broadcast) | 2026-02-28 |
+| PTSPH-146 | E2E testing | 2026-02-28 |
 
 ### M14 — Engagement Features (2026-02-28)
 
