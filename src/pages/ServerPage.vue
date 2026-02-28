@@ -42,8 +42,10 @@ import { usePolls } from '@/composables/usePolls'
 import { useEvents } from '@/composables/useEvents'
 import { Permission } from '@/lib/permissions'
 import { checkAutomod } from '@/lib/automod'
-import { backend } from '@/lib/backend'
-import type { Message, Profile, Member, MemberRole, Channel, ChannelCategory, AutomodRule, RsvpStatus } from '@/lib/types'
+import { backend, isLocalMode } from '@/lib/backend'
+import { useRealtime } from '@/composables/useRealtime'
+import { usePresenceStore } from '@/stores/presence'
+import type { Message, Profile, Member, MemberRole, Channel, ChannelCategory, AutomodRule, RsvpStatus, UserStatus } from '@/lib/types'
 
 const route = useRoute()
 const router = useRouter()
@@ -69,10 +71,13 @@ const { polls, fetchPolls, createPoll, vote: votePoll, closePoll } = usePolls()
 const { events, rsvpsByEvent, fetchEvents, createEvent, rsvp: rsvpEvent, loadRsvps } = useEvents()
 const { openDM } = useDMs()
 const { updateProfile } = useProfile()
-const { typingUsers, onTyping, onSent, startListening, stopListening } = useTyping(
+const { typingUsers, onTyping: localOnTyping, onSent: localOnSent, startListening, stopListening } = useTyping(
   () => channelsStore.activeChannelId,
   () => myMember.value?.profile.display_name ?? authStore.user?.email?.split('@')[0] ?? 'Someone',
 )
+const { startMessages, stopMessages, startPresence, startTypingChannel, broadcastTyping, broadcastStopTyping, stopTypingChannel, stopAll } = useRealtime()
+const presenceStore = usePresenceStore()
+const realtimeTypingUsers = ref<string[]>([])
 const { unreadChannelIds, markRead, refreshUnread } = useUnread()
 const { scanForMentions, clearServerMentions, requestPermission, getUsername } = useMentions()
 const { query: searchQuery, results: searchResults, isOpen: searchOpen, open: openSearch, close: closeSearch } = useMessageSearch(() => messages.value)
@@ -143,6 +148,9 @@ const showCreatePoll = ref(false)
 // Announcement space: only MANAGE_MESSAGES holders can post
 const isAnnouncementSpace = computed(() => currentServer.value?.space_type === 'announcement')
 const canPostInChannel = computed(() => !isAnnouncementSpace.value || canModerate.value)
+
+// Real-time typing: use Supabase Broadcast in Supabase mode, localStorage events in local mode
+const displayTypingUsers = computed(() => isLocalMode ? typingUsers.value : realtimeTypingUsers.value)
 
 const serverId = ref('')
 const channelId = ref('')
@@ -236,6 +244,10 @@ function loadServer() {
       if (authStore.user?.id) {
         fetchServerRoles(serverId.value)
         fetchUserRoles(serverId.value, authStore.user.id)
+        if (!isLocalMode) {
+          const displayName = myMember.value?.profile.display_name ?? authStore.user.email?.split('@')[0] ?? 'Someone'
+          startPresence(serverId.value, authStore.user.id, displayName, 'online')
+        }
       }
     })
     fetchMutes(serverId.value).catch(() => {})
@@ -265,6 +277,7 @@ onMounted(async () => {
 })
 onUnmounted(() => {
   stopListening()
+  stopAll()
   if (slowmodeTimer) clearInterval(slowmodeTimer)
 })
 watch(() => route.params.serverId, loadServer)
@@ -303,6 +316,13 @@ watch(() => channelsStore.activeChannelId, (id) => {
     fetchReactionsForChannel(id)
     fetchPolls(id).catch(() => {})
     fetchThreadsForChannel(id).catch(() => {})
+    if (!isLocalMode) {
+      stopMessages()
+      stopTypingChannel()
+      realtimeTypingUsers.value = []
+      startMessages(id)
+      startTypingChannel(id, (names) => { realtimeTypingUsers.value = names })
+    }
   }
 }, { immediate: true })
 
@@ -443,7 +463,10 @@ async function handleSendMessage() {
   sending.value = true
   try {
     messageInput.value = ''
-    onSent()
+    localOnSent()
+    if (!isLocalMode && authStore.user?.id) {
+      broadcastStopTyping(authStore.user.id, myMember.value?.profile.display_name ?? 'Someone')
+    }
     await sendMessage(channelsStore.activeChannelId, authStore.user.id, content, replyingTo.value?.id)
     replyingTo.value = null
     const slowmode = activeChannel.value?.slowmode_seconds ?? 0
@@ -861,6 +884,21 @@ function handleMute(userId: string) {
       toastStore.show('Member muted', 'success')
     },
   }
+}
+
+// ── Typing input handler ───────────────────────────────────
+function handleInput() {
+  localOnTyping()
+  if (!isLocalMode && authStore.user?.id) {
+    const displayName = myMember.value?.profile.display_name ?? authStore.user.email?.split('@')[0] ?? 'Someone'
+    broadcastTyping(authStore.user.id, displayName)
+  }
+}
+
+// ── Presence: get live status for a member ────────────────
+function getEffectiveStatus(member: Member & { profile: Profile }): UserStatus {
+  if (isLocalMode) return member.profile.status
+  return presenceStore.getStatus(member.user_id, member.profile.status)
 }
 
 // ── Reactions ─────────────────────────────────────────────
@@ -1451,9 +1489,9 @@ function onServerHeaderContext(event: MouseEvent) {
           <button @click="replyingTo = null" class="ml-auto flex-shrink-0 hover:text-text-primary">✕</button>
         </div>
         <!-- Typing indicator -->
-        <div v-if="typingUsers.length > 0" class="px-1 pb-1 text-xs text-text-muted">
-          <span class="font-medium text-text-secondary">{{ typingUsers.join(', ') }}</span>
-          {{ typingUsers.length === 1 ? 'is' : 'are' }} typing
+        <div v-if="displayTypingUsers.length > 0" class="px-1 pb-1 text-xs text-text-muted">
+          <span class="font-medium text-text-secondary">{{ displayTypingUsers.join(', ') }}</span>
+          {{ displayTypingUsers.length === 1 ? 'is' : 'are' }} typing
           <span class="animate-pulse">...</span>
         </div>
         <form @submit.prevent="handleSendMessage" class="flex items-center gap-2 rounded-lg bg-bg-tertiary px-4 py-3" :class="replyingTo ? 'rounded-t-none' : ''">
@@ -1480,7 +1518,7 @@ function onServerHeaderContext(event: MouseEvent) {
             :disabled="!activeChannel || slowmodeRemaining > 0 || !canPostInChannel"
             class="flex-1 bg-transparent text-text-primary placeholder-text-muted outline-none disabled:cursor-not-allowed disabled:opacity-60"
             @keydown.enter.prevent="handleSendMessage"
-            @input="onTyping"
+            @input="handleInput"
           />
           <!-- Poll button -->
           <button
@@ -1622,7 +1660,7 @@ function onServerHeaderContext(event: MouseEvent) {
               <UserAvatar
                 :src="member.profile.avatar_url"
                 :alt="member.profile.display_name"
-                :status="member.profile.status"
+                :status="getEffectiveStatus(member)"
                 size="sm"
               />
               <div class="min-w-0 flex-1">
@@ -1658,7 +1696,7 @@ function onServerHeaderContext(event: MouseEvent) {
           <UserAvatar
             :src="selectedMember.profile.avatar_url"
             :alt="selectedMember.profile.display_name"
-            :status="selectedMember.profile.status"
+            :status="getEffectiveStatus(selectedMember)"
             size="lg"
           />
           <button @click="selectedMember = null" class="mb-1 rounded p-1 text-text-muted hover:text-text-primary">

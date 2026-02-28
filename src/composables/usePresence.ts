@@ -1,6 +1,7 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { backend } from '@/lib/backend'
+import { trackPresenceStatus } from '@/composables/useRealtime'
 import type { UserStatus } from '@/lib/types'
 
 const IDLE_TIMEOUT = 5 * 60 * 1000 // 5 minutes
@@ -15,6 +16,7 @@ export function usePresence() {
 
   async function setStatus(status: UserStatus) {
     currentStatus.value = status
+    trackPresenceStatus(status)
     if (!authStore.user?.id) return
     try {
       await backend.profiles.update(authStore.user.id, { status })
