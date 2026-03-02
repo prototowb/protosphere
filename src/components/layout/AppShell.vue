@@ -69,9 +69,12 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="flex h-screen overflow-hidden">
-    <!-- Community Sidebar (replaces old narrow icon sidebar) -->
-    <CommunitySidebar v-if="ui.serverSidebarOpen" />
+  <div class="flex flex-col h-screen overflow-hidden">
+    <!-- Community Top Bar -->
+    <CommunitySidebar />
+
+    <!-- Content row -->
+    <div class="flex flex-1 overflow-hidden">
 
     <!-- Channel Sidebar -->
     <aside
@@ -169,5 +172,7 @@ onMounted(() => {
         </div>
       </slot>
     </aside>
+
+    </div><!-- end content row -->
   </div>
 </template>

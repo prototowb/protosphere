@@ -36,6 +36,14 @@ Backend adapter auto-detects mode via `VITE_SUPABASE_URL` env var. Local mode us
 
 ## Active Tickets
 
+### M16 — UI Redesign 🚧
+
+| Ticket | Title | Status | Description |
+|--------|-------|--------|-------------|
+| PTSPH-147 | Horizontal community top bar | 🚧 In Progress | Redesign `CommunitySidebar.vue` from vertical left column to full-width horizontal top bar; restructure `AppShell.vue` layout accordingly |
+
+---
+
 ### M11 — Roles & Permissions Engine ✅
 
 **Goal:** Replace hardcoded `owner > admin > moderator > member` with flexible custom roles + permission bitfields.
