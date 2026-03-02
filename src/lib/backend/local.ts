@@ -115,6 +115,7 @@ export function createLocalBackend(): Backend {
           user: { id, email },
           access_token: `local_${id}`,
         })
+        return { needsConfirmation: false }
       },
 
       async loginWithOAuth(_provider: string) {

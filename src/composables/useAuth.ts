@@ -9,7 +9,7 @@ export function useAuth() {
   }
 
   async function register(email: string, password: string, username: string) {
-    await backend.auth.register(email, password, username)
+    return backend.auth.register(email, password, username)
   }
 
   async function loginWithOAuth(provider: string) {

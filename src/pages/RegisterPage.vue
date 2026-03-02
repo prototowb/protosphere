@@ -21,6 +21,7 @@ const password = ref('')
 const confirmPassword = ref('')
 const error = ref('')
 const loading = ref(false)
+const confirmationPending = ref(false)
 
 const passwordsMatch = computed(() => password.value === confirmPassword.value)
 const usernameValid = computed(() => /^[a-zA-Z0-9_]{3,32}$/.test(username.value))
@@ -45,8 +46,11 @@ async function handleRegister() {
 
   loading.value = true
   try {
-    await register(email.value, password.value, username.value)
-    // Redirect is handled by the isAuthenticated watcher above
+    const result = await register(email.value, password.value, username.value)
+    if (result.needsConfirmation) {
+      confirmationPending.value = true
+    }
+    // If no confirmation needed, redirect is handled by the isAuthenticated watcher above
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : 'Registration failed'
   } finally {
@@ -79,13 +83,22 @@ async function handleOAuth(provider: 'github' | 'google') {
       </div>
       <p class="mb-6 text-text-secondary">Join the community</p>
 
+      <!-- Email confirmation pending -->
+      <div v-if="confirmationPending" class="rounded bg-accent/10 px-4 py-4 text-sm">
+        <p class="font-semibold text-accent">Check your email</p>
+        <p class="mt-1 text-text-secondary">
+          We sent a confirmation link to <span class="font-medium text-text-primary">{{ email }}</span>.
+          Click it to activate your account, then <router-link to="/login" class="text-accent underline">sign in</router-link>.
+        </p>
+      </div>
+
       <!-- Error display -->
       <div v-if="error" class="mb-4 rounded bg-red-500/10 px-4 py-3 text-sm text-red-400">
         {{ error }}
       </div>
 
       <!-- Registration form -->
-      <form @submit.prevent="handleRegister" class="space-y-4">
+      <form v-if="!confirmationPending" @submit.prevent="handleRegister" class="space-y-4">
         <div>
           <label for="email" class="mb-1 block text-sm text-text-secondary">Email</label>
           <input

@@ -15,12 +15,14 @@ export function createSupabaseBackend(): Backend {
       },
 
       async register(email: string, password: string, username: string) {
-        const { error } = await client.auth.signUp({
+        const { data, error } = await client.auth.signUp({
           email,
           password,
           options: { data: { username } },
         })
         if (error) throw error
+        // session is null when email confirmation is required
+        return { needsConfirmation: data.session === null }
       },
 
       async loginWithOAuth(provider: string) {
