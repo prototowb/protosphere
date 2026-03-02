@@ -249,7 +249,7 @@ export function createSupabaseBackend(): Backend {
       async list(serverId: string) {
         const { data, error } = await client
           .from('members')
-          .select('*, profile:profiles(*)')
+          .select('*, profile:profiles!user_id(*)')
           .eq('server_id', serverId)
         if (error) throw error
         return data as (Member & { profile: Profile })[]
@@ -303,7 +303,7 @@ export function createSupabaseBackend(): Backend {
       async list(channelId: string) {
         const { data, error } = await client
           .from('messages')
-          .select('*, profile:profiles(*)')
+          .select('*, profile:profiles!author_id(*)')
           .eq('channel_id', channelId)
           .order('created_at')
         if (error) throw error
@@ -314,7 +314,7 @@ export function createSupabaseBackend(): Backend {
         const { data, error } = await client
           .from('messages')
           .insert({ channel_id: channelId, author_id: authorId, content, reply_to_id: replyToId ?? null })
-          .select('*, profile:profiles(*)')
+          .select('*, profile:profiles!author_id(*)')
           .single()
         if (error) throw error
         return data as Message & { profile: Profile }
@@ -361,7 +361,7 @@ export function createSupabaseBackend(): Backend {
       async listPinned(channelId: string) {
         const { data, error } = await client
           .from('messages')
-          .select('*, profile:profiles(*)')
+          .select('*, profile:profiles!author_id(*)')
           .eq('channel_id', channelId)
           .eq('is_pinned', true)
           .order('created_at')
@@ -445,7 +445,7 @@ export function createSupabaseBackend(): Backend {
       async list(serverId: string) {
         const { data, error } = await client
           .from('bans')
-          .select('*, profile:profiles(*)')
+          .select('*, profile:profiles!user_id(*)')
           .eq('server_id', serverId)
         if (error) throw error
         return data as (Ban & { profile: Profile })[]
@@ -562,7 +562,7 @@ export function createSupabaseBackend(): Backend {
       async listMessages(dmGroupId: string) {
         const { data, error } = await client
           .from('direct_messages')
-          .select('*, profile:profiles(*)')
+          .select('*, profile:profiles!author_id(*)')
           .eq('dm_group_id', dmGroupId)
           .order('created_at')
         if (error) throw error
@@ -573,7 +573,7 @@ export function createSupabaseBackend(): Backend {
         const { data, error } = await client
           .from('direct_messages')
           .insert({ dm_group_id: dmGroupId, author_id: authorId, content, reply_to_id: replyToId ?? null })
-          .select('*, profile:profiles(*)')
+          .select('*, profile:profiles!author_id(*)')
           .single()
         if (error) throw error
         return data as DirectMessage & { profile: Profile }
