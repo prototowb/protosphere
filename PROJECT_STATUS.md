@@ -5,12 +5,12 @@
 ## Current State
 
 ```yaml
-project_phase: "Release Ready — M11–M15 Complete + Release Fixes"
+project_phase: "Active Development — M16 UI Redesign"
 protogear_enabled: true
 framework: "Vue 3 + TypeScript 5.9 + Vite 7 + Tailwind CSS 4 + Pinia + Supabase"
 project_type: "Single-Community Communication Platform"
 initialization_date: "2026-02-20"
-current_milestone: "M11–M15 Complete"
+current_milestone: "M16 — UI Redesign"
 local_supabase: true
 ```
 
@@ -36,11 +36,11 @@ Backend adapter auto-detects mode via `VITE_SUPABASE_URL` env var. Local mode us
 
 ## Active Tickets
 
-### M16 — UI Redesign 🚧
+### M16 — UI Redesign ✅
 
 | Ticket | Title | Status | Description |
 |--------|-------|--------|-------------|
-| PTSPH-147 | Horizontal community top bar | 🚧 In Progress | Redesign `CommunitySidebar.vue` from vertical left column to full-width horizontal top bar; restructure `AppShell.vue` layout accordingly |
+| PTSPH-147 | Horizontal community top bar | ✅ Done | Redesign `CommunitySidebar.vue` from vertical w-60 column to full-width h-12 top bar; restructure `AppShell.vue` to flex-col; polls icon moves left of input, emoji moves right |
 
 ---
 
@@ -361,6 +361,7 @@ supabase/migrations/
 
 ## Recent Updates
 
+- 2026-03-05: M16 — Horizontal community top bar (PTSPH-147): `CommunitySidebar.vue` redesigned as full-width `h-12` `<header>`; community identity left, scrollable space nav middle, actions right. `AppShell.vue` switched to `flex-col`. Polls icon moved left of input field, emoji picker right. `dev:local` npm script added for localStorage-only development (no Docker required).
 - 2026-02-28: Release fixes — ThreadPanel and DMPage now have real-time message subscriptions (startMessages/startDmMessages). DMPage typing wired to Realtime Broadcast in Supabase mode. Migration 019 adds `direct_messages` to supabase_realtime publication.
 - 2026-02-28: M11–M15 complete. Roles & permissions, community identity, moderation, engagement features, Supabase real-time across all clients.
 - 2026-02-22: Vision pivot — Protosphere becomes single-community platform. M11-M15 planned.
