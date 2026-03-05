@@ -1495,6 +1495,29 @@ function onServerHeaderContext(event: MouseEvent) {
           <span class="animate-pulse">...</span>
         </div>
         <form @submit.prevent="handleSendMessage" class="flex items-center gap-2 rounded-lg bg-bg-tertiary px-4 py-3" :class="replyingTo ? 'rounded-t-none' : ''">
+          <!-- Poll button -->
+          <button
+            v-if="canPostInChannel"
+            type="button"
+            @click="showCreatePoll = true"
+            :class="showCreatePoll ? 'text-accent' : 'text-text-muted hover:text-text-primary'"
+            class="flex-shrink-0 rounded p-1 transition-colors"
+            title="Create Poll"
+          >
+            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
+              <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>
+            </svg>
+          </button>
+          <input
+            ref="messageInputEl"
+            v-model="messageInput"
+            type="text"
+            :placeholder="!canPostInChannel ? 'This is an announcement channel — only moderators can post' : slowmodeRemaining > 0 ? `Slowmode active — wait ${slowmodeRemaining}s` : `Message #${activeChannel?.name ?? 'general'}`"
+            :disabled="!activeChannel || slowmodeRemaining > 0 || !canPostInChannel"
+            class="flex-1 bg-transparent text-text-primary placeholder-text-muted outline-none disabled:cursor-not-allowed disabled:opacity-60"
+            @keydown.enter.prevent="handleSendMessage"
+            @input="handleInput"
+          />
           <!-- Emoji drawer button -->
           <button
             type="button"
@@ -1508,29 +1531,6 @@ function onServerHeaderContext(event: MouseEvent) {
               <path d="M8 14s1.5 2 4 2 4-2 4-2"/>
               <line x1="9" y1="9" x2="9.01" y2="9" stroke-linecap="round" stroke-width="2.5"/>
               <line x1="15" y1="9" x2="15.01" y2="9" stroke-linecap="round" stroke-width="2.5"/>
-            </svg>
-          </button>
-          <input
-            ref="messageInputEl"
-            v-model="messageInput"
-            type="text"
-            :placeholder="!canPostInChannel ? 'This is an announcement channel — only moderators can post' : slowmodeRemaining > 0 ? `Slowmode active — wait ${slowmodeRemaining}s` : `Message #${activeChannel?.name ?? 'general'}`"
-            :disabled="!activeChannel || slowmodeRemaining > 0 || !canPostInChannel"
-            class="flex-1 bg-transparent text-text-primary placeholder-text-muted outline-none disabled:cursor-not-allowed disabled:opacity-60"
-            @keydown.enter.prevent="handleSendMessage"
-            @input="handleInput"
-          />
-          <!-- Poll button -->
-          <button
-            v-if="canPostInChannel"
-            type="button"
-            @click="showCreatePoll = true"
-            :class="showCreatePoll ? 'text-accent' : 'text-text-muted hover:text-text-primary'"
-            class="flex-shrink-0 rounded p-1 transition-colors"
-            title="Create Poll"
-          >
-            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
-              <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>
             </svg>
           </button>
           <button
