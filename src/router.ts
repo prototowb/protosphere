@@ -1,7 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 
-const publicRoutes = ['login', 'register', 'landing']
+const publicRoutes = ['login', 'register', 'landing', 'reset-password', 'confirm-email', 'not-found', 'join-community']
 
 const router = createRouter({
   history: createWebHistory(),
@@ -68,9 +68,39 @@ const router = createRouter({
       component: () => import('@/pages/InvitePage.vue'),
     },
     {
-      path: '/:pathMatch(.*)*',
+      path: '/reset-password',
+      name: 'reset-password',
+      component: () => import('@/pages/ResetPasswordPage.vue'),
+    },
+    {
+      path: '/confirm-email',
+      name: 'confirm-email',
+      component: () => import('@/pages/ConfirmEmailPage.vue'),
+    },
+    {
+      path: '/admin/approvals',
+      name: 'admin-approvals',
+      component: () => import('@/pages/AdminApprovalsPage.vue'),
+    },
+    {
+      path: '/join/:token',
+      name: 'join-community',
+      component: () => import('@/pages/JoinCommunityPage.vue'),
+    },
+    {
+      path: '/community/members',
+      name: 'community-members',
+      component: () => import('@/pages/MemberDirectoryPage.vue'),
+    },
+    {
+      path: '/404',
       name: 'not-found',
-      redirect: '/channels/@me',
+      component: () => import('@/pages/NotFoundPage.vue'),
+    },
+    {
+      path: '/:pathMatch(.*)*',
+      name: 'catch-all',
+      component: () => import('@/pages/NotFoundPage.vue'),
     },
   ],
 })

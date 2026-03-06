@@ -1,4 +1,4 @@
-import type { Profile, Server, Channel, ChannelCategory, Member, Message, Reaction, Ban, DirectMessageGroup, DirectMessage, Role, UserRole, ChannelRoleOverride, CommunitySettings, SpaceVisibility, SpaceType, AuditLog, AuditLogAction, Report, ReportCategory, ReportStatus, Mute, AutomodRule, Poll, PollOption, PollVote, PollWithResults, AppEvent, EventRsvp, RsvpStatus } from '@/lib/types'
+import type { Profile, Server, Channel, ChannelCategory, Member, Message, Reaction, Ban, DirectMessageGroup, DirectMessage, Role, UserRole, ChannelRoleOverride, CommunitySettings, SpaceVisibility, SpaceType, AuditLog, AuditLogAction, Report, ReportCategory, ReportStatus, Mute, AutomodRule, Poll, PollOption, PollVote, PollWithResults, AppEvent, EventRsvp, RsvpStatus, CommunityInvite, CommunityInviteUsage, NotificationPreference, NotificationLevel } from '@/lib/types'
 
 export interface AuthUser {
   id: string
@@ -22,6 +22,7 @@ export interface Backend {
     loginWithOAuth(provider: string): Promise<void>
     logout(): Promise<void>
     resetPassword(email: string): Promise<void>
+    updatePassword(newPassword: string): Promise<void>
     init(onSession: (session: AuthSession | null) => void): void
   }
   profiles: {
@@ -29,6 +30,9 @@ export interface Backend {
     update(id: string, updates: Partial<Profile>): Promise<Profile>
     uploadAvatar(userId: string, file: File): Promise<string>
     search(query: string, excludeUserId: string): Promise<Profile[]>
+    listPending(): Promise<Profile[]>
+    approve(userId: string): Promise<void>
+    reject(userId: string): Promise<void>
   }
   servers: {
     list(userId: string): Promise<Server[]>
@@ -88,7 +92,7 @@ export interface Backend {
   }
   community: {
     get(): Promise<CommunitySettings>
-    update(updates: Partial<Pick<CommunitySettings, 'name' | 'description' | 'logo_url' | 'banner_url' | 'registration_mode' | 'rules' | 'welcome_message'>>): Promise<CommunitySettings>
+    update(updates: Partial<Pick<CommunitySettings, 'name' | 'description' | 'logo_url' | 'banner_url' | 'registration_mode' | 'rules' | 'welcome_message' | 'setup_complete'>>): Promise<CommunitySettings>
   }
   roles: {
     list(serverId: string): Promise<Role[]>
@@ -141,5 +145,17 @@ export interface Backend {
     create(data: { server_id: string; channel_id?: string | null; title: string; description?: string; start_at: string; end_at?: string | null; created_by: string }): Promise<AppEvent>
     rsvp(eventId: string, userId: string, status: RsvpStatus): Promise<EventRsvp>
     getRsvps(eventId: string): Promise<EventRsvp[]>
+  }
+  community_invites: {
+    create(data: { created_by: string; usage: CommunityInviteUsage; max_uses?: number | null; expires_at?: string | null }): Promise<CommunityInvite>
+    validate(token: string): Promise<CommunityInvite | null>
+    use(token: string, userId: string): Promise<void>
+    list(createdBy: string): Promise<CommunityInvite[]>
+    revoke(id: string): Promise<void>
+  }
+  notification_preferences: {
+    get(userId: string, channelId: string): Promise<NotificationPreference | null>
+    set(userId: string, channelId: string, level: NotificationLevel): Promise<NotificationPreference>
+    listForUser(userId: string): Promise<NotificationPreference[]>
   }
 }

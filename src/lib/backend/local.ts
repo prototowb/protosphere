@@ -1,4 +1,4 @@
-import type { Profile, Server, Channel, ChannelCategory, Member, Message, Reaction, Ban, DirectMessageGroup, DirectMessageMember, DirectMessage, Role, UserRole, ChannelRoleOverride, CommunitySettings, AuditLog, Report, Mute, AutomodRule, Poll, PollOption, PollVote, AppEvent, EventRsvp } from '@/lib/types'
+import type { Profile, Server, Channel, ChannelCategory, Member, Message, Reaction, Ban, DirectMessageGroup, DirectMessageMember, DirectMessage, Role, UserRole, ChannelRoleOverride, CommunitySettings, AuditLog, Report, Mute, AutomodRule, Poll, PollOption, PollVote, AppEvent, EventRsvp, CommunityInvite, NotificationPreference } from '@/lib/types'
 import type { AuthSession, Backend } from './types'
 import { serializePermissions, PermissionPresets, Permission } from '@/lib/permissions'
 
@@ -29,6 +29,8 @@ const KEYS = {
   poll_votes: 'protosphere_poll_votes',
   events: 'protosphere_events',
   event_rsvps: 'protosphere_event_rsvps',
+  community_invites: 'protosphere_community_invites',
+  notification_prefs: 'protosphere_notification_prefs',
 } as const
 
 interface StoredUser {
@@ -106,6 +108,11 @@ export function createLocalBackend(): Backend {
           status: 'online',
           status_text: '',
           bio: '',
+          pronouns: '',
+          website: '',
+          location: '',
+          display_banner_url: null,
+          account_status: 'active',
           created_at: now,
           updated_at: now,
         }
@@ -128,6 +135,10 @@ export function createLocalBackend(): Backend {
 
       async resetPassword(_email: string) {
         // No-op in local mode
+      },
+
+      async updatePassword(_newPassword: string) {
+        // No-op in local mode — passwords stored as plaintext for dev only
       },
 
       init(onSession) {
@@ -163,6 +174,26 @@ export function createLocalBackend(): Backend {
           reader.onerror = () => reject(new Error('Failed to read file'))
           reader.readAsDataURL(file)
         })
+      },
+
+      async listPending() {
+        const profiles = readJson<Record<string, Profile>>(KEYS.profiles, {})
+        return Object.values(profiles).filter((p) => p.account_status === 'pending')
+      },
+
+      async approve(userId: string) {
+        const profiles = readJson<Record<string, Profile>>(KEYS.profiles, {})
+        const profile = profiles[userId]
+        if (profile) {
+          profile.account_status = 'active'
+          writeJson(KEYS.profiles, profiles)
+        }
+      },
+
+      async reject(userId: string) {
+        const profiles = readJson<Record<string, Profile>>(KEYS.profiles, {})
+        delete profiles[userId]
+        writeJson(KEYS.profiles, profiles)
       },
 
       async search(query: string, excludeUserId: string) {
@@ -893,6 +924,7 @@ export function createLocalBackend(): Backend {
           registration_mode: 'open',
           rules: '',
           welcome_message: '',
+          setup_complete: false,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         }
@@ -906,7 +938,7 @@ export function createLocalBackend(): Backend {
         const current: CommunitySettings = stored ?? {
           id: 'local', name: 'My Community', description: '', logo_url: null,
           banner_url: null, registration_mode: 'open', rules: '', welcome_message: '',
-          created_at: now, updated_at: now,
+          setup_complete: false, created_at: now, updated_at: now,
         }
         const updated: CommunitySettings = { ...current, ...updates, updated_at: now }
         writeJson(KEYS.community, updated)
@@ -1245,6 +1277,75 @@ export function createLocalBackend(): Backend {
       async getRsvps(eventId) {
         const rsvps = readJson<EventRsvp[]>(KEYS.event_rsvps, [])
         return rsvps.filter((r) => r.event_id === eventId)
+      },
+    },
+
+    community_invites: {
+      async create(data) {
+        const invites = readJson<CommunityInvite[]>(KEYS.community_invites, [])
+        const invite: CommunityInvite = {
+          id: crypto.randomUUID(),
+          token: Math.random().toString(36).substring(2, 18),
+          created_by: data.created_by,
+          usage: data.usage ?? 'single_use',
+          max_uses: data.max_uses ?? null,
+          use_count: 0,
+          expires_at: data.expires_at ?? null,
+          created_at: new Date().toISOString(),
+        }
+        invites.push(invite)
+        writeJson(KEYS.community_invites, invites)
+        return invite
+      },
+
+      async validate(token) {
+        const invites = readJson<CommunityInvite[]>(KEYS.community_invites, [])
+        const invite = invites.find((i) => i.token === token)
+        if (!invite) return null
+        if (invite.expires_at && new Date(invite.expires_at) < new Date()) return null
+        if (invite.max_uses !== null && invite.use_count >= invite.max_uses) return null
+        return invite
+      },
+
+      async use(token, _userId) {
+        const invites = readJson<CommunityInvite[]>(KEYS.community_invites, [])
+        const invite = invites.find((i) => i.token === token)
+        if (invite) {
+          invite.use_count++
+          writeJson(KEYS.community_invites, invites)
+        }
+      },
+
+      async list(createdBy) {
+        const invites = readJson<CommunityInvite[]>(KEYS.community_invites, [])
+        return invites.filter((i) => i.created_by === createdBy)
+      },
+
+      async revoke(id) {
+        const invites = readJson<CommunityInvite[]>(KEYS.community_invites, [])
+        writeJson(KEYS.community_invites, invites.filter((i) => i.id !== id))
+      },
+    },
+
+    notification_preferences: {
+      async get(userId, channelId) {
+        const prefs = readJson<NotificationPreference[]>(KEYS.notification_prefs, [])
+        return prefs.find((p) => p.user_id === userId && p.channel_id === channelId) ?? null
+      },
+
+      async set(userId, channelId, level) {
+        const prefs = readJson<NotificationPreference[]>(KEYS.notification_prefs, [])
+        const existing = prefs.findIndex((p) => p.user_id === userId && p.channel_id === channelId)
+        const pref: NotificationPreference = { user_id: userId, channel_id: channelId, level }
+        if (existing !== -1) prefs[existing] = pref
+        else prefs.push(pref)
+        writeJson(KEYS.notification_prefs, prefs)
+        return pref
+      },
+
+      async listForUser(userId) {
+        const prefs = readJson<NotificationPreference[]>(KEYS.notification_prefs, [])
+        return prefs.filter((p) => p.user_id === userId)
       },
     },
   }

@@ -1,4 +1,4 @@
-import type { Profile, Server, Channel, ChannelCategory, Member, Message, Reaction, Ban, DirectMessageGroup, DirectMessage, Role, UserRole, ChannelRoleOverride, CommunitySettings, AuditLog, Report, Mute, AutomodRule, Poll, PollOption, PollVote, AppEvent, EventRsvp } from '@/lib/types'
+import type { Profile, Server, Channel, ChannelCategory, Member, Message, Reaction, Ban, DirectMessageGroup, DirectMessage, Role, UserRole, ChannelRoleOverride, CommunitySettings, AuditLog, Report, Mute, AutomodRule, Poll, PollOption, PollVote, AppEvent, EventRsvp, CommunityInvite, NotificationPreference } from '@/lib/types'
 import type { Backend } from './types'
 import { supabase } from '@/lib/supabase'
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -40,8 +40,13 @@ export function createSupabaseBackend(): Backend {
 
       async resetPassword(email: string) {
         const { error } = await client.auth.resetPasswordForEmail(email, {
-          redirectTo: `${window.location.origin}/settings`,
+          redirectTo: `${window.location.origin}/reset-password`,
         })
+        if (error) throw error
+      },
+
+      async updatePassword(newPassword: string) {
+        const { error } = await client.auth.updateUser({ password: newPassword })
         if (error) throw error
       },
 
@@ -97,6 +102,32 @@ export function createSupabaseBackend(): Backend {
         if (uploadError) throw uploadError
         const { data } = client.storage.from('avatars').getPublicUrl(filePath)
         return data.publicUrl
+      },
+
+      async listPending() {
+        const { data, error } = await client
+          .from('profiles')
+          .select('*')
+          .eq('account_status', 'pending')
+          .order('created_at', { ascending: true })
+        if (error) throw error
+        return data as Profile[]
+      },
+
+      async approve(userId: string) {
+        const { error } = await client
+          .from('profiles')
+          .update({ account_status: 'active' })
+          .eq('id', userId)
+        if (error) throw error
+      },
+
+      async reject(userId: string) {
+        const { error } = await client
+          .from('profiles')
+          .update({ account_status: 'rejected' })
+          .eq('id', userId)
+        if (error) throw error
       },
 
       async search(query: string, excludeUserId: string) {
@@ -946,6 +977,88 @@ export function createSupabaseBackend(): Backend {
         const { data, error } = await client.from('event_rsvps').select('*').eq('event_id', eventId)
         if (error) throw error
         return data as EventRsvp[]
+      },
+    },
+
+    community_invites: {
+      async create(data) {
+        const token = crypto.randomUUID().replace(/-/g, '').substring(0, 16)
+        const { data: row, error } = await client
+          .from('community_invites')
+          .insert({
+            token,
+            created_by: data.created_by,
+            usage: data.usage ?? 'single_use',
+            max_uses: data.max_uses ?? null,
+            expires_at: data.expires_at ?? null,
+          })
+          .select()
+          .single()
+        if (error) throw error
+        return row as CommunityInvite
+      },
+
+      async validate(token) {
+        const { data, error } = await client
+          .from('community_invites')
+          .select('*')
+          .eq('token', token)
+          .single()
+        if (error || !data) return null
+        const inv = data as CommunityInvite
+        if (inv.expires_at && new Date(inv.expires_at) < new Date()) return null
+        if (inv.max_uses !== null && inv.use_count >= inv.max_uses) return null
+        return inv
+      },
+
+      async use(token, _userId) {
+        await client.rpc('use_community_invite', { p_token: token })
+      },
+
+      async list(createdBy) {
+        const { data, error } = await client
+          .from('community_invites')
+          .select('*')
+          .eq('created_by', createdBy)
+          .order('created_at', { ascending: false })
+        if (error) throw error
+        return data as CommunityInvite[]
+      },
+
+      async revoke(id) {
+        const { error } = await client.from('community_invites').delete().eq('id', id)
+        if (error) throw error
+      },
+    },
+
+    notification_preferences: {
+      async get(userId, channelId) {
+        const { data } = await client
+          .from('notification_preferences')
+          .select('*')
+          .eq('user_id', userId)
+          .eq('channel_id', channelId)
+          .single()
+        return (data as NotificationPreference | null) ?? null
+      },
+
+      async set(userId, channelId, level) {
+        const { data, error } = await client
+          .from('notification_preferences')
+          .upsert({ user_id: userId, channel_id: channelId, level })
+          .select()
+          .single()
+        if (error) throw error
+        return data as NotificationPreference
+      },
+
+      async listForUser(userId) {
+        const { data, error } = await client
+          .from('notification_preferences')
+          .select('*')
+          .eq('user_id', userId)
+        if (error) throw error
+        return data as NotificationPreference[]
       },
     },
   }

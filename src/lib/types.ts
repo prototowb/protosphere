@@ -13,6 +13,8 @@ export type SpaceType = 'general' | 'announcement' | 'archive'
 
 export type RegistrationMode = 'open' | 'approval' | 'invite_only' | 'closed'
 
+export type ProfileStatus = 'active' | 'pending' | 'rejected'
+
 export interface Profile {
   id: string
   username: string
@@ -21,6 +23,11 @@ export interface Profile {
   status: UserStatus
   status_text: string
   bio: string
+  pronouns: string
+  website: string
+  location: string
+  display_banner_url: string | null
+  account_status: ProfileStatus
   created_at: string
   updated_at: string
 }
@@ -49,6 +56,7 @@ export interface CommunitySettings {
   registration_mode: RegistrationMode
   rules: string
   welcome_message: string
+  setup_complete: boolean
   created_at: string
   updated_at: string
 }
@@ -303,4 +311,29 @@ export interface EventRsvp {
   user_id: string
   status: RsvpStatus
   created_at: string
+}
+
+// ── Community Invites ───────────────────────────────────────
+
+export type CommunityInviteUsage = 'single_use' | 'multi_use'
+
+export interface CommunityInvite {
+  id: string
+  token: string
+  created_by: string
+  usage: CommunityInviteUsage
+  max_uses: number | null
+  use_count: number
+  expires_at: string | null
+  created_at: string
+}
+
+// ── Notification Preferences ────────────────────────────────
+
+export type NotificationLevel = 'all' | 'mentions' | 'none'
+
+export interface NotificationPreference {
+  user_id: string
+  channel_id: string
+  level: NotificationLevel
 }

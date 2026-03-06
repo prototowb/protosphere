@@ -76,16 +76,30 @@ onMounted(() => {
     <!-- Content row -->
     <div class="flex flex-1 overflow-hidden">
 
-    <!-- Channel Sidebar -->
+    <!-- Channel Sidebar (desktop) -->
     <aside
       v-if="ui.channelSidebarOpen"
-      class="flex w-60 flex-col bg-bg-secondary"
+      class="hidden md:flex w-60 flex-shrink-0 flex-col bg-bg-secondary"
     >
-      <slot name="sidebar-header">
-        <div class="flex h-12 items-center border-b border-bg-tertiary px-4">
-          <h2 class="truncate font-semibold">Direct Messages</h2>
+      <div class="flex items-center">
+        <div class="flex-1 min-w-0">
+          <slot name="sidebar-header">
+            <div class="flex h-12 items-center border-b border-bg-tertiary px-4">
+              <h2 class="truncate font-semibold">Direct Messages</h2>
+            </div>
+          </slot>
         </div>
-      </slot>
+        <!-- Collapse channel sidebar -->
+        <button
+          @click="ui.channelSidebarOpen = false"
+          class="hidden md:flex flex-shrink-0 items-center justify-center h-12 w-6 border-b border-bg-tertiary text-text-muted hover:text-text-primary bg-bg-secondary"
+          title="Collapse sidebar"
+        >
+          <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="15 18 9 12 15 6"/>
+          </svg>
+        </button>
+      </div>
 
       <nav class="flex-1 overflow-y-auto p-2">
         <slot name="sidebar-content">
@@ -141,10 +155,32 @@ onMounted(() => {
       </div>
     </aside>
 
+    <!-- Channel sidebar collapsed: expand strip -->
+    <button
+      v-else
+      @click="ui.channelSidebarOpen = true"
+      class="hidden md:flex flex-shrink-0 w-6 items-center justify-center bg-bg-secondary border-r border-bg-tertiary text-text-muted hover:text-text-primary hover:bg-bg-hover"
+      title="Expand sidebar"
+    >
+      <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="9 18 15 12 9 6"/>
+      </svg>
+    </button>
+
     <!-- Main Content -->
-    <main class="flex flex-1 flex-col">
+    <main class="flex flex-1 flex-col min-w-0">
       <slot name="top-bar">
         <header class="flex h-12 items-center border-b border-bg-tertiary bg-bg-primary px-4">
+          <!-- Mobile hamburger -->
+          <button
+            class="mr-2 flex md:hidden rounded p-1 text-text-muted hover:bg-bg-hover hover:text-text-primary"
+            @click="ui.channelSidebarOpen = !ui.channelSidebarOpen"
+            title="Toggle sidebar"
+          >
+            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/>
+            </svg>
+          </button>
           <span class="text-text-secondary">Home</span>
         </header>
       </slot>
@@ -160,19 +196,71 @@ onMounted(() => {
       <slot name="input" />
     </main>
 
-    <!-- Member Sidebar -->
+    <!-- Member Sidebar (desktop) -->
     <aside
       v-if="ui.memberSidebarOpen"
-      class="w-60 overflow-y-auto bg-bg-secondary"
+      class="hidden md:flex w-60 flex-shrink-0 flex-col bg-bg-secondary"
     >
-      <slot name="members">
-        <div class="p-4">
-          <h3 class="mb-2 text-xs font-semibold uppercase text-text-muted">Members</h3>
-          <p class="text-sm text-text-secondary">Member list will go here.</p>
+      <div class="flex items-center border-b border-bg-tertiary">
+        <!-- Collapse member sidebar -->
+        <button
+          @click="ui.memberSidebarOpen = false"
+          class="flex h-12 w-6 flex-shrink-0 items-center justify-center text-text-muted hover:text-text-primary hover:bg-bg-hover"
+          title="Collapse members"
+        >
+          <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="9 18 15 12 9 6"/>
+          </svg>
+        </button>
+        <div class="flex-1 min-w-0">
+          <slot name="members-header" />
         </div>
-      </slot>
+      </div>
+      <div class="flex-1 overflow-y-auto">
+        <slot name="members">
+          <div class="p-4">
+            <h3 class="mb-2 text-xs font-semibold uppercase text-text-muted">Members</h3>
+            <p class="text-sm text-text-secondary">Member list will go here.</p>
+          </div>
+        </slot>
+      </div>
     </aside>
 
+    <!-- Member sidebar collapsed: expand strip -->
+    <button
+      v-else
+      @click="ui.memberSidebarOpen = true"
+      class="hidden md:flex flex-shrink-0 w-6 items-center justify-center bg-bg-secondary border-l border-bg-tertiary text-text-muted hover:text-text-primary hover:bg-bg-hover"
+      title="Expand members"
+    >
+      <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="15 18 9 12 15 6"/>
+      </svg>
+    </button>
+
     </div><!-- end content row -->
+
+    <!-- Mobile overlay sidebar -->
+    <div
+      v-if="ui.channelSidebarOpen"
+      class="fixed inset-0 z-40 flex md:hidden"
+    >
+      <div class="absolute inset-0 bg-black/60" @click="ui.channelSidebarOpen = false" />
+      <aside class="relative z-10 flex w-72 flex-col bg-bg-secondary">
+        <div class="flex items-center justify-between border-b border-bg-tertiary px-4 h-12">
+          <slot name="sidebar-header-title">
+            <h2 class="font-semibold">Menu</h2>
+          </slot>
+          <button @click="ui.channelSidebarOpen = false" class="text-text-muted hover:text-text-primary">
+            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        </div>
+        <nav class="flex-1 overflow-y-auto p-2">
+          <slot name="sidebar-content" />
+        </nav>
+      </aside>
+    </div>
   </div>
 </template>

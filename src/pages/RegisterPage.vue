@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, computed, watch, onMounted } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
 import { useAuthStore } from '@/stores/auth'
-import { isLocalMode } from '@/lib/backend'
+import { isLocalMode, backend } from '@/lib/backend'
+import type { RegistrationMode } from '@/lib/types'
 
 const router = useRouter()
+const route = useRoute()
 const { register, loginWithOAuth } = useAuth()
 const authStore = useAuthStore()
 
@@ -19,15 +21,51 @@ const email = ref('')
 const username = ref('')
 const password = ref('')
 const confirmPassword = ref('')
+const inviteToken = ref((route.query.inviteToken as string) ?? '')
 const error = ref('')
 const loading = ref(false)
 const confirmationPending = ref(false)
+const registrationMode = ref<RegistrationMode>('open')
+const pendingApproval = ref(false)
 
 const passwordsMatch = computed(() => password.value === confirmPassword.value)
 const usernameValid = computed(() => /^[a-zA-Z0-9_]{3,32}$/.test(username.value))
 
+onMounted(async () => {
+  try {
+    const community = await backend.community.get()
+    registrationMode.value = community.registration_mode
+  } catch {
+    // default to open if community settings unavailable
+  }
+})
+
 async function handleRegister() {
   error.value = ''
+
+  // Registration mode gate
+  if (registrationMode.value === 'closed') {
+    error.value = 'Registration is currently closed.'
+    return
+  }
+
+  if (registrationMode.value === 'invite_only') {
+    if (!inviteToken.value.trim()) {
+      error.value = 'An invite token is required to register.'
+      return
+    }
+    // Validate invite token
+    try {
+      const invite = await backend.community_invites.validate(inviteToken.value.trim())
+      if (!invite) {
+        error.value = 'Invalid or expired invite token.'
+        return
+      }
+    } catch {
+      error.value = 'Could not validate invite token.'
+      return
+    }
+  }
 
   if (!usernameValid.value) {
     error.value = 'Username must be 3-32 characters (letters, numbers, underscores only)'
@@ -47,8 +85,20 @@ async function handleRegister() {
   loading.value = true
   try {
     const result = await register(email.value, password.value, username.value)
+
+    // For approval mode: mark user as pending
+    if (registrationMode.value === 'approval' && !result.needsConfirmation) {
+      pendingApproval.value = true
+      return
+    }
+
     if (result.needsConfirmation) {
       confirmationPending.value = true
+    }
+
+    // If invite mode: consume the invite token
+    if (registrationMode.value === 'invite_only' && inviteToken.value && authStore.user?.id) {
+      await backend.community_invites.use(inviteToken.value, authStore.user.id).catch(() => {})
     }
     // If no confirmation needed, redirect is handled by the isAuthenticated watcher above
   } catch (e: unknown) {
@@ -83,8 +133,20 @@ async function handleOAuth(provider: 'github' | 'google') {
       </div>
       <p class="mb-6 text-text-secondary">Join the community</p>
 
+      <!-- Registration closed -->
+      <div v-if="registrationMode === 'closed'" class="rounded bg-red-500/10 px-4 py-4 text-sm text-red-400">
+        <p class="font-semibold">Registration is closed</p>
+        <p class="mt-1">This community is not accepting new registrations at this time.</p>
+      </div>
+
+      <!-- Pending approval -->
+      <div v-else-if="pendingApproval" class="rounded bg-accent/10 px-4 py-4 text-sm">
+        <p class="font-semibold text-accent">Request submitted</p>
+        <p class="mt-1 text-text-secondary">Your registration request is pending admin approval. You'll be notified when your account is activated.</p>
+      </div>
+
       <!-- Email confirmation pending -->
-      <div v-if="confirmationPending" class="rounded bg-accent/10 px-4 py-4 text-sm">
+      <div v-else-if="confirmationPending" class="rounded bg-accent/10 px-4 py-4 text-sm">
         <p class="font-semibold text-accent">Check your email</p>
         <p class="mt-1 text-text-secondary">
           We sent a confirmation link to <span class="font-medium text-text-primary">{{ email }}</span>.
@@ -98,7 +160,7 @@ async function handleOAuth(provider: 'github' | 'google') {
       </div>
 
       <!-- Registration form -->
-      <form v-if="!confirmationPending" @submit.prevent="handleRegister" class="space-y-4">
+      <form v-if="!confirmationPending && !pendingApproval && registrationMode !== 'closed'" @submit.prevent="handleRegister" class="space-y-4">
         <div>
           <label for="email" class="mb-1 block text-sm text-text-secondary">Email</label>
           <input
@@ -153,12 +215,24 @@ async function handleOAuth(provider: 'github' | 'google') {
             Passwords do not match
           </p>
         </div>
+        <!-- Invite token field (invite_only mode) -->
+        <div v-if="registrationMode === 'invite_only'">
+          <label for="invite-token" class="mb-1 block text-sm text-text-secondary">Invite Token</label>
+          <input
+            id="invite-token"
+            v-model="inviteToken"
+            type="text"
+            required
+            class="w-full rounded border border-bg-tertiary bg-bg-primary px-3 py-2 text-text-primary outline-none focus:border-accent"
+            placeholder="Enter your invite token"
+          />
+        </div>
         <button
           type="submit"
           :disabled="loading"
           class="w-full rounded bg-accent py-2 font-medium text-white hover:bg-accent-hover disabled:opacity-50"
         >
-          {{ loading ? 'Creating account...' : 'Create account' }}
+          {{ loading ? 'Creating account...' : registrationMode === 'approval' ? 'Request Access' : 'Create account' }}
         </button>
       </form>
 

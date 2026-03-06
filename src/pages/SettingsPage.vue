@@ -15,6 +15,9 @@ const username = ref('')
 const displayName = ref('')
 const bio = ref('')
 const statusText = ref('')
+const pronouns = ref('')
+const website = ref('')
+const location = ref('')
 const saving = ref(false)
 
 onMounted(async () => {
@@ -24,6 +27,9 @@ onMounted(async () => {
     displayName.value = profile.value.display_name
     bio.value = profile.value.bio
     statusText.value = profile.value.status_text
+    pronouns.value = profile.value.pronouns ?? ''
+    website.value = profile.value.website ?? ''
+    location.value = profile.value.location ?? ''
   }
 })
 
@@ -34,6 +40,9 @@ async function handleSave() {
     display_name: displayName.value,
     bio: bio.value,
     status_text: statusText.value,
+    pronouns: pronouns.value,
+    website: website.value,
+    location: location.value,
   })
   if (!error.value) {
     toastStore.show('Profile updated', 'success')
@@ -158,6 +167,43 @@ async function handleLogout() {
               class="w-full rounded border border-bg-tertiary bg-bg-primary px-3 py-2 text-text-primary outline-none focus:border-accent"
               placeholder="What are you up to?"
             />
+          </div>
+
+          <!-- Rich profile fields (PTSPH-167) -->
+          <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <div>
+              <label for="pronouns" class="mb-1 block text-sm text-text-secondary">Pronouns</label>
+              <input
+                id="pronouns"
+                v-model="pronouns"
+                type="text"
+                maxlength="32"
+                class="w-full rounded border border-bg-tertiary bg-bg-primary px-3 py-2 text-text-primary outline-none focus:border-accent"
+                placeholder="they/them"
+              />
+            </div>
+            <div>
+              <label for="location" class="mb-1 block text-sm text-text-secondary">Location</label>
+              <input
+                id="location"
+                v-model="location"
+                type="text"
+                maxlength="64"
+                class="w-full rounded border border-bg-tertiary bg-bg-primary px-3 py-2 text-text-primary outline-none focus:border-accent"
+                placeholder="City, Country"
+              />
+            </div>
+            <div>
+              <label for="website" class="mb-1 block text-sm text-text-secondary">Website</label>
+              <input
+                id="website"
+                v-model="website"
+                type="url"
+                maxlength="256"
+                class="w-full rounded border border-bg-tertiary bg-bg-primary px-3 py-2 text-text-primary outline-none focus:border-accent"
+                placeholder="https://example.com"
+              />
+            </div>
           </div>
 
           <div class="flex items-center justify-between pt-2">

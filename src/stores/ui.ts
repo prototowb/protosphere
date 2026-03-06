@@ -6,5 +6,8 @@ export const useUiStore = defineStore('ui', () => {
   const channelSidebarOpen = ref(true)
   const memberSidebarOpen = ref(true)
 
-  return { serverSidebarOpen, channelSidebarOpen, memberSidebarOpen }
+  function toggleChannelSidebar() { channelSidebarOpen.value = !channelSidebarOpen.value }
+  function toggleMemberSidebar() { memberSidebarOpen.value = !memberSidebarOpen.value }
+
+  return { serverSidebarOpen, channelSidebarOpen, memberSidebarOpen, toggleChannelSidebar, toggleMemberSidebar }
 })

@@ -25,6 +25,10 @@ export function useAuth() {
     await backend.auth.resetPassword(email)
   }
 
+  async function updatePassword(newPassword: string) {
+    await backend.auth.updatePassword(newPassword)
+  }
+
   function initAuthListener() {
     backend.auth.init((session) => {
       authStore.setSession(session)
@@ -38,6 +42,7 @@ export function useAuth() {
     loginWithOAuth,
     logout,
     resetPassword,
+    updatePassword,
     initAuthListener,
   }
 }
