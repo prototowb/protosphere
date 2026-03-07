@@ -1,7 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 
-const publicRoutes = ['login', 'register', 'landing', 'reset-password', 'confirm-email', 'not-found', 'join-community']
+const publicRoutes = ['login', 'register', 'landing', 'reset-password', 'confirm-email', 'not-found', 'error', 'join-community']
 
 const router = createRouter({
   history: createWebHistory(),
@@ -96,6 +96,12 @@ const router = createRouter({
       path: '/404',
       name: 'not-found',
       component: () => import('@/pages/NotFoundPage.vue'),
+    },
+    {
+      path: '/error',
+      name: 'error',
+      component: () => import('@/pages/ErrorPage.vue'),
+      props: (route) => ({ error: route.query.error as string | undefined }),
     },
     {
       path: '/:pathMatch(.*)*',

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, watchEffect } from 'vue'
+import { ref, watch, onMounted, watchEffect } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUiStore } from '@/stores/ui'
 import { useAuthStore } from '@/stores/auth'
@@ -10,6 +10,7 @@ import { useMentionsStore } from '@/stores/mentions'
 import { useDmUnread } from '@/composables/useDmUnread'
 import { useContextMenuStore } from '@/stores/contextMenu'
 import { useToastStore } from '@/stores/toast'
+import { useSessionSync } from '@/composables/useSessionSync'
 import { userBarContextItems } from '@/lib/contextMenuItems'
 import UserAvatar from '@/components/user/UserAvatar.vue'
 import CommunitySidebar from '@/components/layout/CommunitySidebar.vue'
@@ -18,6 +19,13 @@ import type { UserStatus } from '@/lib/types'
 const router = useRouter()
 const ui = useUiStore()
 const authStore = useAuthStore()
+const { sessionExpired, broadcastLogout, broadcastLogin, dismissExpired } = useSessionSync()
+
+// Broadcast auth state changes to other tabs (PTSPH-160)
+watch(() => authStore.isAuthenticated, (val, prev) => {
+  if (prev && !val) broadcastLogout()
+  if (!prev && val) broadcastLogin()
+})
 const { profile, fetchProfile } = useProfile()
 const { fetchServers } = useServers()
 const { currentStatus, setManualStatus } = usePresence()
@@ -69,6 +77,17 @@ onMounted(() => {
 </script>
 
 <template>
+  <!-- Session expired overlay (PTSPH-160) -->
+  <div v-if="sessionExpired" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+    <div class="rounded-lg bg-bg-secondary p-6 text-center max-w-sm w-full mx-4 shadow-xl">
+      <h2 class="text-lg font-bold mb-2">Session Expired</h2>
+      <p class="text-sm text-text-secondary mb-4">You were signed out in another tab.</p>
+      <button @click="dismissExpired" class="w-full rounded bg-accent py-2 text-sm font-medium text-white hover:bg-accent-hover">
+        Sign In Again
+      </button>
+    </div>
+  </div>
+
   <div class="flex flex-col h-screen overflow-hidden">
     <!-- Community Top Bar -->
     <CommunitySidebar />

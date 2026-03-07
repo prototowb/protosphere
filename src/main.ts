@@ -29,7 +29,8 @@ app.config.errorHandler = (err, _instance, info) => {
   console.error('[App Error]', info, err)
   // Don't redirect for auth/network errors; let the component handle those
   if (err instanceof Error && err.message.includes('Failed to fetch')) return
-  router.push({ name: 'not-found' }).catch(() => {})
+  const msg = err instanceof Error ? err.message : String(err)
+  router.push({ name: 'error', query: { error: msg } }).catch(() => {})
 }
 
 // Initialize auth listener before mounting so session is available to route guards

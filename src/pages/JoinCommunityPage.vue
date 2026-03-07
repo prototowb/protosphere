@@ -16,11 +16,11 @@ const loading = ref(false)
 
 onMounted(async () => {
   const token = route.params.token as string
-  const invite = await backend.community_invites.validate(token)
-  if (!invite) {
+  try {
+    const invite = await backend.community_invites.validate(token)
+    status.value = invite ? 'valid' : 'invalid'
+  } catch {
     status.value = 'invalid'
-  } else {
-    status.value = 'valid'
   }
 })
 
