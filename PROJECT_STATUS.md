@@ -5,12 +5,12 @@
 ## Current State
 
 ```yaml
-project_phase: "Active Development — M16 UI Redesign"
+project_phase: "Active Development — M20 Performance & Notifications"
 protogear_enabled: true
 framework: "Vue 3 + TypeScript 5.9 + Vite 7 + Tailwind CSS 4 + Pinia + Supabase"
 project_type: "Single-Community Communication Platform"
 initialization_date: "2026-02-20"
-current_milestone: "M16 — UI Redesign"
+current_milestone: "M20 — Performance, Notifications & Admin Insights"
 local_supabase: true
 ```
 
@@ -40,25 +40,25 @@ Backend adapter auto-detects mode via `VITE_SUPABASE_URL` env var. Local mode us
 
 | Ticket | Title | Priority | Status | Description |
 |--------|-------|----------|--------|-------------|
-| PTSPH-172 | Message pagination | High | 🔄 Planned | Cursor-based "load more"; `messages.list(channelId, before?, limit?)` in both backends; `hasMore`/`oldestCursor` in messagesStore; "Load earlier messages" button in ServerPage |
+| PTSPH-172 | Message pagination | High | ✅ Done | Cursor-based "load more"; `messages.list(channelId, before?, limit?)` in both backends; `hasMore`/`oldestCursor` in messagesStore; "Load earlier messages" button in ServerPage |
 | PTSPH-173 | File/image attachment upload | High | 🔄 Planned | Paperclip button in input bar; Supabase Storage `attachments` bucket; `messages.upload()` in Backend interface; base64 stub in local mode |
 | PTSPH-174 | DM notification preferences | Medium | 🔄 Planned | `dm_notification_preferences` table (migration 023); backend namespace; mute toggle bell icon in DMPage conversation header |
 | PTSPH-175 | Server-side full-text search | High | 🔄 Planned | `search_tsv` generated column + GIN index (migration 024); `messages.search()` backend method; replace client-side `useMessageSearch` with debounced server call |
 | PTSPH-176 | Admin dashboard overview | Medium | 🔄 Planned | `AdminDashboardPage.vue` at `/admin`; stat cards for members/reports/pending/spaces; `useAdminStats.ts`; admin nav links in CommunitySidebar |
 | PTSPH-177 | Attachment rendering | High | 🔄 Planned | `MessageAttachments.vue` component; inline image preview + file chip; used in ServerPage and DMPage; depends on PTSPH-173 |
 | PTSPH-178 | Unread respects notification prefs | Medium | 🔄 Planned | `useUnread.refreshUnread` skips `level=none` channels; `useDmUnread.refreshDmUnread` skips muted DM groups; bulk preload prefs on boot |
-| PTSPH-179 | Pinned messages panel extraction | Medium | 🔄 Planned | Extract inline pinned panel from ServerPage into `PinnedMessagesPanel.vue`; same props/emit pattern as EventsPanel |
+| PTSPH-179 | Pinned messages panel extraction | Medium | ✅ Done | Extract inline pinned panel from ServerPage into `PinnedMessagesPanel.vue`; same props/emit pattern as EventsPanel |
 
-**Planned migrations:**
-- `022_message_pagination_index.sql` — index on `messages(channel_id, created_at DESC)`
-- `023_dm_notification_prefs.sql` — `dm_notification_preferences` table + RLS; `attachments` Storage bucket policy
-- `024_message_fulltext_search.sql` — `search_tsv` generated column + GIN index on `messages`
+**Migrations:**
+- `022_message_pagination_index.sql` — ✅ done — index on `messages(channel_id, created_at DESC)`
+- `023_dm_notification_prefs.sql` — planned — `dm_notification_preferences` table + RLS; `attachments` Storage bucket policy
+- `024_message_fulltext_search.sql` — planned — `search_tsv` generated column + GIN index on `messages`
 
-**Implementation order:** PTSPH-179 → PTSPH-172 → PTSPH-173+177 → PTSPH-174+178 → PTSPH-175 → PTSPH-176
+**Implementation order:** ~~PTSPH-179~~ ~~PTSPH-172~~ → PTSPH-173+177 → PTSPH-174+178 → PTSPH-175 → PTSPH-176
 
 ---
 
-### M16 — UI Redesign 🔄
+### M16 — UI Redesign ✅
 
 | Ticket | Title | Status | Description |
 |--------|-------|--------|-------------|
@@ -69,7 +69,7 @@ Backend adapter auto-detects mode via `VITE_SUPABASE_URL` env var. Local mode us
 | PTSPH-151 | Right-sidebar panel refactor | ✅ Done | `useSidebarPanel.ts` composable — `openPanel(type)`, `openThread(channel)`, `closePanel()`, `closeOnChannelChange()` |
 | PTSPH-152 | Mobile responsive layout | ✅ Done | `AppShell.vue` — sidebars hidden on mobile (`hidden md:flex`), hamburger button in top bar, overlay mobile sidebar |
 
-### M17 — Admin Setup & Auth Hardening 🔄
+### M17 — Admin Setup & Auth Hardening ✅
 
 | Ticket | Title | Status | Description |
 |--------|-------|--------|-------------|
@@ -82,7 +82,7 @@ Backend adapter auto-detects mode via `VITE_SUPABASE_URL` env var. Local mode us
 | PTSPH-159 | Community setup wizard | ✅ Done | First-login modal for bootstrapped admin; `setup_complete` flag in `community_settings` (migration `021`) |
 | PTSPH-160 | Session hardening | ✅ Done | BroadcastChannel tab sync; session-expired modal; "Sign out everywhere" in SettingsPage; `auth.logoutGlobal()` with `scope: 'global'` |
 
-### M18 — Deployment & Production Readiness 🔄
+### M18 — Deployment & Production Readiness ✅
 
 | Ticket | Title | Status | Description |
 |--------|-------|--------|-------------|
@@ -93,7 +93,7 @@ Backend adapter auto-detects mode via `VITE_SUPABASE_URL` env var. Local mode us
 | PTSPH-165 | Security hardening | ✅ Done | CSP + X-Frame-Options + X-Content-Type-Options meta tags in `index.html` |
 | PTSPH-166 | Performance optimization | ✅ Done | Route-level code splitting via dynamic imports (all 16 pages); `defineAsyncComponent` for ThreadPanel, EventsPanel, CreatePollDialog, ReportDialog in ServerPage; EmojiPicker data already lazy-loaded internally |
 
-### M19 — Profile & Social Features 🔄
+### M19 — Profile & Social Features ✅
 
 | Ticket | Title | Status | Description |
 |--------|-------|--------|-------------|
@@ -182,7 +182,7 @@ Backend adapter auto-detects mode via `VITE_SUPABASE_URL` env var. Local mode us
 ```
 M11 (Roles & Permissions) ──┐
                              ├─→ M13 (Moderation) ──┐
-M12 (Spaces & Community) ───┤                       ├─→ M15 (Supabase & Real-time) ──→ M16 (UI Redesign) ──→ M17 (Auth) ──→ M18 (Deploy) ──→ M19 (Social)
+M12 (Spaces & Community) ───┤                       ├─→ M15 (Supabase & Real-time) ──→ M16 (UI Redesign) ──→ M17 (Auth) ──→ M18 (Deploy) ──→ M19 (Social) ──→ M20 (Perf & Notifications)
                              └─→ M14 (Engagement) ──┘
 ```
 
@@ -422,6 +422,7 @@ supabase/migrations/
 
 ## Recent Updates
 
+- 2026-03-09: M20 started. PTSPH-179: `PinnedMessagesPanel.vue` extracted from ServerPage as standalone component. PTSPH-172: cursor-based message pagination (`before` + `limit` params in both backends, `paginationByChannel` in messagesStore, `fetchOlderMessages` in useMessages, "Load earlier messages" button in ServerPage with scroll-position preservation). Migration 022 committed. GitHub Actions build-dist workflow paused (push trigger → `workflow_dispatch`) while testing hoster build.
 - 2026-03-09: M16–M19 gaps closed. PTSPH-164: Branding section in CommunitySettingsPage (logo + banner URL with live preview). PTSPH-171: `useNotificationPreferences.ts` + bell icon/popover in ServerPage channel list. PTSPH-160: `auth.logoutGlobal()` (Supabase `scope: global`) + "Sign out everywhere" in SettingsPage. PTSPH-166: `defineAsyncComponent` for ThreadPanel/EventsPanel/CreatePollDialog/ReportDialog in ServerPage. All M16–M19 tickets now ✅ Done.
 - 2026-03-06: M16–M19 milestone planning complete. M16 PTSPH-148–152 (skeletons, empty states, sidebar toggles, panel refactor, mobile), M17 PTSPH-153–160 (auth hardening, registration modes, approvals, community invites), M18 PTSPH-161–166 (error pages, SPA configs, env validation, CSP), M19 PTSPH-167–171 (rich profiles, profile modal, member directory, notification prefs). Migrations 020+021. Both backends updated.
 - 2026-03-05: M16 — Horizontal community top bar (PTSPH-147): `CommunitySidebar.vue` redesigned as full-width `h-12` `<header>`; community identity left, scrollable space nav middle, actions right. `AppShell.vue` switched to `flex-col`. Polls icon moved left of input field, emoji picker right. `dev:local` npm script added for localStorage-only development (no Docker required).
