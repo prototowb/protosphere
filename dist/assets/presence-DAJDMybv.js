@@ -1,0 +1,1 @@
+import{L as a,m as o}from"./index-BeCt2F5f.js";const f=a("presence",()=>{const e=o({});function r(t,n){e.value[t]=n}function s(t,n){return e.value[t]??n}function u(){e.value={}}return{liveStatuses:e,setStatus:r,getStatus:s,clear:u}});export{f as u};
