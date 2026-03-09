@@ -1,9 +1,7 @@
 name: Build Dist
 
 on:
-  push:
-    branches:
-      - main
+  workflow_dispatch: # push trigger paused while testing hoster build
 
 concurrency:
   group: build-dist-main
