@@ -7,7 +7,7 @@ import { useToastStore } from '@/stores/toast'
 import UserAvatar from '@/components/user/UserAvatar.vue'
 
 const router = useRouter()
-const { logout } = useAuth()
+const { logout, logoutGlobal } = useAuth()
 const { profile, loading, error, fetchProfile, updateProfile, uploadAvatar } = useProfile()
 const toastStore = useToastStore()
 
@@ -63,6 +63,11 @@ async function handleAvatarUpload(event: Event) {
 
 async function handleLogout() {
   await logout()
+  router.push('/login')
+}
+
+async function handleLogoutGlobal() {
+  await logoutGlobal()
   router.push('/login')
 }
 </script>
@@ -214,13 +219,23 @@ async function handleLogout() {
             >
               {{ saving ? 'Saving...' : 'Save changes' }}
             </button>
-            <button
-              type="button"
-              @click="handleLogout"
-              class="rounded border border-red-500/30 px-4 py-2 text-sm text-red-400 hover:bg-red-500/10"
-            >
-              Log out
-            </button>
+            <div class="flex items-center gap-2">
+              <button
+                type="button"
+                @click="handleLogoutGlobal"
+                class="rounded border border-red-500/30 px-4 py-2 text-sm text-red-400 hover:bg-red-500/10"
+                title="Sign out of all devices and sessions"
+              >
+                Sign out everywhere
+              </button>
+              <button
+                type="button"
+                @click="handleLogout"
+                class="rounded border border-red-500/30 px-4 py-2 text-sm text-red-400 hover:bg-red-500/10"
+              >
+                Log out
+              </button>
+            </div>
           </div>
         </form>
       </template>

@@ -21,6 +21,11 @@ export function useAuth() {
     authStore.clear()
   }
 
+  async function logoutGlobal() {
+    await backend.auth.logoutGlobal()
+    authStore.clear()
+  }
+
   async function resetPassword(email: string) {
     await backend.auth.resetPassword(email)
   }
@@ -41,6 +46,7 @@ export function useAuth() {
     register,
     loginWithOAuth,
     logout,
+    logoutGlobal,
     resetPassword,
     updatePassword,
     initAuthListener,

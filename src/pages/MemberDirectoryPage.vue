@@ -4,11 +4,13 @@ import { backend } from '@/lib/backend'
 import { useServersStore } from '@/stores/servers'
 import { usePresenceStore } from '@/stores/presence'
 import UserAvatar from '@/components/user/UserAvatar.vue'
+import UserProfileModal from '@/components/user/UserProfileModal.vue'
 import type { Profile, Member } from '@/lib/types'
 
 const serversStore = useServersStore()
 const presenceStore = usePresenceStore()
 
+const selectedUserId = ref<string | null>(null)
 const allMembers = ref<(Member & { profile: Profile })[]>([])
 const searchQuery = ref('')
 const loading = ref(true)
@@ -70,10 +72,11 @@ onMounted(loadMembers)
     </div>
 
     <div v-else class="space-y-1">
-      <div
+      <button
         v-for="member in filteredMembers"
         :key="member.user_id"
-        class="flex items-center gap-3 rounded-lg px-3 py-2.5 hover:bg-bg-secondary transition-colors"
+        class="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 hover:bg-bg-secondary transition-colors text-left"
+        @click="selectedUserId = member.user_id"
       >
         <UserAvatar
           :src="member.profile.avatar_url"
@@ -88,7 +91,13 @@ onMounted(loadMembers)
         <span class="flex-shrink-0 rounded px-2 py-0.5 text-xs bg-bg-tertiary text-text-muted capitalize">
           {{ member.role }}
         </span>
-      </div>
+      </button>
     </div>
   </div>
+
+  <UserProfileModal
+    v-if="selectedUserId"
+    :user-id="selectedUserId"
+    @close="selectedUserId = null"
+  />
 </template>

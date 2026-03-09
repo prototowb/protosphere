@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, onMounted, onUnmounted, nextTick, computed } from 'vue'
+import { ref, watch, onMounted, onUnmounted, nextTick, computed, defineAsyncComponent } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppShell from '@/components/layout/AppShell.vue'
 import UserAvatar from '@/components/user/UserAvatar.vue'
@@ -28,11 +28,11 @@ import { useToastStore } from '@/stores/toast'
 import { useContextMenuStore } from '@/stores/contextMenu'
 import { messageContextItems, memberContextItems, channelContextItems, categoryContextItems, serverHeaderContextItems } from '@/lib/contextMenuItems'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
-import ReportDialog from '@/components/moderation/ReportDialog.vue'
-import ThreadPanel from '@/components/chat/ThreadPanel.vue'
 import PollCard from '@/components/chat/PollCard.vue'
-import CreatePollDialog from '@/components/chat/CreatePollDialog.vue'
-import EventsPanel from '@/components/community/EventsPanel.vue'
+const ReportDialog = defineAsyncComponent(() => import('@/components/moderation/ReportDialog.vue'))
+const ThreadPanel = defineAsyncComponent(() => import('@/components/chat/ThreadPanel.vue'))
+const CreatePollDialog = defineAsyncComponent(() => import('@/components/chat/CreatePollDialog.vue'))
+const EventsPanel = defineAsyncComponent(() => import('@/components/community/EventsPanel.vue'))
 import { useRoles } from '@/composables/useRoles'
 import { usePermissions } from '@/composables/usePermissions'
 import { useMutes } from '@/composables/useMutes'
@@ -45,7 +45,8 @@ import { checkAutomod } from '@/lib/automod'
 import { backend, isLocalMode } from '@/lib/backend'
 import { useRealtime } from '@/composables/useRealtime'
 import { usePresenceStore } from '@/stores/presence'
-import type { Message, Profile, Member, MemberRole, Channel, ChannelCategory, AutomodRule, RsvpStatus, UserStatus } from '@/lib/types'
+import type { Message, Profile, Member, MemberRole, Channel, ChannelCategory, AutomodRule, RsvpStatus, UserStatus, NotificationLevel } from '@/lib/types'
+import { useNotificationPreferences } from '@/composables/useNotificationPreferences'
 
 const route = useRoute()
 const router = useRouter()
@@ -83,6 +84,26 @@ const { scanForMentions, clearServerMentions, requestPermission, getUsername } =
 const { query: searchQuery, results: searchResults, isOpen: searchOpen, open: openSearch, close: closeSearch } = useMessageSearch(() => messages.value)
 
 const myUsername = ref<string | null>(null)
+
+// Notification preferences
+const { getCached, loadLevel, setLevel } = useNotificationPreferences()
+const notifPopoverChannelId = ref<string | null>(null)
+const NOTIF_OPTIONS: { value: NotificationLevel; label: string }[] = [
+  { value: 'all', label: 'All Messages' },
+  { value: 'mentions', label: 'Mentions Only' },
+  { value: 'none', label: 'Nothing' },
+]
+
+function openNotifPopover(channelId: string) {
+  notifPopoverChannelId.value = notifPopoverChannelId.value === channelId ? null : channelId
+  if (authStore.user?.id) loadLevel(authStore.user.id, channelId).catch(() => {})
+}
+
+async function setChannelNotifLevel(channelId: string, level: NotificationLevel) {
+  if (!authStore.user?.id) return
+  await setLevel(authStore.user.id, channelId, level)
+  notifPopoverChannelId.value = null
+}
 
 const showCreateChannel = ref(false)
 const newChannelName = ref('')
@@ -1136,33 +1157,65 @@ function onServerHeaderContext(event: MouseEvent) {
     </template>
 
     <template #sidebar-content>
+      <!-- Backdrop to close notification popover -->
+      <div v-if="notifPopoverChannelId" class="fixed inset-0 z-40" @click="notifPopoverChannelId = null" />
+
       <div class="space-y-0.5">
         <!-- Uncategorized channels (category_id = null) -->
-        <router-link
+        <div
           v-for="channel in channelsStore.channels.filter(c => c.category_id === null).sort((a,b) => a.position - b.position)"
           :key="channel.id"
-          :to="`/channels/${serverId}/${channel.id}`"
-          :draggable="canManageChannels"
-          @contextmenu.prevent="onChannelContext($event, channel)"
-          @dragstart.stop="onChannelDragStart(channel.id)"
-          @dragover.prevent.stop="onChannelDragOver(channel.id)"
-          @dragleave.stop="onChannelDragLeave"
-          @drop.prevent.stop="onChannelDrop(channel.id)"
-          @dragend.stop="onChannelDragEnd"
-          class="flex w-full items-center gap-1.5 rounded px-2 py-1.5 text-sm hover:bg-bg-hover"
-          :class="[
-            channelsStore.activeChannelId === channel.id ? 'bg-bg-hover text-text-primary font-medium' : 'text-text-secondary',
-            dragOverChannelId === channel.id ? 'border-t-2 border-accent' : '',
-            canManageChannels ? 'cursor-grab' : '',
-          ]"
+          class="group relative"
         >
-          <span class="text-text-muted">#</span>
-          <span class="truncate flex-1">{{ channel.name }}</span>
-          <span
-            v-if="unreadChannelIds.has(channel.id)"
-            class="ml-auto h-2 w-2 flex-shrink-0 rounded-full bg-white"
-          />
-        </router-link>
+          <router-link
+            :to="`/channels/${serverId}/${channel.id}`"
+            :draggable="canManageChannels"
+            @contextmenu.prevent="onChannelContext($event, channel)"
+            @dragstart.stop="onChannelDragStart(channel.id)"
+            @dragover.prevent.stop="onChannelDragOver(channel.id)"
+            @dragleave.stop="onChannelDragLeave"
+            @drop.prevent.stop="onChannelDrop(channel.id)"
+            @dragend.stop="onChannelDragEnd"
+            class="flex w-full items-center gap-1.5 rounded px-2 py-1.5 text-sm hover:bg-bg-hover"
+            :class="[
+              channelsStore.activeChannelId === channel.id ? 'bg-bg-hover text-text-primary font-medium' : 'text-text-secondary',
+              dragOverChannelId === channel.id ? 'border-t-2 border-accent' : '',
+              canManageChannels ? 'cursor-grab' : '',
+            ]"
+          >
+            <span class="text-text-muted">#</span>
+            <span class="truncate flex-1">{{ channel.name }}</span>
+            <span class="ml-auto flex items-center gap-1">
+              <span v-if="unreadChannelIds.has(channel.id)" class="h-2 w-2 flex-shrink-0 rounded-full bg-white" />
+              <button
+                :class="getCached(channel.id) !== 'all' ? 'flex' : 'hidden group-hover:flex'"
+                class="flex-shrink-0 items-center rounded p-0.5 text-text-muted hover:text-text-primary"
+                @click.prevent.stop="openNotifPopover(channel.id)"
+                title="Notification settings"
+              >
+                <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+                </svg>
+              </button>
+            </span>
+          </router-link>
+          <!-- Notification popover -->
+          <div
+            v-if="notifPopoverChannelId === channel.id"
+            class="absolute right-0 top-full z-50 mt-1 min-w-32 rounded-lg bg-bg-primary p-1 shadow-lg ring-1 ring-bg-tertiary"
+            @click.stop
+          >
+            <button
+              v-for="opt in NOTIF_OPTIONS"
+              :key="opt.value"
+              @click="setChannelNotifLevel(channel.id, opt.value)"
+              class="flex w-full items-center gap-2 rounded px-3 py-1.5 text-xs hover:bg-bg-hover"
+              :class="getCached(channel.id) === opt.value ? 'text-accent' : 'text-text-secondary'"
+            >
+              {{ opt.label }}
+            </button>
+          </div>
+        </div>
 
         <!-- Categories -->
         <div v-for="cat in categoriesStore.categories" :key="cat.id" class="mt-2">
@@ -1213,31 +1266,60 @@ function onServerHeaderContext(event: MouseEvent) {
           </div>
           <!-- Channels in this category -->
           <template v-if="!collapsedCategories.has(cat.id)">
-            <router-link
+            <div
               v-for="channel in channelsStore.channels.filter(c => c.category_id === cat.id).sort((a,b) => a.position - b.position)"
               :key="channel.id"
-              :to="`/channels/${serverId}/${channel.id}`"
-              :draggable="canManageChannels"
-              @contextmenu.prevent="onChannelContext($event, channel)"
-              @dragstart.stop="onChannelDragStart(channel.id)"
-              @dragover.prevent.stop="onChannelDragOver(channel.id)"
-              @dragleave.stop="onChannelDragLeave"
-              @drop.prevent.stop="onChannelDrop(channel.id)"
-              @dragend.stop="onChannelDragEnd"
-              class="flex w-full items-center gap-1.5 rounded px-2 py-1.5 text-sm hover:bg-bg-hover"
-              :class="[
-                channelsStore.activeChannelId === channel.id ? 'bg-bg-hover text-text-primary font-medium' : 'text-text-secondary',
-                dragOverChannelId === channel.id ? 'border-t-2 border-accent' : '',
-                canManageChannels ? 'cursor-grab' : '',
-              ]"
+              class="group relative"
             >
-              <span class="text-text-muted">#</span>
-              <span class="truncate flex-1">{{ channel.name }}</span>
-              <span
-                v-if="unreadChannelIds.has(channel.id)"
-                class="ml-auto h-2 w-2 flex-shrink-0 rounded-full bg-white"
-              />
-            </router-link>
+              <router-link
+                :to="`/channels/${serverId}/${channel.id}`"
+                :draggable="canManageChannels"
+                @contextmenu.prevent="onChannelContext($event, channel)"
+                @dragstart.stop="onChannelDragStart(channel.id)"
+                @dragover.prevent.stop="onChannelDragOver(channel.id)"
+                @dragleave.stop="onChannelDragLeave"
+                @drop.prevent.stop="onChannelDrop(channel.id)"
+                @dragend.stop="onChannelDragEnd"
+                class="flex w-full items-center gap-1.5 rounded px-2 py-1.5 text-sm hover:bg-bg-hover"
+                :class="[
+                  channelsStore.activeChannelId === channel.id ? 'bg-bg-hover text-text-primary font-medium' : 'text-text-secondary',
+                  dragOverChannelId === channel.id ? 'border-t-2 border-accent' : '',
+                  canManageChannels ? 'cursor-grab' : '',
+                ]"
+              >
+                <span class="text-text-muted">#</span>
+                <span class="truncate flex-1">{{ channel.name }}</span>
+                <span class="ml-auto flex items-center gap-1">
+                  <span v-if="unreadChannelIds.has(channel.id)" class="h-2 w-2 flex-shrink-0 rounded-full bg-white" />
+                  <button
+                    :class="getCached(channel.id) !== 'all' ? 'flex' : 'hidden group-hover:flex'"
+                    class="flex-shrink-0 items-center rounded p-0.5 text-text-muted hover:text-text-primary"
+                    @click.prevent.stop="openNotifPopover(channel.id)"
+                    title="Notification settings"
+                  >
+                    <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+                    </svg>
+                  </button>
+                </span>
+              </router-link>
+              <!-- Notification popover -->
+              <div
+                v-if="notifPopoverChannelId === channel.id"
+                class="absolute right-0 top-full z-50 mt-1 min-w-32 rounded-lg bg-bg-primary p-1 shadow-lg ring-1 ring-bg-tertiary"
+                @click.stop
+              >
+                <button
+                  v-for="opt in NOTIF_OPTIONS"
+                  :key="opt.value"
+                  @click="setChannelNotifLevel(channel.id, opt.value)"
+                  class="flex w-full items-center gap-2 rounded px-3 py-1.5 text-xs hover:bg-bg-hover"
+                  :class="getCached(channel.id) === opt.value ? 'text-accent' : 'text-text-secondary'"
+                >
+                  {{ opt.label }}
+                </button>
+              </div>
+            </div>
           </template>
         </div>
       </div>
@@ -1720,6 +1802,12 @@ function onServerHeaderContext(event: MouseEvent) {
         <div v-if="selectedMember.profile.bio" class="mt-3 border-t border-bg-tertiary pt-3">
           <p class="text-xs font-semibold uppercase text-text-muted">About Me</p>
           <p class="mt-1 text-sm text-text-secondary">{{ selectedMember.profile.bio }}</p>
+        </div>
+
+        <div v-if="selectedMember.profile.pronouns || selectedMember.profile.website || selectedMember.profile.location" class="mt-2 space-y-1">
+          <p v-if="selectedMember.profile.pronouns" class="text-xs text-text-muted">{{ selectedMember.profile.pronouns }}</p>
+          <a v-if="selectedMember.profile.website" :href="selectedMember.profile.website" target="_blank" rel="noopener noreferrer" class="block text-xs text-accent hover:underline truncate">🔗 {{ selectedMember.profile.website }}</a>
+          <p v-if="selectedMember.profile.location" class="text-xs text-text-secondary">📍 {{ selectedMember.profile.location }}</p>
         </div>
 
         <div v-if="selectedMember.profile.status_text" class="mt-2">

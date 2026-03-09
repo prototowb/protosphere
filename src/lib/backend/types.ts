@@ -21,6 +21,7 @@ export interface Backend {
     register(email: string, password: string, username: string): Promise<{ needsConfirmation: boolean }>
     loginWithOAuth(provider: string): Promise<void>
     logout(): Promise<void>
+    logoutGlobal(): Promise<void>
     resetPassword(email: string): Promise<void>
     updatePassword(newPassword: string): Promise<void>
     init(onSession: (session: AuthSession | null) => void): void

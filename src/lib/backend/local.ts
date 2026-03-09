@@ -133,6 +133,11 @@ export function createLocalBackend(): Backend {
         setSession(null)
       },
 
+      async logoutGlobal() {
+        // Local mode has no server sessions — same as regular logout
+        setSession(null)
+      },
+
       async resetPassword(_email: string) {
         // No-op in local mode
       },

@@ -54,11 +54,11 @@ Backend adapter auto-detects mode via `VITE_SUPABASE_URL` env var. Local mode us
 | PTSPH-153 | Password reset completion | ✅ Done | `ResetPasswordPage.vue` at `/reset-password`; parses URL hash `type=recovery`; calls `supabase.auth.updateUser({ password })`; Supabase `resetPasswordForEmail` now redirects to `/reset-password` |
 | PTSPH-154 | Email verification handler | ✅ Done | `ConfirmEmailPage.vue` at `/confirm-email`; handles `signup` and `email_change` URL hash params; checks session after Supabase auto-handles token |
 | PTSPH-155 | First-user admin bootstrap | ✅ Done | Migration `020` — `bootstrap_first_user()` trigger: auto-seeds `community_settings` + assigns Owner role on first profile insert; `scripts/seed-admin.ts` for prod; `setup_complete` flag added in `021` |
-| PTSPH-156 | Registration mode enforcement | 🔄 In Progress | Gate `RegisterPage.vue`: `invite_only` → require invite token, `closed` → block, `approval` → queue with pending status |
+| PTSPH-156 | Registration mode enforcement | ✅ Done | Gate `RegisterPage.vue`: `invite_only` → require invite token, `closed` → block, `approval` → queue with pending status |
 | PTSPH-157 | Registration approval queue | ✅ Done | `AdminApprovalsPage.vue` at `/admin/approvals`; `profiles.listPending()`, `profiles.approve()`, `profiles.reject()` in both backends; `account_status` column in migration `020` |
 | PTSPH-158 | Community invite system | ✅ Done | `community_invites` table (migration `020`); `community_invites` namespace in both backends; `JoinCommunityPage.vue` at `/join/:token`; `use_community_invite` Supabase RPC |
-| PTSPH-159 | Community setup wizard | 🔄 Planned | First-login modal for bootstrapped admin; `setup_complete` flag in `community_settings` (migration `021`) |
-| PTSPH-160 | Session hardening | 🔄 Planned | BroadcastChannel tab sync; session-expired modal; "Sign out everywhere" in SettingsPage |
+| PTSPH-159 | Community setup wizard | ✅ Done | First-login modal for bootstrapped admin; `setup_complete` flag in `community_settings` (migration `021`) |
+| PTSPH-160 | Session hardening | ✅ Done | BroadcastChannel tab sync; session-expired modal; "Sign out everywhere" in SettingsPage; `auth.logoutGlobal()` with `scope: 'global'` |
 
 ### M18 — Deployment & Production Readiness 🔄
 
@@ -67,9 +67,9 @@ Backend adapter auto-detects mode via `VITE_SUPABASE_URL` env var. Local mode us
 | PTSPH-161 | Error boundary + error pages | ✅ Done | `NotFoundPage.vue` at `/404` + catch-all; `ErrorPage.vue`; global `app.config.errorHandler` in `main.ts` |
 | PTSPH-162 | SPA deployment configs | ✅ Done | `dist/_redirects` (Netlify), `vercel.json` (Vercel) |
 | PTSPH-163 | Runtime environment validation | ✅ Done | `main.ts` validates `VITE_SUPABASE_URL` on boot; renders human-readable error screen if malformed |
-| PTSPH-164 | Community branding upload | 🔄 Planned | Upload UI for `logo_url` and `banner_url` in `CommunitySettingsPage.vue` |
+| PTSPH-164 | Community branding upload | ✅ Done | Branding section in `CommunitySettingsPage.vue`: logo URL + banner URL with live preview |
 | PTSPH-165 | Security hardening | ✅ Done | CSP + X-Frame-Options + X-Content-Type-Options meta tags in `index.html` |
-| PTSPH-166 | Performance optimization | 🔄 Planned | Bundle analysis; virtual scrolling for large message lists; lazy-load verification |
+| PTSPH-166 | Performance optimization | ✅ Done | Route-level code splitting via dynamic imports (all 16 pages); `defineAsyncComponent` for ThreadPanel, EventsPanel, CreatePollDialog, ReportDialog in ServerPage; EmojiPicker data already lazy-loaded internally |
 
 ### M19 — Profile & Social Features 🔄
 
@@ -79,7 +79,7 @@ Backend adapter auto-detects mode via `VITE_SUPABASE_URL` env var. Local mode us
 | PTSPH-168 | User profile modal | ✅ Done | `UserProfileModal.vue` — avatar, banner gradient, display name, status text, bio, join date; triggered on avatar click |
 | PTSPH-169 | Member directory | ✅ Done | `MemberDirectoryPage.vue` at `/community/members`; searchable list of all community members across all spaces |
 | PTSPH-170 | Custom status text | ✅ Done | `profiles.status_text` already exists in DB and is shown in AppShell user bar tooltip + UserProfileModal |
-| PTSPH-171 | Notification preferences | ✅ Done | `notification_preferences` table (migration `020`); `notification_preferences` namespace in both backends; `NotificationPreference` type |
+| PTSPH-171 | Notification preferences | ✅ Done | Backend + types complete; `useNotificationPreferences.ts` composable; bell icon + popover in ServerPage channel list (both uncategorized and categorized blocks) |
 
 ---
 
@@ -400,6 +400,7 @@ supabase/migrations/
 
 ## Recent Updates
 
+- 2026-03-09: M16–M19 gaps closed. PTSPH-164: Branding section in CommunitySettingsPage (logo + banner URL with live preview). PTSPH-171: `useNotificationPreferences.ts` + bell icon/popover in ServerPage channel list. PTSPH-160: `auth.logoutGlobal()` (Supabase `scope: global`) + "Sign out everywhere" in SettingsPage. PTSPH-166: `defineAsyncComponent` for ThreadPanel/EventsPanel/CreatePollDialog/ReportDialog in ServerPage. All M16–M19 tickets now ✅ Done.
 - 2026-03-06: M16–M19 milestone planning complete. M16 PTSPH-148–152 (skeletons, empty states, sidebar toggles, panel refactor, mobile), M17 PTSPH-153–160 (auth hardening, registration modes, approvals, community invites), M18 PTSPH-161–166 (error pages, SPA configs, env validation, CSP), M19 PTSPH-167–171 (rich profiles, profile modal, member directory, notification prefs). Migrations 020+021. Both backends updated.
 - 2026-03-05: M16 — Horizontal community top bar (PTSPH-147): `CommunitySidebar.vue` redesigned as full-width `h-12` `<header>`; community identity left, scrollable space nav middle, actions right. `AppShell.vue` switched to `flex-col`. Polls icon moved left of input field, emoji picker right. `dev:local` npm script added for localStorage-only development (no Docker required).
 - 2026-02-28: Release fixes — ThreadPanel and DMPage now have real-time message subscriptions (startMessages/startDmMessages). DMPage typing wired to Realtime Broadcast in Supabase mode. Migration 019 adds `direct_messages` to supabase_realtime publication.

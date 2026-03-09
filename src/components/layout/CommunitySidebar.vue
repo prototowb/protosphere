@@ -193,6 +193,33 @@ function copyInviteCode() {
 
       <div class="mx-1 h-4 w-px flex-shrink-0 bg-bg-tertiary" />
 
+      <!-- Members directory -->
+      <router-link
+        to="/community/members"
+        class="flex flex-shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1 text-sm whitespace-nowrap transition-colors"
+        :class="route.path === '/community/members' ? 'bg-bg-hover text-text-primary font-medium' : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary'"
+      >
+        <svg class="h-3.5 w-3.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+        </svg>
+        <span>Members</span>
+      </router-link>
+
+      <!-- Approvals (owners only, approval mode) -->
+      <router-link
+        v-if="isAnyOwner && community?.registration_mode === 'approval'"
+        to="/admin/approvals"
+        class="flex flex-shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1 text-sm whitespace-nowrap transition-colors"
+        :class="route.path === '/admin/approvals' ? 'bg-bg-hover text-text-primary font-medium' : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary'"
+      >
+        <svg class="h-3.5 w-3.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+        </svg>
+        <span>Approvals</span>
+      </router-link>
+
+      <div class="mx-1 h-4 w-px flex-shrink-0 bg-bg-tertiary" />
+
       <!-- Space list -->
       <router-link
         v-for="space in spaces"

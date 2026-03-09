@@ -3,8 +3,11 @@ import { ref, watch, onMounted, watchEffect } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUiStore } from '@/stores/ui'
 import { useAuthStore } from '@/stores/auth'
+import { useServersStore } from '@/stores/servers'
+import { useCommunityStore } from '@/stores/community'
 import { useProfile } from '@/composables/useProfile'
 import { useServers } from '@/composables/useServers'
+import { useCommunity } from '@/composables/useCommunity'
 import { usePresence } from '@/composables/usePresence'
 import { useMentionsStore } from '@/stores/mentions'
 import { useDmUnread } from '@/composables/useDmUnread'
@@ -14,12 +17,17 @@ import { useSessionSync } from '@/composables/useSessionSync'
 import { userBarContextItems } from '@/lib/contextMenuItems'
 import UserAvatar from '@/components/user/UserAvatar.vue'
 import CommunitySidebar from '@/components/layout/CommunitySidebar.vue'
+import SetupWizard from '@/components/community/SetupWizard.vue'
 import type { UserStatus } from '@/lib/types'
 
 const router = useRouter()
 const ui = useUiStore()
 const authStore = useAuthStore()
+const serversStore = useServersStore()
+const communityStore = useCommunityStore()
+const { fetchCommunity } = useCommunity()
 const { sessionExpired, broadcastLogout, broadcastLogin, dismissExpired } = useSessionSync()
+const showSetupWizard = ref(false)
 
 // Broadcast auth state changes to other tabs (PTSPH-160)
 watch(() => authStore.isAuthenticated, (val, prev) => {
@@ -68,15 +76,23 @@ function onUserBarContext(event: MouseEvent) {
   }))
 }
 
-onMounted(() => {
+onMounted(async () => {
   if (authStore.user?.id) {
     fetchProfile()
-    fetchServers()
+    await fetchServers()
+    await fetchCommunity()
+    const isOwner = serversStore.servers.some((s) => s.owner_id === authStore.user?.id)
+    if (isOwner && communityStore.settings && !communityStore.settings.setup_complete) {
+      showSetupWizard.value = true
+    }
   }
 })
 </script>
 
 <template>
+  <!-- Setup Wizard (first admin login) -->
+  <SetupWizard v-if="showSetupWizard" @done="showSetupWizard = false" />
+
   <!-- Session expired overlay (PTSPH-160) -->
   <div v-if="sessionExpired" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
     <div class="rounded-lg bg-bg-secondary p-6 text-center max-w-sm w-full mx-4 shadow-xl">

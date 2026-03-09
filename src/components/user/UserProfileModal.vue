@@ -75,6 +75,12 @@ onMounted(async () => {
             {{ profile.bio }}
           </div>
 
+          <div v-if="profile.pronouns || profile.website || profile.location" class="mt-2 space-y-1">
+            <p v-if="profile.pronouns" class="text-xs text-text-muted">{{ profile.pronouns }}</p>
+            <a v-if="profile.website" :href="profile.website" target="_blank" rel="noopener noreferrer" class="block text-xs text-accent hover:underline truncate">{{ profile.website }}</a>
+            <p v-if="profile.location" class="text-xs text-text-secondary">📍 {{ profile.location }}</p>
+          </div>
+
           <div class="mt-3 border-t border-bg-tertiary pt-3 text-xs text-text-muted">
             Member since {{ new Date(profile.created_at).toLocaleDateString() }}
           </div>

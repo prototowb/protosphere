@@ -19,6 +19,8 @@ const description = ref('')
 const rules = ref('')
 const welcomeMessage = ref('')
 const registrationMode = ref<RegistrationMode>('open')
+const logoUrl = ref('')
+const bannerUrl = ref('')
 
 watch(
   () => communityStore.settings,
@@ -29,6 +31,8 @@ watch(
       rules.value = s.rules
       welcomeMessage.value = s.welcome_message
       registrationMode.value = s.registration_mode
+      logoUrl.value = s.logo_url ?? ''
+      bannerUrl.value = s.banner_url ?? ''
     }
   },
   { immediate: true },
@@ -43,6 +47,8 @@ async function handleSave() {
       rules: rules.value.trim(),
       welcome_message: welcomeMessage.value.trim(),
       registration_mode: registrationMode.value,
+      logo_url: logoUrl.value.trim() || null,
+      banner_url: bannerUrl.value.trim() || null,
     })
     toastStore.show('Community settings saved', 'success')
   } catch (e: unknown) {
@@ -104,6 +110,49 @@ const REGISTRATION_OPTIONS: { value: RegistrationMode; label: string; desc: stri
                   placeholder="What's this community about?"
                 />
               </div>
+            </div>
+          </section>
+
+          <!-- Branding section -->
+          <section>
+            <h2 class="mb-4 text-xs font-semibold uppercase tracking-wide text-text-muted">Branding</h2>
+            <div class="space-y-4 rounded-lg bg-bg-secondary p-4">
+
+              <!-- Logo URL -->
+              <div>
+                <label class="mb-1 block text-sm font-medium text-text-secondary">Logo URL</label>
+                <div class="flex items-center gap-3">
+                  <div class="flex h-12 w-12 flex-shrink-0 items-center justify-center overflow-hidden rounded-lg bg-bg-tertiary">
+                    <img v-if="logoUrl" :src="logoUrl" alt="Logo preview" class="h-full w-full object-cover" />
+                    <svg v-else class="h-5 w-5 text-text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
+                    </svg>
+                  </div>
+                  <input
+                    v-model="logoUrl"
+                    type="url"
+                    placeholder="https://example.com/logo.png"
+                    class="flex-1 rounded border border-bg-tertiary bg-bg-primary px-3 py-2 text-text-primary outline-none focus:border-accent"
+                  />
+                </div>
+                <p class="mt-1 text-xs text-text-muted">Shown in the top bar. Recommended: square image.</p>
+              </div>
+
+              <!-- Banner URL -->
+              <div>
+                <label class="mb-1 block text-sm font-medium text-text-secondary">Banner URL</label>
+                <div v-if="bannerUrl" class="mb-2 h-20 overflow-hidden rounded-lg">
+                  <img :src="bannerUrl" alt="Banner preview" class="h-full w-full object-cover" />
+                </div>
+                <input
+                  v-model="bannerUrl"
+                  type="url"
+                  placeholder="https://example.com/banner.png"
+                  class="w-full rounded border border-bg-tertiary bg-bg-primary px-3 py-2 text-text-primary outline-none focus:border-accent"
+                />
+                <p class="mt-1 text-xs text-text-muted">Wide banner image. Used as background on the landing page.</p>
+              </div>
+
             </div>
           </section>
 

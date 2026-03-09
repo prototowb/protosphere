@@ -38,6 +38,11 @@ export function createSupabaseBackend(): Backend {
         if (error) throw error
       },
 
+      async logoutGlobal() {
+        const { error } = await client.auth.signOut({ scope: 'global' })
+        if (error) throw error
+      },
+
       async resetPassword(email: string) {
         const { error } = await client.auth.resetPasswordForEmail(email, {
           redirectTo: `${window.location.origin}/reset-password`,
