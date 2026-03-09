@@ -51,8 +51,10 @@ Backend adapter auto-detects mode via `VITE_SUPABASE_URL` env var. Local mode us
 
 **Migrations:**
 - `022_message_pagination_index.sql` — ✅ done — index on `messages(channel_id, created_at DESC)`
-- `023_dm_notification_prefs.sql` — planned — `dm_notification_preferences` table + RLS; `attachments` Storage bucket policy
-- `024_message_fulltext_search.sql` — planned — `search_tsv` generated column + GIN index on `messages`
+- `023_fix_rls_bugs.sql` — ✅ done — fix `servers_update` infinite recursion (42P17)
+- `024_fix_dm_and_community.sql` — ✅ done — DM group auto-join trigger (42501) + `community_settings` singleton index (PGRST116)
+- `025_dm_notification_prefs.sql` — planned — `dm_notification_preferences` table + RLS; `attachments` Storage bucket policy
+- `026_message_fulltext_search.sql` — planned — `search_tsv` generated column + GIN index on `messages`
 
 **Implementation order:** ~~PTSPH-179~~ ~~PTSPH-172~~ → PTSPH-173+177 → PTSPH-174+178 → PTSPH-175 → PTSPH-176
 
@@ -422,6 +424,7 @@ supabase/migrations/
 
 ## Recent Updates
 
+- 2026-03-09: RLS bug fixes. Migration 023: fix `servers_update` infinite recursion (42P17) — replaced self-referencing policy with direct column + `user_has_permission()`. Migration 024: DM group auto-join trigger (42501) — `AFTER INSERT` trigger adds creator to `direct_message_members` before RETURNING evaluates SELECT policy; `community_settings` singleton unique index `((true))` + duplicate row cleanup (PGRST116). Build workflow restored to `push: branches: [main]`. `supabase-backend.ts` defensive fix: `.limit(1)` on `community.get()`.
 - 2026-03-09: M20 started. PTSPH-179: `PinnedMessagesPanel.vue` extracted from ServerPage as standalone component. PTSPH-172: cursor-based message pagination (`before` + `limit` params in both backends, `paginationByChannel` in messagesStore, `fetchOlderMessages` in useMessages, "Load earlier messages" button in ServerPage with scroll-position preservation). Migration 022 committed. GitHub Actions build-dist workflow paused (push trigger → `workflow_dispatch`) while testing hoster build.
 - 2026-03-09: M16–M19 gaps closed. PTSPH-164: Branding section in CommunitySettingsPage (logo + banner URL with live preview). PTSPH-171: `useNotificationPreferences.ts` + bell icon/popover in ServerPage channel list. PTSPH-160: `auth.logoutGlobal()` (Supabase `scope: global`) + "Sign out everywhere" in SettingsPage. PTSPH-166: `defineAsyncComponent` for ThreadPanel/EventsPanel/CreatePollDialog/ReportDialog in ServerPage. All M16–M19 tickets now ✅ Done.
 - 2026-03-06: M16–M19 milestone planning complete. M16 PTSPH-148–152 (skeletons, empty states, sidebar toggles, panel refactor, mobile), M17 PTSPH-153–160 (auth hardening, registration modes, approvals, community invites), M18 PTSPH-161–166 (error pages, SPA configs, env validation, CSP), M19 PTSPH-167–171 (rich profiles, profile modal, member directory, notification prefs). Migrations 020+021. Both backends updated.
