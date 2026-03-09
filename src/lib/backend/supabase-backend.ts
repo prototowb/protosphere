@@ -338,14 +338,19 @@ export function createSupabaseBackend(): Backend {
     },
 
     messages: {
-      async list(channelId: string) {
-        const { data, error } = await client
+      async list(channelId: string, before?: string, limit = 50) {
+        let query = client
           .from('messages')
           .select('*, profile:profiles!author_id(*)')
           .eq('channel_id', channelId)
-          .order('created_at')
+          .order('created_at', { ascending: false })
+          .limit(limit + 1)
+        if (before) query = query.lt('created_at', before)
+        const { data, error } = await query
         if (error) throw error
-        return data as (Message & { profile: Profile })[]
+        const hasMore = data.length > limit
+        const messages = (hasMore ? data.slice(0, limit) : data).reverse()
+        return { messages: messages as (Message & { profile: Profile })[], hasMore }
       },
 
       async send(channelId: string, authorId: string, content: string, replyToId?: string | null) {

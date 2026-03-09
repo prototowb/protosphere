@@ -33,6 +33,7 @@ const ReportDialog = defineAsyncComponent(() => import('@/components/moderation/
 const ThreadPanel = defineAsyncComponent(() => import('@/components/chat/ThreadPanel.vue'))
 const CreatePollDialog = defineAsyncComponent(() => import('@/components/chat/CreatePollDialog.vue'))
 const EventsPanel = defineAsyncComponent(() => import('@/components/community/EventsPanel.vue'))
+const PinnedMessagesPanel = defineAsyncComponent(() => import('@/components/chat/PinnedMessagesPanel.vue'))
 import { useRoles } from '@/composables/useRoles'
 import { usePermissions } from '@/composables/usePermissions'
 import { useMutes } from '@/composables/useMutes'
@@ -60,7 +61,7 @@ const categoriesStore = useCategoriesStore()
 const { members, fetchMembers, updateRole } = useMembers()
 const { fetchServerRoles, fetchUserRoles } = useRoles()
 const { leaveServer, deleteServer, kickMember, banMember, regenerateInviteCode } = useServers()
-const { fetchMessages, sendMessage, editMessage, deleteMessage, pinMessage, unpinMessage, fetchPinnedMessages } = useMessages()
+const { fetchMessages, fetchOlderMessages, loadingOlder, sendMessage, editMessage, deleteMessage, pinMessage, unpinMessage, fetchPinnedMessages } = useMessages()
 const { fetchReactionsForChannel, toggleReaction } = useReactions()
 const reactionsStore = useReactionsStore()
 const toastStore = useToastStore()
@@ -427,6 +428,22 @@ const messages = computed((): (Message & { profile: Profile })[] => {
   return id ? (messagesStore.messagesByChannel[id] ?? []) as (Message & { profile: Profile })[] : []
 })
 
+const hasMoreMessages = computed(() => {
+  const id = channelsStore.activeChannelId
+  return id ? (messagesStore.paginationByChannel[id]?.hasMore ?? false) : false
+})
+
+async function loadOlderMessages() {
+  const id = channelsStore.activeChannelId
+  if (!id || loadingOlder.value) return
+  const el = messageListEl.value
+  const prevScrollHeight = el?.scrollHeight ?? 0
+  await fetchOlderMessages(id)
+  nextTick(() => {
+    if (el) el.scrollTop = el.scrollHeight - prevScrollHeight
+  })
+}
+
 function scrollToBottom() {
   nextTick(() => {
     if (messageListEl.value) {
@@ -447,7 +464,7 @@ function scrollToMessage(messageId: string) {
   })
 }
 
-watch(messages, scrollToBottom)
+watch(messages, () => { if (!loadingOlder.value) scrollToBottom() })
 
 async function handleSendMessage() {
   const content = messageInput.value.trim()
@@ -1400,6 +1417,17 @@ function onServerHeaderContext(event: MouseEvent) {
 
       <!-- Messages -->
       <div v-else class="flex flex-col gap-0.5">
+
+        <!-- Load earlier messages -->
+        <div v-if="hasMoreMessages || loadingOlder" class="flex justify-center py-2">
+          <button
+            @click="loadOlderMessages"
+            :disabled="loadingOlder"
+            class="rounded-full bg-bg-secondary px-4 py-1.5 text-xs font-medium text-text-secondary hover:bg-bg-hover disabled:opacity-50"
+          >
+            {{ loadingOlder ? 'Loading…' : 'Load earlier messages' }}
+          </button>
+        </div>
         <template v-for="msg in groupedMessages" :key="msg.id">
           <!-- Date separator -->
           <div v-if="msg.dateSeparator" class="my-4 flex items-center gap-3">
@@ -1640,42 +1668,14 @@ function onServerHeaderContext(event: MouseEvent) {
       />
 
       <!-- Pinned messages panel (replaces member list when open) -->
-      <div v-else-if="showPinnedPanel" class="flex h-full flex-col">
-        <div class="flex items-center justify-between border-b border-bg-tertiary px-4 py-3">
-          <h3 class="text-sm font-semibold">Pinned Messages</h3>
-          <button @click="showPinnedPanel = false" class="text-text-muted hover:text-text-primary">
-            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-            </svg>
-          </button>
-        </div>
-        <div class="flex-1 overflow-y-auto p-3">
-          <p v-if="pinnedMessages.length === 0" class="text-center text-sm text-text-muted py-6">
-            No pinned messages yet.
-          </p>
-          <div v-else class="space-y-3">
-            <div
-              v-for="pm in pinnedMessages"
-              :key="pm.id"
-              class="rounded-lg border border-bg-tertiary bg-bg-primary p-3"
-            >
-              <div class="mb-1 flex items-center gap-2">
-                <UserAvatar :src="pm.profile.avatar_url" :alt="pm.profile.display_name" size="sm" />
-                <span class="text-xs font-semibold text-text-primary">{{ pm.profile.display_name }}</span>
-                <span class="ml-auto text-xs text-text-muted">{{ formatTime(pm.created_at) }}</span>
-              </div>
-              <p class="break-words text-xs text-text-secondary leading-relaxed" v-html="renderMessage(pm.content, myUsername)" />
-              <button
-                v-if="canModerate"
-                @click="handleUnpinMessage(pm.id)"
-                class="mt-2 text-xs text-text-muted hover:text-danger"
-              >
-                Unpin
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
+      <PinnedMessagesPanel
+        v-else-if="showPinnedPanel"
+        :messages="pinnedMessages"
+        :can-moderate="canModerate"
+        :my-username="myUsername"
+        @close="showPinnedPanel = false"
+        @unpin="handleUnpinMessage"
+      />
 
       <!-- Thread panel -->
       <ThreadPanel

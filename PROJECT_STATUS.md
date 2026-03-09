@@ -36,6 +36,28 @@ Backend adapter auto-detects mode via `VITE_SUPABASE_URL` env var. Local mode us
 
 ## Active Tickets
 
+### M20 — Performance, Notifications & Admin Insights 🔄
+
+| Ticket | Title | Priority | Status | Description |
+|--------|-------|----------|--------|-------------|
+| PTSPH-172 | Message pagination | High | 🔄 Planned | Cursor-based "load more"; `messages.list(channelId, before?, limit?)` in both backends; `hasMore`/`oldestCursor` in messagesStore; "Load earlier messages" button in ServerPage |
+| PTSPH-173 | File/image attachment upload | High | 🔄 Planned | Paperclip button in input bar; Supabase Storage `attachments` bucket; `messages.upload()` in Backend interface; base64 stub in local mode |
+| PTSPH-174 | DM notification preferences | Medium | 🔄 Planned | `dm_notification_preferences` table (migration 023); backend namespace; mute toggle bell icon in DMPage conversation header |
+| PTSPH-175 | Server-side full-text search | High | 🔄 Planned | `search_tsv` generated column + GIN index (migration 024); `messages.search()` backend method; replace client-side `useMessageSearch` with debounced server call |
+| PTSPH-176 | Admin dashboard overview | Medium | 🔄 Planned | `AdminDashboardPage.vue` at `/admin`; stat cards for members/reports/pending/spaces; `useAdminStats.ts`; admin nav links in CommunitySidebar |
+| PTSPH-177 | Attachment rendering | High | 🔄 Planned | `MessageAttachments.vue` component; inline image preview + file chip; used in ServerPage and DMPage; depends on PTSPH-173 |
+| PTSPH-178 | Unread respects notification prefs | Medium | 🔄 Planned | `useUnread.refreshUnread` skips `level=none` channels; `useDmUnread.refreshDmUnread` skips muted DM groups; bulk preload prefs on boot |
+| PTSPH-179 | Pinned messages panel extraction | Medium | 🔄 Planned | Extract inline pinned panel from ServerPage into `PinnedMessagesPanel.vue`; same props/emit pattern as EventsPanel |
+
+**Planned migrations:**
+- `022_message_pagination_index.sql` — index on `messages(channel_id, created_at DESC)`
+- `023_dm_notification_prefs.sql` — `dm_notification_preferences` table + RLS; `attachments` Storage bucket policy
+- `024_message_fulltext_search.sql` — `search_tsv` generated column + GIN index on `messages`
+
+**Implementation order:** PTSPH-179 → PTSPH-172 → PTSPH-173+177 → PTSPH-174+178 → PTSPH-175 → PTSPH-176
+
+---
+
 ### M16 — UI Redesign 🔄
 
 | Ticket | Title | Status | Description |

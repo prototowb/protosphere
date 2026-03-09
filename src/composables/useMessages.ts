@@ -6,13 +6,38 @@ import type { Message, Profile } from '@/lib/types'
 export function useMessages() {
   const messagesStore = useMessagesStore()
   const loading = ref(false)
+  const loadingOlder = ref(false)
 
   async function fetchMessages(channelId: string) {
     loading.value = true
     try {
-      messagesStore.messagesByChannel[channelId] = await backend.messages.list(channelId)
+      const { messages, hasMore } = await backend.messages.list(channelId)
+      messagesStore.messagesByChannel[channelId] = messages
+      messagesStore.paginationByChannel[channelId] = {
+        hasMore,
+        oldestCursor: messages[0]?.created_at ?? null,
+      }
     } finally {
       loading.value = false
+    }
+  }
+
+  async function fetchOlderMessages(channelId: string) {
+    const cursor = messagesStore.paginationByChannel[channelId]?.oldestCursor
+    if (!cursor) return
+    loadingOlder.value = true
+    try {
+      const { messages, hasMore } = await backend.messages.list(channelId, cursor)
+      messagesStore.messagesByChannel[channelId] = [
+        ...messages,
+        ...(messagesStore.messagesByChannel[channelId] ?? []),
+      ]
+      messagesStore.paginationByChannel[channelId] = {
+        hasMore,
+        oldestCursor: messages[0]?.created_at ?? null,
+      }
+    } finally {
+      loadingOlder.value = false
     }
   }
 
@@ -84,7 +109,9 @@ export function useMessages() {
 
   return {
     loading,
+    loadingOlder,
     fetchMessages,
+    fetchOlderMessages,
     sendMessage,
     editMessage,
     deleteMessage,

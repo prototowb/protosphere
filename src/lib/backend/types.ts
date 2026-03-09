@@ -64,7 +64,7 @@ export interface Backend {
     updateRole(serverId: string, userId: string, role: Member['role']): Promise<Member>
   }
   messages: {
-    list(channelId: string): Promise<(Message & { profile: Profile })[]>
+    list(channelId: string, before?: string, limit?: number): Promise<{ messages: (Message & { profile: Profile })[]; hasMore: boolean }>
     send(channelId: string, authorId: string, content: string, replyToId?: string | null): Promise<Message & { profile: Profile }>
     edit(id: string, content: string): Promise<Message>
     delete(id: string): Promise<void>

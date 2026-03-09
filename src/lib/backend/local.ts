@@ -484,16 +484,22 @@ export function createLocalBackend(): Backend {
     },
 
     messages: {
-      async list(channelId: string) {
+      async list(channelId: string, before?: string, limit = 50) {
         const messages = readJson<Message[]>(KEYS.messages, [])
         const profiles = readJson<Record<string, Profile>>(KEYS.profiles, {})
-        const result: (Message & { profile: Profile })[] = []
+        let result: (Message & { profile: Profile })[] = []
         for (const m of messages) {
           if (m.channel_id !== channelId) continue
+          if (before && m.created_at >= before) continue
           const profile = profiles[m.author_id]
           if (profile) result.push({ ...m, profile })
         }
-        return result
+        // Sort descending to take the latest `limit` messages
+        result.sort((a, b) => b.created_at.localeCompare(a.created_at))
+        const hasMore = result.length > limit
+        if (hasMore) result = result.slice(0, limit)
+        result.reverse()
+        return { messages: result, hasMore }
       },
 
       async send(channelId: string, authorId: string, content: string, replyToId?: string | null) {
