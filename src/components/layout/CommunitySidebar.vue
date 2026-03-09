@@ -18,6 +18,7 @@ import type { SpaceVisibility } from '@/lib/types'
 
 const router = useRouter()
 const route = useRoute()
+const mobileMenuOpen = ref(false)
 const authStore = useAuthStore()
 const serversStore = useServersStore()
 const communityStore = useCommunityStore()
@@ -153,7 +154,146 @@ function copyInviteCode() {
 </script>
 
 <template>
-  <header class="flex h-12 flex-shrink-0 items-center border-b border-bg-tertiary bg-bg-secondary">
+  <!-- ── Mobile header + vertical menu ─────────────────────── -->
+  <div class="flex md:hidden flex-col border-b border-bg-tertiary bg-bg-secondary">
+    <!-- Mobile top bar -->
+    <div class="flex h-12 flex-shrink-0 items-center px-3 gap-2">
+      <!-- Community identity -->
+      <div
+        class="flex flex-1 min-w-0 items-center gap-2"
+        :class="isAnyOwner ? 'cursor-pointer' : 'cursor-default'"
+        @click="isAnyOwner ? (router.push('/admin/community'), mobileMenuOpen = false) : undefined"
+      >
+        <div class="flex h-7 w-7 flex-shrink-0 items-center justify-center overflow-hidden rounded-md bg-accent text-[10px] font-bold text-white">
+          <img v-if="community?.logo_url" :src="community.logo_url" :alt="community.name" class="h-full w-full object-cover" />
+          <span v-else>{{ getCommunityInitial(community?.name ?? 'PS') }}</span>
+        </div>
+        <span class="truncate text-sm font-semibold">{{ community?.name ?? 'Community' }}</span>
+      </div>
+      <!-- Hamburger / close -->
+      <button
+        @click="mobileMenuOpen = !mobileMenuOpen"
+        class="flex-shrink-0 rounded p-1.5 text-text-muted hover:bg-bg-hover hover:text-text-primary transition-colors"
+        :title="mobileMenuOpen ? 'Close menu' : 'Open menu'"
+      >
+        <svg v-if="!mobileMenuOpen" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
+        </svg>
+        <svg v-else class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+
+    <!-- Mobile vertical nav (open state) -->
+    <nav v-if="mobileMenuOpen" class="flex flex-col gap-0.5 px-2 pb-3 pt-1 overflow-y-auto max-h-[70vh]">
+      <!-- DMs -->
+      <router-link
+        to="/channels/@me"
+        @click="mobileMenuOpen = false"
+        class="flex items-center gap-2.5 rounded-md px-3 py-2.5 text-sm transition-colors"
+        :class="route.path.startsWith('/channels/@me') ? 'bg-bg-hover text-text-primary font-medium' : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary'"
+      >
+        <svg class="h-4 w-4 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/>
+        </svg>
+        <span class="flex-1">Direct Messages</span>
+        <span
+          v-if="totalDmUnread > 0"
+          class="flex h-4 min-w-4 items-center justify-center rounded-full bg-danger px-1 text-[10px] font-bold text-white"
+        >{{ totalDmUnread > 99 ? '99+' : totalDmUnread }}</span>
+      </router-link>
+
+      <!-- Members directory -->
+      <router-link
+        to="/community/members"
+        @click="mobileMenuOpen = false"
+        class="flex items-center gap-2.5 rounded-md px-3 py-2.5 text-sm transition-colors"
+        :class="route.path === '/community/members' ? 'bg-bg-hover text-text-primary font-medium' : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary'"
+      >
+        <svg class="h-4 w-4 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+        </svg>
+        <span>Members</span>
+      </router-link>
+
+      <!-- Approvals (owners only, approval mode) -->
+      <router-link
+        v-if="isAnyOwner && community?.registration_mode === 'approval'"
+        to="/admin/approvals"
+        @click="mobileMenuOpen = false"
+        class="flex items-center gap-2.5 rounded-md px-3 py-2.5 text-sm transition-colors"
+        :class="route.path === '/admin/approvals' ? 'bg-bg-hover text-text-primary font-medium' : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary'"
+      >
+        <svg class="h-4 w-4 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+        </svg>
+        <span>Approvals</span>
+      </router-link>
+
+      <div class="my-1 h-px bg-bg-tertiary" />
+
+      <!-- Spaces list -->
+      <router-link
+        v-for="space in spaces"
+        :key="space.id"
+        :to="`/channels/${space.id}/${space.id}`"
+        @click="mobileMenuOpen = false"
+        @contextmenu.prevent="onSpaceContext($event, space)"
+        class="flex items-center gap-2.5 rounded-md px-3 py-2.5 text-sm transition-colors"
+        :class="serversStore.activeServerId === space.id ? 'bg-bg-hover text-text-primary font-medium' : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary'"
+      >
+        <div class="flex h-5 w-5 flex-shrink-0 items-center justify-center overflow-hidden rounded bg-bg-tertiary text-[9px] font-bold">
+          <img v-if="space.icon_url" :src="space.icon_url" :alt="space.name" class="h-full w-full object-cover" />
+          <span v-else>{{ getSpaceInitial(space.name) }}</span>
+        </div>
+        <span class="flex-1">{{ space.name }}</span>
+        <span v-if="space.visibility !== 'public'" class="flex-shrink-0 text-xs" :title="space.visibility">{{ VISIBILITY_ICON[space.visibility] }}</span>
+        <span
+          v-if="mentionsStore.mentionsByServer[space.id]"
+          class="flex h-4 min-w-4 flex-shrink-0 items-center justify-center rounded-full bg-danger px-1 text-[10px] font-bold text-white"
+        >{{ (mentionsStore.mentionsByServer[space.id] ?? 0) > 99 ? '99+' : mentionsStore.mentionsByServer[space.id] }}</span>
+      </router-link>
+
+      <p v-if="spaces.length === 0" class="px-3 py-2 text-xs text-text-muted">No spaces yet.</p>
+
+      <div class="my-1 h-px bg-bg-tertiary" />
+
+      <!-- Add Space -->
+      <button
+        @click="showAddMenu = !showAddMenu"
+        class="flex items-center gap-2.5 rounded-md px-3 py-2.5 text-sm text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
+      >
+        <span class="flex h-4 w-4 flex-shrink-0 items-center justify-center text-base leading-none">+</span>
+        <span>Add a Space</span>
+      </button>
+      <div v-if="showAddMenu" class="flex flex-col gap-0.5 pl-2">
+        <button @click="showCreateSpace = true; showAddMenu = false; mobileMenuOpen = false" class="flex items-center gap-2 rounded px-3 py-2 text-sm text-text-primary hover:bg-bg-hover">
+          Create Space
+        </button>
+        <button @click="showJoinSpace = true; showAddMenu = false; mobileMenuOpen = false" class="flex items-center gap-2 rounded px-3 py-2 text-sm text-text-primary hover:bg-bg-hover">
+          Join a Space
+        </button>
+      </div>
+
+      <!-- Community Settings (owners only) -->
+      <router-link
+        v-if="isAnyOwner"
+        to="/admin/community"
+        @click="mobileMenuOpen = false"
+        class="flex items-center gap-2.5 rounded-md px-3 py-2.5 text-sm text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
+      >
+        <svg class="h-4 w-4 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 1 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
+          <circle cx="12" cy="12" r="3"/>
+        </svg>
+        <span>Community Settings</span>
+      </router-link>
+    </nav>
+  </div>
+
+  <!-- ── Desktop header (unchanged) ────────────────────────── -->
+  <header class="hidden md:flex h-12 flex-shrink-0 items-center border-b border-bg-tertiary bg-bg-secondary">
 
     <!-- Community identity (left) -->
     <div
