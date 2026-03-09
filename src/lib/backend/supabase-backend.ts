@@ -588,17 +588,25 @@ export function createSupabaseBackend(): Backend {
           }
         }
 
-        // Create new group
-        const { data: group, error } = await client
+        // Create new group — pre-generate the UUID so we can insert members
+        // BEFORE selecting the group back. The dm_groups_select policy requires
+        // the user to be in direct_message_members, so we must add members first
+        // or the INSERT...RETURNING will be blocked by RLS (42501).
+        const groupId = crypto.randomUUID()
+        const { error: createError } = await client
           .from('direct_message_groups')
-          .insert({ is_group: false })
-          .select()
-          .single()
-        if (error) throw error
+          .insert({ id: groupId, is_group: false })
+        if (createError) throw createError
         await client.from('direct_message_members').insert([
-          { dm_group_id: group.id, user_id: userId },
-          { dm_group_id: group.id, user_id: otherUserId },
+          { dm_group_id: groupId, user_id: userId },
+          { dm_group_id: groupId, user_id: otherUserId },
         ])
+        const { data: group, error: fetchError } = await client
+          .from('direct_message_groups')
+          .select('*')
+          .eq('id', groupId)
+          .single()
+        if (fetchError) throw fetchError
         return group as DirectMessageGroup
       },
 
