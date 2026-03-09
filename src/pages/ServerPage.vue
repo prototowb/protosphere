@@ -68,7 +68,7 @@ const toastStore = useToastStore()
 const contextMenuStore = useContextMenuStore()
 const { fetchMutes, muteMember } = useMutes()
 const mutesStore = useMutesStore()
-const { fetchThreadsForChannel, createThread } = useThreads()
+const { threads, fetchThreadsForChannel, createThread } = useThreads()
 const { polls, fetchPolls, createPoll, vote: votePoll, closePoll } = usePolls()
 const { events, rsvpsByEvent, fetchEvents, createEvent, rsvp: rsvpEvent, loadRsvps } = useEvents()
 const { openDM } = useDMs()
@@ -1510,6 +1510,18 @@ function onServerHeaderContext(event: MouseEvent) {
                   <span>{{ group.count }}</span>
                 </button>
               </div>
+
+              <!-- Thread link -->
+              <button
+                v-if="threads.find(t => t.parent_message_id === msg.id)"
+                @click="activeThread = threads.find(t => t.parent_message_id === msg.id) ?? null"
+                class="mt-1 flex items-center gap-1.5 text-xs text-accent hover:underline"
+              >
+                <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                </svg>
+                {{ threads.find(t => t.parent_message_id === msg.id)?.name }}
+              </button>
             </div>
 
             <!-- Hover actions -->
