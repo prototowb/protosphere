@@ -560,6 +560,15 @@ function onDmConversationContext(event: MouseEvent, groupId: string) {
           <span class="animate-pulse">...</span>
         </div>
         <form @submit.prevent="handleSend" class="flex items-center gap-2 rounded-lg bg-bg-tertiary px-4 py-3">
+          <input
+            ref="messageInputEl"
+            v-model="messageInput"
+            type="text"
+            :placeholder="`Message ${activeGroup?.otherUser.display_name ?? ''}`"
+            class="flex-1 bg-transparent text-text-primary placeholder-text-muted outline-none"
+            @input="handleInput"
+            @keydown.enter.prevent="handleSend"
+          />
           <!-- Emoji drawer button -->
           <button
             type="button"
@@ -575,15 +584,6 @@ function onDmConversationContext(event: MouseEvent, groupId: string) {
               <line x1="15" y1="9" x2="15.01" y2="9" stroke-linecap="round" stroke-width="2.5"/>
             </svg>
           </button>
-          <input
-            ref="messageInputEl"
-            v-model="messageInput"
-            type="text"
-            :placeholder="`Message ${activeGroup?.otherUser.display_name ?? ''}`"
-            class="flex-1 bg-transparent text-text-primary placeholder-text-muted outline-none"
-            @input="handleInput"
-            @keydown.enter.prevent="handleSend"
-          />
           <button
             type="submit"
             :disabled="!messageInput.trim() || sending"
