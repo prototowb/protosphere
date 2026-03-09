@@ -749,13 +749,14 @@ export function createSupabaseBackend(): Backend {
         const { data, error } = await client
           .from('community_settings')
           .select('*')
+          .limit(1)
           .single()
         if (error) throw error
         return data as CommunitySettings
       },
 
       async update(updates) {
-        const { data: existing } = await client.from('community_settings').select('id').single()
+        const { data: existing } = await client.from('community_settings').select('id').limit(1).single()
         if (!existing) throw new Error('Community settings not found')
         const { data, error } = await client
           .from('community_settings')
