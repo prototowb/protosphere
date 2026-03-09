@@ -294,11 +294,11 @@ export function createSupabaseBackend(): Backend {
       },
 
       async join(serverId: string, userId: string) {
-        const { data, error } = await client
+        // Insert without .select() to avoid RETURNING * triggering the SELECT
+        // RLS policy before is_server_member() sees the new row.
+        const { error } = await client
           .from('members')
           .insert({ server_id: serverId, user_id: userId, role: 'member' })
-          .select()
-          .single()
         if (error) throw error
 
         // Assign default role
@@ -312,6 +312,14 @@ export function createSupabaseBackend(): Backend {
           await client.from('user_roles').insert({ user_id: userId, role_id: (defaultRole as Role).id })
         }
 
+        // Fetch the member row in a separate query (now the user is a member)
+        const { data, error: fetchError } = await client
+          .from('members')
+          .select()
+          .eq('server_id', serverId)
+          .eq('user_id', userId)
+          .single()
+        if (fetchError) throw fetchError
         return data as Member
       },
 
