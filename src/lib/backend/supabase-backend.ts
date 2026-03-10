@@ -1065,7 +1065,7 @@ export function createSupabaseBackend(): Backend {
           .select('*')
           .eq('user_id', userId)
           .eq('channel_id', channelId)
-          .single()
+          .maybeSingle()
         return (data as NotificationPreference | null) ?? null
       },
 

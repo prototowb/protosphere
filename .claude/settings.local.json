@@ -8,7 +8,9 @@
       "Bash(cmd:*)",
       "Bash(pwsh:*)",
       "Bash(\"/c/Users/tobia/scoop/shims/supabase\" status:*)",
-      "Bash(\"/c/Users/tobia/scoop/shims/supabase\" db:*)"
+      "Bash(\"/c/Users/tobia/scoop/shims/supabase\" db:*)",
+      "Bash(npm run:*)",
+      "Bash(npx vue-tsc:*)"
     ]
   }
 }
