@@ -53,8 +53,13 @@ Backend adapter auto-detects mode via `VITE_SUPABASE_URL` env var. Local mode us
 - `022_message_pagination_index.sql` — ✅ done — index on `messages(channel_id, created_at DESC)`
 - `023_fix_rls_bugs.sql` — ✅ done — fix `servers_update` infinite recursion (42P17)
 - `024_fix_dm_and_community.sql` — ✅ done — DM group auto-join trigger (42501) + `community_settings` singleton index (PGRST116)
-- `025_dm_notification_prefs.sql` — planned — `dm_notification_preferences` table + RLS; `attachments` Storage bucket policy
-- `026_message_fulltext_search.sql` — planned — `search_tsv` generated column + GIN index on `messages`
+- `025_fix_community_settings_update_rls.sql` — ✅ done — allow setup wizard to update community_settings before roles assigned
+- `026_fix_community_settings_with_check.sql` — ✅ done — WITH CHECK (true) to allow wizard setting setup_complete=true
+- `027_dm_reply_to_id.sql` — ✅ done — add reply_to_id to direct_messages (PGRST204)
+- `028_storage_avatars_bucket.sql` — ✅ done — avatars bucket + RLS policies (400 on upload)
+- `029_community_settings_anon_select.sql` — ✅ done — allow anon role to read community_settings (landing page 406)
+- `030_dm_notification_prefs.sql` — planned — `dm_notification_preferences` table + RLS; `attachments` Storage bucket policy
+- `031_message_fulltext_search.sql` — planned — `search_tsv` generated column + GIN index on `messages`
 
 **Implementation order:** ~~PTSPH-179~~ ~~PTSPH-172~~ → PTSPH-173+177 → PTSPH-174+178 → PTSPH-175 → PTSPH-176
 
