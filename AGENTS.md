@@ -61,6 +61,7 @@ Before starting ANY development task, verify:
 4. **ALWAYS follow branch naming**: `feature/TICKET-XXX-description` or `bugfix/TICKET-XXX-description`
 5. **ALWAYS follow commit format**: `type(scope): subject` (see BRANCHING.md)
 6. **ALWAYS read existing files before modifying** - use Read tool first
+7. **CREATE a PR from `development` → `main`** after milestones, critical fixes, significant feature releases, or security updates — see BRANCHING.md § "Promoting development to main" for when and how
 
 ### Agent Self-Configuration Protocol
 

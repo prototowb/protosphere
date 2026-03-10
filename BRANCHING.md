@@ -43,15 +43,16 @@ This document defines the branching model and commit conventions for Protosphere
 ### Main Branches
 
 #### `main`
-- **Purpose**: Production-ready code
+- **Purpose**: Production-ready code — stable releases only
 - **Status**: Always stable, deployable
-- **Protection**: No direct commits
+- **Protection**: No direct commits; only promoted from `development` via PR
+- **dist**: Includes pre-built `dist/` (committed by CI on `development`, carried over in the PR)
 
 #### `development`
-- **Purpose**: Integration branch for development
-- **Status**: Should always build
+- **Purpose**: Primary integration branch — all work lands here
+- **Status**: Should always build; CI auto-commits updated `dist/` on every push
 - **Merges from**: Feature, bugfix branches
-- **Merges to**: `main`
+- **Merges to**: `main` via PR at release points (see [Promoting to main](#promoting-development-to-main))
 
 ### Working Branches
 
@@ -113,6 +114,50 @@ hotfix/v1.2.1-data-loss-bug
 3. Merge to: `main` AND `development`
 4. Tag new version immediately
 5. Delete after merge
+
+---
+
+## Promoting `development` to `main`
+
+`main` is only updated via a **pull request from `development`**. Agents must create this PR — never push directly to `main`.
+
+### When to create a PR to `main`
+
+Create a PR from `development` → `main` after any of the following:
+
+| Trigger | Examples |
+|---------|----------|
+| **Milestone completion** | All tickets in M20 done |
+| **Critical fix** | Production bug fixed and verified |
+| **Significant feature release** | Major feature shipped and tested |
+| **Security update** | Vulnerability patched |
+
+Do **not** create a PR for every commit to `development` — batch related work.
+
+### How to create the PR
+
+The `dist/` is already up-to-date in `development` (CI commits it automatically on every push). Just create the PR:
+
+```bash
+gh pr create \
+  --title "release: <milestone or description>" \
+  --body "$(cat <<'EOF'
+## Summary
+- <bullet points of what changed>
+
+## Test plan
+- [ ] ...
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+EOF
+)"
+```
+
+### CI / dist workflow
+
+- CI (`build-dist.yml`) triggers on every push to `development`
+- Bot rebuilds `dist/` and commits it back to `development` with `[skip ci]`
+- `main` always receives an up-to-date `dist/` when the PR is merged
 
 ---
 
