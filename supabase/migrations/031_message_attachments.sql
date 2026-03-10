@@ -41,7 +41,7 @@ CREATE POLICY "attachments_member_select" ON message_attachments
 -- Only the message author can delete attachments
 CREATE POLICY "attachments_author_delete" ON message_attachments
   FOR DELETE USING (
-    EXISTS (SELECT 1 FROM messages WHERE id = message_id AND user_id = auth.uid())
+    EXISTS (SELECT 1 FROM messages WHERE id = message_id AND author_id = auth.uid())
   );
 
 -- Anyone authenticated can insert (author is validated via RLS on messages)
