@@ -136,9 +136,13 @@ Do **not** create a PR for every commit to `development` — batch related work.
 
 ### How to create the PR
 
-The `dist/` is already up-to-date in `development` (CI commits it automatically on every push). Just create the PR:
+The `dist/` is rebuilt by CI on every push to `development`. **Always wait for the CI run to succeed before creating the PR** — this ensures `dist/` is up-to-date and the build is green.
 
 ```bash
+# 1. Wait for the latest CI run on development to pass
+gh run watch $(gh run list --branch development --limit 1 --json databaseId -q '.[0].databaseId') --repo prototowb/protosphere
+
+# 2. Create the PR (only runs if the watch exits 0 = success)
 gh pr create \
   --title "release: <milestone or description>" \
   --body "$(cat <<'EOF'
@@ -151,6 +155,12 @@ gh pr create \
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 EOF
 )"
+```
+
+Or as a single gated command:
+```bash
+gh run watch $(gh run list --branch development --limit 1 --json databaseId -q '.[0].databaseId') --repo prototowb/protosphere \
+  && gh pr create --title "..." --body "..."
 ```
 
 ### CI / dist workflow
