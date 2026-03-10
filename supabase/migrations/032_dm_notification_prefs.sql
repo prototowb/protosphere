@@ -2,7 +2,7 @@
 
 CREATE TABLE dm_notification_preferences (
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  group_id UUID NOT NULL REFERENCES dm_groups(id) ON DELETE CASCADE,
+  group_id UUID NOT NULL REFERENCES direct_message_groups(id) ON DELETE CASCADE,
   muted BOOLEAN NOT NULL DEFAULT false,
   PRIMARY KEY (user_id, group_id)
 );

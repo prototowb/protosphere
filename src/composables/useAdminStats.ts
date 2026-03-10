@@ -12,7 +12,7 @@ export function useAdminStats() {
     try {
       const userId = authStore.user?.id ?? ''
       const [allProfiles, pending, reports, spaces] = await Promise.all([
-        backend.profiles.search('', 'no-match-id').catch(() => []),
+        backend.profiles.search('', '00000000-0000-0000-0000-000000000000').catch(() => []),
         backend.profiles.listPending().catch(() => []),
         backend.reports.list(null, 'pending').catch(() => []),
         backend.servers.list(userId).catch(() => []),
