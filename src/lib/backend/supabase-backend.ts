@@ -1,4 +1,4 @@
-import type { Profile, Server, Channel, ChannelCategory, Member, Message, Reaction, Ban, DirectMessageGroup, DirectMessage, Role, UserRole, ChannelRoleOverride, CommunitySettings, AuditLog, Report, Mute, AutomodRule, Poll, PollOption, PollVote, AppEvent, EventRsvp, CommunityInvite, NotificationPreference } from '@/lib/types'
+import type { Profile, Server, Channel, ChannelCategory, Member, Message, Attachment, Reaction, Ban, DirectMessageGroup, DirectMessage, Role, UserRole, ChannelRoleOverride, CommunitySettings, AuditLog, Report, Mute, AutomodRule, Poll, PollOption, PollVote, AppEvent, EventRsvp, CommunityInvite, NotificationPreference, DmNotificationPreference } from '@/lib/types'
 import type { Backend } from './types'
 import { supabase } from '@/lib/supabase'
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -361,10 +361,10 @@ export function createSupabaseBackend(): Backend {
         return { messages: messages as (Message & { profile: Profile })[], hasMore }
       },
 
-      async send(channelId: string, authorId: string, content: string, replyToId?: string | null) {
+      async send(channelId: string, authorId: string, content: string, replyToId?: string | null, attachments: Attachment[] = []) {
         const { data, error } = await client
           .from('messages')
-          .insert({ channel_id: channelId, author_id: authorId, content, reply_to_id: replyToId ?? null })
+          .insert({ channel_id: channelId, author_id: authorId, content, reply_to_id: replyToId ?? null, attachments })
           .select('*, profile:profiles!author_id(*)')
           .single()
         if (error) throw error
@@ -419,6 +419,27 @@ export function createSupabaseBackend(): Backend {
         if (error) throw error
         return data as (Message & { profile: Profile })[]
       },
+
+      async upload(file: File, userId: string) {
+        const path = `${userId}/${Date.now()}-${file.name}`
+        const { error } = await client.storage.from('attachments').upload(path, file)
+        if (error) throw error
+        const { data } = client.storage.from('attachments').getPublicUrl(path)
+        return { path, publicUrl: data.publicUrl }
+      },
+
+      async search(channelId: string, query: string, limit = 25) {
+        const { data, error } = await client
+          .from('messages')
+          .select('*, profile:profiles!author_id(*)')
+          .eq('channel_id', channelId)
+          .textSearch('search_tsv', query, { type: 'websearch' })
+          .order('created_at', { ascending: false })
+          .limit(limit)
+        if (error) throw error
+        return data as (Message & { profile: Profile })[]
+      },
+
     },
 
     categories: {
@@ -1086,6 +1107,25 @@ export function createSupabaseBackend(): Backend {
           .eq('user_id', userId)
         if (error) throw error
         return data as NotificationPreference[]
+      },
+    },
+
+    dm_notification_preferences: {
+      async get(userId: string, groupId: string) {
+        const { data } = await client
+          .from('dm_notification_preferences')
+          .select('*')
+          .eq('user_id', userId)
+          .eq('group_id', groupId)
+          .maybeSingle()
+        return (data as DmNotificationPreference | null) ?? null
+      },
+
+      async set(userId: string, groupId: string, muted: boolean) {
+        const { error } = await client
+          .from('dm_notification_preferences')
+          .upsert({ user_id: userId, group_id: groupId, muted })
+        if (error) throw error
       },
     },
   }

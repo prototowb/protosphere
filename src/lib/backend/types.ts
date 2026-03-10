@@ -1,4 +1,4 @@
-import type { Profile, Server, Channel, ChannelCategory, Member, Message, Reaction, Ban, DirectMessageGroup, DirectMessage, Role, UserRole, ChannelRoleOverride, CommunitySettings, SpaceVisibility, SpaceType, AuditLog, AuditLogAction, Report, ReportCategory, ReportStatus, Mute, AutomodRule, Poll, PollOption, PollVote, PollWithResults, AppEvent, EventRsvp, RsvpStatus, CommunityInvite, CommunityInviteUsage, NotificationPreference, NotificationLevel } from '@/lib/types'
+import type { Profile, Server, Channel, ChannelCategory, Member, Message, Attachment, Reaction, Ban, DirectMessageGroup, DirectMessage, Role, UserRole, ChannelRoleOverride, CommunitySettings, SpaceVisibility, SpaceType, AuditLog, AuditLogAction, Report, ReportCategory, ReportStatus, Mute, AutomodRule, Poll, PollOption, PollVote, PollWithResults, AppEvent, EventRsvp, RsvpStatus, CommunityInvite, CommunityInviteUsage, NotificationPreference, NotificationLevel, DmNotificationPreference } from '@/lib/types'
 
 export interface AuthUser {
   id: string
@@ -65,12 +65,14 @@ export interface Backend {
   }
   messages: {
     list(channelId: string, before?: string, limit?: number): Promise<{ messages: (Message & { profile: Profile })[]; hasMore: boolean }>
-    send(channelId: string, authorId: string, content: string, replyToId?: string | null): Promise<Message & { profile: Profile }>
+    send(channelId: string, authorId: string, content: string, replyToId?: string | null, attachments?: Attachment[]): Promise<Message & { profile: Profile }>
     edit(id: string, content: string): Promise<Message>
     delete(id: string): Promise<void>
     pin(id: string): Promise<Message>
     unpin(id: string): Promise<Message>
     listPinned(channelId: string): Promise<(Message & { profile: Profile })[]>
+    upload(file: File, userId: string): Promise<{ path: string; publicUrl: string }>
+    search(channelId: string, query: string, limit?: number): Promise<(Message & { profile: Profile })[]>
   }
   reactions: {
     listByChannel(channelId: string): Promise<Reaction[]>
@@ -158,5 +160,9 @@ export interface Backend {
     get(userId: string, channelId: string): Promise<NotificationPreference | null>
     set(userId: string, channelId: string, level: NotificationLevel): Promise<NotificationPreference>
     listForUser(userId: string): Promise<NotificationPreference[]>
+  }
+  dm_notification_preferences: {
+    get(userId: string, groupId: string): Promise<DmNotificationPreference | null>
+    set(userId: string, groupId: string, muted: boolean): Promise<void>
   }
 }

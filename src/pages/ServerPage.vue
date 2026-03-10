@@ -5,6 +5,7 @@ import AppShell from '@/components/layout/AppShell.vue'
 import UserAvatar from '@/components/user/UserAvatar.vue'
 import EmojiPicker from '@/components/chat/EmojiPicker.vue'
 import MessageSearch from '@/components/chat/MessageSearch.vue'
+import MessageAttachments from '@/components/messages/MessageAttachments.vue'
 import { useServersStore } from '@/stores/servers'
 import { useChannelsStore } from '@/stores/channels'
 import { useMessagesStore } from '@/stores/messages'
@@ -46,7 +47,7 @@ import { checkAutomod } from '@/lib/automod'
 import { backend, isLocalMode } from '@/lib/backend'
 import { useRealtime } from '@/composables/useRealtime'
 import { usePresenceStore } from '@/stores/presence'
-import type { Message, Profile, Member, MemberRole, Channel, ChannelCategory, AutomodRule, RsvpStatus, UserStatus, NotificationLevel } from '@/lib/types'
+import type { Message, Profile, Member, MemberRole, Channel, ChannelCategory, AutomodRule, RsvpStatus, UserStatus, NotificationLevel, Attachment } from '@/lib/types'
 import { useNotificationPreferences } from '@/composables/useNotificationPreferences'
 
 const route = useRoute()
@@ -82,7 +83,8 @@ const presenceStore = usePresenceStore()
 const realtimeTypingUsers = ref<string[]>([])
 const { unreadChannelIds, markRead, refreshUnread } = useUnread()
 const { scanForMentions, clearServerMentions, requestPermission, getUsername } = useMentions()
-const { query: searchQuery, results: searchResults, isOpen: searchOpen, open: openSearch, close: closeSearch } = useMessageSearch(() => messages.value)
+const activeChannelIdRef = computed(() => channelsStore.activeChannelId ?? '')
+const { query: searchQuery, results: searchResults, isOpen: searchOpen, open: openSearch, close: closeSearch } = useMessageSearch(activeChannelIdRef)
 
 const myUsername = ref<string | null>(null)
 
@@ -181,6 +183,9 @@ const messageInput = ref('')
 const messageInputEl = ref<HTMLInputElement | null>(null)
 const sending = ref(false)
 const messageListEl = ref<HTMLElement | null>(null)
+const fileInputEl = ref<HTMLInputElement | null>(null)
+const pendingAttachments = ref<Attachment[]>([])
+const uploadingFiles = ref(false)
 
 // Full emoji drawer (input bar)
 const emojiDrawerOpen = ref(false)
@@ -468,7 +473,8 @@ watch(messages, () => { if (!loadingOlder.value) scrollToBottom() })
 
 async function handleSendMessage() {
   const content = messageInput.value.trim()
-  if (!content || sending.value || !channelsStore.activeChannelId || !authStore.user?.id || slowmodeRemaining.value > 0) return
+  const hasAttachments = pendingAttachments.value.length > 0
+  if ((!content && !hasAttachments) || sending.value || uploadingFiles.value || !channelsStore.activeChannelId || !authStore.user?.id || slowmodeRemaining.value > 0) return
   if (!canPostInChannel.value) return
 
   // Check if user is muted
@@ -505,13 +511,44 @@ async function handleSendMessage() {
     if (!isLocalMode && authStore.user?.id) {
       broadcastStopTyping(authStore.user.id, myMember.value?.profile.display_name ?? 'Someone')
     }
-    await sendMessage(channelsStore.activeChannelId, authStore.user.id, content, replyingTo.value?.id)
+    const toSend = pendingAttachments.value.length > 0 ? [...pendingAttachments.value] : undefined
+    pendingAttachments.value = []
+    await sendMessage(channelsStore.activeChannelId, authStore.user.id, content, replyingTo.value?.id, toSend)
     replyingTo.value = null
+
     const slowmode = activeChannel.value?.slowmode_seconds ?? 0
     if (slowmode > 0) startSlowmode(slowmode)
   } finally {
     sending.value = false
   }
+}
+
+async function uploadAttachments(files: FileList) {
+  if (!authStore.user?.id || !files.length) return
+  uploadingFiles.value = true
+  try {
+    for (const file of Array.from(files)) {
+      const { publicUrl } = await backend.messages.upload(file, authStore.user.id)
+      pendingAttachments.value = [
+        ...pendingAttachments.value,
+        {
+          url: publicUrl,
+          filename: file.name,
+          size: file.size,
+          mime_type: file.type || 'application/octet-stream',
+        },
+      ]
+    }
+  } catch {
+    toastStore.show('Failed to upload file', 'error')
+  } finally {
+    uploadingFiles.value = false
+    if (fileInputEl.value) fileInputEl.value.value = ''
+  }
+}
+
+function removePendingAttachment(index: number) {
+  pendingAttachments.value = pendingAttachments.value.filter((_, i) => i !== index)
 }
 
 function getMessageById(id: string | null): (Message & { profile: Profile }) | null {
@@ -1492,6 +1529,9 @@ function onServerHeaderContext(event: MouseEvent) {
                 v-html="renderMessage(msg.content, myUsername) + (msg.edited_at ? ' <span class=\'text-xs text-text-muted\'>(edited)</span>' : '')"
               />
 
+              <!-- Attachments -->
+              <MessageAttachments v-if="msg.attachments?.length" :attachments="msg.attachments" />
+
               <!-- Reaction pills -->
               <div
                 v-if="getReactionGroups(msg.id).length > 0"
@@ -1616,7 +1656,46 @@ function onServerHeaderContext(event: MouseEvent) {
           {{ displayTypingUsers.length === 1 ? 'is' : 'are' }} typing
           <span class="animate-pulse">...</span>
         </div>
+        <!-- Pending attachments preview -->
+        <div v-if="pendingAttachments.length > 0" class="mx-2 mb-1 flex flex-wrap gap-2 rounded-lg bg-bg-tertiary px-3 py-2" :class="replyingTo ? '' : ''">
+          <div
+            v-for="(att, idx) in pendingAttachments"
+            :key="idx"
+            class="flex items-center gap-1.5 rounded border border-bg-tertiary bg-bg-secondary px-2 py-1 text-xs"
+          >
+            <span class="max-w-[10rem] truncate text-text-secondary">{{ att.filename }}</span>
+            <button type="button" @click="removePendingAttachment(idx)" class="text-text-muted hover:text-danger">
+              <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
+          </div>
+          <span v-if="uploadingFiles" class="text-xs text-text-muted animate-pulse">Uploading…</span>
+        </div>
+
         <form @submit.prevent="handleSendMessage" class="flex items-center gap-2 rounded-lg bg-bg-tertiary px-4 py-3" :class="replyingTo ? 'rounded-t-none' : ''">
+          <!-- Hidden file input -->
+          <input
+            ref="fileInputEl"
+            type="file"
+            accept="*/*"
+            multiple
+            class="hidden"
+            @change="uploadAttachments(($event.target as HTMLInputElement).files!)"
+          />
+          <!-- Attachment button -->
+          <button
+            v-if="canPostInChannel"
+            type="button"
+            @click="fileInputEl?.click()"
+            :class="uploadingFiles ? 'text-accent animate-pulse' : 'text-text-muted hover:text-text-primary'"
+            class="flex-shrink-0 rounded p-1 transition-colors"
+            title="Attach File"
+          >
+            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
+              <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+            </svg>
+          </button>
           <!-- Poll button -->
           <button
             v-if="canPostInChannel"
@@ -1657,7 +1736,7 @@ function onServerHeaderContext(event: MouseEvent) {
           </button>
           <button
             type="submit"
-            :disabled="!messageInput.trim() || sending || !activeChannel || slowmodeRemaining > 0"
+            :disabled="(!messageInput.trim() && pendingAttachments.length === 0) || sending || uploadingFiles || !activeChannel || slowmodeRemaining > 0"
             class="min-w-8 rounded p-1 text-text-muted transition-colors hover:text-text-primary disabled:opacity-30"
           >
             <span v-if="slowmodeRemaining > 0" class="text-xs font-medium tabular-nums text-text-muted">{{ slowmodeRemaining }}s</span>

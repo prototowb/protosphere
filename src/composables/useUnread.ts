@@ -1,6 +1,7 @@
 import { ref } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useMessagesStore } from '@/stores/messages'
+import { useNotificationPreferences } from '@/composables/useNotificationPreferences'
 
 const READ_STATE_KEY = 'protosphere_read_state'
 
@@ -17,6 +18,7 @@ function readState(): ReadState {
 export function useUnread() {
   const authStore = useAuthStore()
   const messagesStore = useMessagesStore()
+  const { getCached } = useNotificationPreferences()
   // Reactive set of unread channel ids — updated manually
   const unreadChannelIds = ref<Set<string>>(new Set())
 
@@ -40,6 +42,9 @@ export function useUnread() {
     const unread = new Set<string>()
 
     for (const channelId of channelIds) {
+      // Skip channels with notifications muted
+      if (getCached(channelId) === 'none') continue
+
       const lastRead = userState[channelId]
       const msgs = messagesStore.messagesByChannel[channelId]
       if (!msgs || msgs.length === 0) continue

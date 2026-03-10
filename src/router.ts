@@ -53,6 +53,11 @@ const router = createRouter({
       component: () => import('@/pages/ServerSettingsPage.vue'),
     },
     {
+      path: '/admin',
+      name: 'admin-dashboard',
+      component: () => import('@/pages/AdminDashboardPage.vue'),
+    },
+    {
       path: '/admin/community',
       name: 'community-settings',
       component: () => import('@/pages/CommunitySettingsPage.vue'),
