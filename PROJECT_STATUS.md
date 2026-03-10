@@ -36,17 +36,17 @@ Backend adapter auto-detects mode via `VITE_SUPABASE_URL` env var. Local mode us
 
 ## Active Tickets
 
-### M20 — Performance, Notifications & Admin Insights 🔄
+### M20 — Performance, Notifications & Admin Insights ✅
 
 | Ticket | Title | Priority | Status | Description |
 |--------|-------|----------|--------|-------------|
 | PTSPH-172 | Message pagination | High | ✅ Done | Cursor-based "load more"; `messages.list(channelId, before?, limit?)` in both backends; `hasMore`/`oldestCursor` in messagesStore; "Load earlier messages" button in ServerPage |
-| PTSPH-173 | File/image attachment upload | High | 🔄 Planned | Paperclip button in input bar; Supabase Storage `attachments` bucket; `messages.upload()` in Backend interface; base64 stub in local mode |
-| PTSPH-174 | DM notification preferences | Medium | 🔄 Planned | `dm_notification_preferences` table (migration 032); backend namespace; mute toggle bell icon in DMPage conversation header |
-| PTSPH-175 | Server-side full-text search | High | 🔄 Planned | `search_tsv` generated column + GIN index (migration 033); `messages.search()` backend method; replace client-side `useMessageSearch` with debounced server call |
-| PTSPH-176 | Admin dashboard overview | Medium | 🔄 Planned | `AdminDashboardPage.vue` at `/admin`; stat cards for members/reports/pending/spaces; `useAdminStats.ts`; admin nav links in CommunitySidebar |
-| PTSPH-177 | Attachment rendering | High | 🔄 Planned | `MessageAttachments.vue` component; inline image preview + file chip; used in ServerPage and DMPage; depends on PTSPH-173 |
-| PTSPH-178 | Unread respects notification prefs | Medium | 🔄 Planned | `useUnread.refreshUnread` skips `level=none` channels; `useDmUnread.refreshDmUnread` skips muted DM groups; bulk preload prefs on boot |
+| PTSPH-173 | File/image attachment upload | High | ✅ Done | Paperclip button in input bar; Supabase Storage `attachments` bucket; `messages.upload()` in both backends; pending attachments preview strip |
+| PTSPH-174 | DM notification preferences | Medium | ✅ Done | `dm_notification_preferences` table (migration 032); `dm_notification_preferences` backend namespace; mute toggle bell icon in DMPage conversation header |
+| PTSPH-175 | Server-side full-text search | High | ✅ Done | `search_tsv` generated column + GIN index (migration 033); `messages.search()` backend method; dual-mode `useMessageSearch` (server `Ref<string>` / client getter overloads) |
+| PTSPH-176 | Admin dashboard overview | Medium | ✅ Done | `AdminDashboardPage.vue` at `/admin`; 2×2 stat cards (members/pending/reports/spaces); `useAdminStats.ts`; Dashboard link in CommunitySidebar |
+| PTSPH-177 | Attachment rendering | High | ✅ Done | `MessageAttachments.vue` component; inline image preview + file chip with download; used in ServerPage message list |
+| PTSPH-178 | Unread respects notification prefs | Medium | ✅ Done | `useUnread.refreshUnread` skips `level=none` channels; `useDmUnread.refreshDmUnread` skips muted DM groups |
 | PTSPH-179 | Pinned messages panel extraction | Medium | ✅ Done | Extract inline pinned panel from ServerPage into `PinnedMessagesPanel.vue`; same props/emit pattern as EventsPanel |
 
 **Migrations:**
@@ -59,11 +59,11 @@ Backend adapter auto-detects mode via `VITE_SUPABASE_URL` env var. Local mode us
 - `028_storage_avatars_bucket.sql` — ✅ done — avatars bucket + RLS policies (400 on upload)
 - `029_community_settings_anon_select.sql` — ✅ done — allow anon role to read community_settings (landing page 406)
 - `030_fix_channel_categories_rls.sql` — ✅ done — channel_categories RLS security fix (emergency fix)
-- `031_message_attachments.sql` — planned — `message_attachments` table + `attachments` Storage bucket
-- `032_dm_notification_prefs.sql` — planned — `dm_notification_preferences` table + RLS
-- `033_message_fulltext_search.sql` — planned — `search_tsv` generated column + GIN index on `messages`
+- `031_message_attachments.sql` — ✅ done — `message_attachments` table + `attachments` Storage bucket + RLS
+- `032_dm_notification_prefs.sql` — ✅ done — `dm_notification_preferences` table + RLS
+- `033_message_fulltext_search.sql` — ✅ done — `search_tsv` generated column + GIN index on `messages`
 
-**Implementation order:** ~~PTSPH-179~~ ~~PTSPH-172~~ → PTSPH-173+177 → PTSPH-174+178 → PTSPH-175 → PTSPH-176
+**Implementation order:** ~~PTSPH-179~~ ~~PTSPH-172~~ ~~PTSPH-173+177~~ ~~PTSPH-174+178~~ ~~PTSPH-175~~ ~~PTSPH-176~~
 
 ---
 
@@ -432,6 +432,7 @@ supabase/migrations/
 ## Recent Updates
 
 - 2026-03-09: RLS bug fixes. Migration 023: fix `servers_update` infinite recursion (42P17) — replaced self-referencing policy with direct column + `user_has_permission()`. Migration 024: DM group auto-join trigger (42501) — `AFTER INSERT` trigger adds creator to `direct_message_members` before RETURNING evaluates SELECT policy; `community_settings` singleton unique index `((true))` + duplicate row cleanup (PGRST116). Build workflow restored to `push: branches: [main]`. `supabase-backend.ts` defensive fix: `.limit(1)` on `community.get()`.
+- 2026-03-10: M20 complete. PTSPH-173+177: file/image attachments — `messages.upload()` in both backends, `MessageAttachments.vue`, paperclip button + pending preview in ServerPage. PTSPH-174+178: DM notification prefs — `dm_notification_preferences` table (032), bell mute toggle in DMPage; `useUnread`/`useDmUnread` skip muted channels/groups. PTSPH-175: server-side FTS — `search_tsv` generated tsvector (033), `messages.search()`, dual-mode `useMessageSearch` overloads. PTSPH-176: admin dashboard — `AdminDashboardPage` at `/admin`, `useAdminStats.ts`, Dashboard link in CommunitySidebar.
 - 2026-03-09: M20 started. PTSPH-179: `PinnedMessagesPanel.vue` extracted from ServerPage as standalone component. PTSPH-172: cursor-based message pagination (`before` + `limit` params in both backends, `paginationByChannel` in messagesStore, `fetchOlderMessages` in useMessages, "Load earlier messages" button in ServerPage with scroll-position preservation). Migration 022 committed. GitHub Actions build-dist workflow paused (push trigger → `workflow_dispatch`) while testing hoster build.
 - 2026-03-09: M16–M19 gaps closed. PTSPH-164: Branding section in CommunitySettingsPage (logo + banner URL with live preview). PTSPH-171: `useNotificationPreferences.ts` + bell icon/popover in ServerPage channel list. PTSPH-160: `auth.logoutGlobal()` (Supabase `scope: global`) + "Sign out everywhere" in SettingsPage. PTSPH-166: `defineAsyncComponent` for ThreadPanel/EventsPanel/CreatePollDialog/ReportDialog in ServerPage. All M16–M19 tickets now ✅ Done.
 - 2026-03-06: M16–M19 milestone planning complete. M16 PTSPH-148–152 (skeletons, empty states, sidebar toggles, panel refactor, mobile), M17 PTSPH-153–160 (auth hardening, registration modes, approvals, community invites), M18 PTSPH-161–166 (error pages, SPA configs, env validation, CSP), M19 PTSPH-167–171 (rich profiles, profile modal, member directory, notification prefs). Migrations 020+021. Both backends updated.
