@@ -337,3 +337,23 @@ export interface NotificationPreference {
   channel_id: string
   level: NotificationLevel
 }
+
+// ── Message Attachments ──────────────────────────────────────
+
+export interface MessageAttachment {
+  id: string
+  message_id: string
+  storage_path: string
+  file_name: string
+  file_size: number
+  mime_type: string
+  created_at: string
+}
+
+// ── DM Notification Preferences ─────────────────────────────
+
+export interface DmNotificationPreference {
+  user_id: string
+  group_id: string
+  muted: boolean
+}

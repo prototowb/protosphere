@@ -231,6 +231,20 @@ function copyInviteCode() {
         <span>Approvals</span>
       </router-link>
 
+      <!-- Dashboard (owners only) -->
+      <router-link
+        v-if="isAnyOwner"
+        to="/admin"
+        @click="mobileMenuOpen = false"
+        class="flex items-center gap-2.5 rounded-md px-3 py-2.5 text-sm transition-colors"
+        :class="route.path === '/admin' ? 'bg-bg-hover text-text-primary font-medium' : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary'"
+      >
+        <svg class="h-4 w-4 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
+        </svg>
+        <span>Dashboard</span>
+      </router-link>
+
       <div class="my-1 h-px bg-bg-tertiary" />
 
       <!-- Spaces list -->
@@ -356,6 +370,19 @@ function copyInviteCode() {
           <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
         </svg>
         <span>Approvals</span>
+      </router-link>
+
+      <!-- Dashboard (owners only) -->
+      <router-link
+        v-if="isAnyOwner"
+        to="/admin"
+        class="flex flex-shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1 text-sm whitespace-nowrap transition-colors"
+        :class="route.path === '/admin' ? 'bg-bg-hover text-text-primary font-medium' : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary'"
+      >
+        <svg class="h-3.5 w-3.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
+        </svg>
+        <span>Dashboard</span>
       </router-link>
 
       <div class="mx-1 h-4 w-px flex-shrink-0 bg-bg-tertiary" />

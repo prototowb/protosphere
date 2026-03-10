@@ -1,4 +1,4 @@
-import type { Profile, Server, Channel, ChannelCategory, Member, Message, Reaction, Ban, DirectMessageGroup, DirectMessageMember, DirectMessage, Role, UserRole, ChannelRoleOverride, CommunitySettings, AuditLog, Report, Mute, AutomodRule, Poll, PollOption, PollVote, AppEvent, EventRsvp, CommunityInvite, NotificationPreference } from '@/lib/types'
+import type { Profile, Server, Channel, ChannelCategory, Member, Message, Attachment, Reaction, Ban, DirectMessageGroup, DirectMessageMember, DirectMessage, Role, UserRole, ChannelRoleOverride, CommunitySettings, AuditLog, Report, Mute, AutomodRule, Poll, PollOption, PollVote, AppEvent, EventRsvp, CommunityInvite, NotificationPreference, DmNotificationPreference } from '@/lib/types'
 import type { AuthSession, Backend } from './types'
 import { serializePermissions, PermissionPresets, Permission } from '@/lib/permissions'
 
@@ -31,6 +31,7 @@ const KEYS = {
   event_rsvps: 'protosphere_event_rsvps',
   community_invites: 'protosphere_community_invites',
   notification_prefs: 'protosphere_notification_prefs',
+  dm_notif_prefs: 'protosphere_dm_notif_prefs',
 } as const
 
 interface StoredUser {
@@ -502,7 +503,7 @@ export function createLocalBackend(): Backend {
         return { messages: result, hasMore }
       },
 
-      async send(channelId: string, authorId: string, content: string, replyToId?: string | null) {
+      async send(channelId: string, authorId: string, content: string, replyToId?: string | null, attachments: Attachment[] = []) {
         const messages = readJson<Message[]>(KEYS.messages, [])
         const profiles = readJson<Record<string, Profile>>(KEYS.profiles, {})
         const profile = profiles[authorId]
@@ -515,7 +516,7 @@ export function createLocalBackend(): Backend {
           content,
           edited_at: null,
           reply_to_id: replyToId ?? null,
-          attachments: [],
+          attachments,
           is_pinned: false,
           created_at: new Date().toISOString(),
         }
@@ -569,6 +570,28 @@ export function createLocalBackend(): Backend {
         }
         return result
       },
+
+      async upload(file: File, userId: string) {
+        const path = `${userId}/${Date.now()}-${file.name}`
+        // Local mode: return object URL (in-memory only, not persisted)
+        return { path, publicUrl: URL.createObjectURL(file) }
+      },
+
+      async search(channelId: string, query: string, limit = 25) {
+        const messages = readJson<Message[]>(KEYS.messages, [])
+        const profiles = readJson<Record<string, Profile>>(KEYS.profiles, {})
+        const lower = query.toLowerCase()
+        const result: (Message & { profile: Profile })[] = []
+        for (const m of messages) {
+          if (m.channel_id !== channelId) continue
+          if (!m.content?.toLowerCase().includes(lower)) continue
+          const profile = profiles[m.author_id]
+          if (profile) result.push({ ...m, profile })
+        }
+        result.sort((a, b) => b.created_at.localeCompare(a.created_at))
+        return result.slice(0, limit)
+      },
+
     },
 
     categories: {
@@ -1357,6 +1380,21 @@ export function createLocalBackend(): Backend {
       async listForUser(userId) {
         const prefs = readJson<NotificationPreference[]>(KEYS.notification_prefs, [])
         return prefs.filter((p) => p.user_id === userId)
+      },
+    },
+
+    dm_notification_preferences: {
+      async get(userId: string, groupId: string) {
+        const prefs = readJson<Record<string, boolean>>(KEYS.dm_notif_prefs, {})
+        const key = `${userId}:${groupId}`
+        if (!(key in prefs)) return null
+        return { user_id: userId, group_id: groupId, muted: prefs[key] } as DmNotificationPreference
+      },
+
+      async set(userId: string, groupId: string, muted: boolean) {
+        const prefs = readJson<Record<string, boolean>>(KEYS.dm_notif_prefs, {})
+        prefs[`${userId}:${groupId}`] = muted
+        writeJson(KEYS.dm_notif_prefs, prefs)
       },
     },
   }

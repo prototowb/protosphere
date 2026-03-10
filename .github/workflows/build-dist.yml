@@ -3,10 +3,10 @@ name: Build Dist
 on:
   push:
     branches:
-      - main
+      - development
 
 concurrency:
-  group: build-dist-main
+  group: build-dist-development
   cancel-in-progress: true
 
 permissions:
@@ -24,11 +24,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      - name: Reset to origin/main
-        run: |
-          git fetch origin main
-          git reset --hard origin/main
 
       - name: Set up Node
         uses: actions/setup-node@v4
@@ -76,4 +71,4 @@ jobs:
             exit 0
           fi
           git commit -m "chore(dist): update build output [skip ci]"
-          git push
+          git push origin development

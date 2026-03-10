@@ -1,6 +1,7 @@
 import { ref } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useDmsStore } from '@/stores/dms'
+import { useDmNotificationPreferences } from '@/composables/useDmNotificationPreferences'
 
 const DM_READ_STATE_KEY = 'protosphere_dm_read_state'
 
@@ -18,6 +19,7 @@ function readState(): DmReadState {
 export function useDmUnread() {
   const authStore = useAuthStore()
   const dmsStore = useDmsStore()
+  const { isMuted } = useDmNotificationPreferences()
 
   const unreadDmGroupIds = ref<Set<string>>(new Set())
   const totalDmUnread = ref(0)
@@ -42,6 +44,9 @@ export function useDmUnread() {
     const unread = new Set<string>()
 
     for (const group of dmsStore.groups) {
+      // Skip muted DM groups
+      if (isMuted(group.id)) continue
+
       const lastRead = userState[group.id]
       const msgs = dmsStore.messagesByGroup[group.id]
       if (!msgs || msgs.length === 0) continue

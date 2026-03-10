@@ -17,6 +17,7 @@ import { useTyping } from '@/composables/useTyping'
 import { useRealtime } from '@/composables/useRealtime'
 import { useMessageSearch } from '@/composables/useMessageSearch'
 import { useProfile } from '@/composables/useProfile'
+import { useDmNotificationPreferences } from '@/composables/useDmNotificationPreferences'
 import { isLocalMode } from '@/lib/backend'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 import type { DirectMessage, Profile } from '@/lib/types'
@@ -37,6 +38,7 @@ const { typingUsers, onTyping: localOnTyping, onSent: localOnSent, startListenin
 const { startDmMessages, stopDmMessages, startTypingChannel, broadcastTyping, broadcastStopTyping, stopTypingChannel } = useRealtime()
 const realtimeTypingUsers = ref<string[]>([])
 const { query: dmSearchQuery, results: dmSearchResults, isOpen: dmSearchOpen, open: openDmSearch, close: closeDmSearch } = useMessageSearch(() => messages.value)
+const { isMuted, loadMute, setMute } = useDmNotificationPreferences()
 
 const messageInput = ref('')
 const messageInputEl = ref<HTMLInputElement | null>(null)
@@ -128,6 +130,7 @@ watch(dmGroupId, (id) => {
     store.activeDmGroupId = id
     loadMessages(id)
     markDmRead(id)
+    if (authStore.user?.id) loadMute(authStore.user.id, id).catch(() => {})
   } else {
     store.activeDmGroupId = null
   }
@@ -377,6 +380,23 @@ function onDmConversationContext(event: MouseEvent, groupId: string) {
             {{ activeGroup.otherUser.status_text }}
           </span>
           <div class="ml-auto flex items-center gap-1">
+            <!-- Mute toggle -->
+            <button
+              v-if="dmGroupId && authStore.user?.id"
+              @click="setMute(authStore.user.id, dmGroupId, !isMuted(dmGroupId))"
+              :class="isMuted(dmGroupId) ? 'text-text-muted hover:text-text-primary' : 'text-text-primary hover:text-text-muted'"
+              class="rounded p-1.5 hover:bg-bg-hover transition-colors"
+              :title="isMuted(dmGroupId) ? 'Unmute notifications' : 'Mute notifications'"
+            >
+              <!-- Bell icon (not muted) -->
+              <svg v-if="!isMuted(dmGroupId)" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+              </svg>
+              <!-- Bell-off icon (muted) -->
+              <svg v-else class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M13.73 21a2 2 0 0 1-3.46 0"/><path d="M18.63 13A17.89 17.89 0 0 1 18 8"/><path d="M6.26 6.26A5.86 5.86 0 0 0 6 8c0 7-3 9-3 9h14"/><path d="M18 8a6 6 0 0 0-9.33-5"/><line x1="1" y1="1" x2="23" y2="23"/>
+              </svg>
+            </button>
             <button
               @click="dmSearchOpen ? closeDmSearch() : openDmSearch()"
               :class="dmSearchOpen ? 'text-text-primary bg-bg-hover' : 'text-text-muted hover:text-text-primary hover:bg-bg-hover'"

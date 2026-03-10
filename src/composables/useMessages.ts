@@ -1,7 +1,7 @@
 import { ref } from 'vue'
 import { backend } from '@/lib/backend'
 import { useMessagesStore } from '@/stores/messages'
-import type { Message, Profile } from '@/lib/types'
+import type { Message, Profile, Attachment } from '@/lib/types'
 
 export function useMessages() {
   const messagesStore = useMessagesStore()
@@ -41,8 +41,8 @@ export function useMessages() {
     }
   }
 
-  async function sendMessage(channelId: string, authorId: string, content: string, replyToId?: string | null) {
-    const msg = await backend.messages.send(channelId, authorId, content, replyToId)
+  async function sendMessage(channelId: string, authorId: string, content: string, replyToId?: string | null, attachments?: Attachment[]) {
+    const msg = await backend.messages.send(channelId, authorId, content, replyToId, attachments)
     if (!messagesStore.messagesByChannel[channelId]) {
       messagesStore.messagesByChannel[channelId] = []
     }
