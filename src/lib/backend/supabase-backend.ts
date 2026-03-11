@@ -800,9 +800,8 @@ export function createSupabaseBackend(): Backend {
 
     audit_log: {
       async log(serverId, actorId, action, targetType, targetId, details = {}) {
-        const { data, error } = await client.from('audit_log').insert({ server_id: serverId, actor_id: actorId, action, target_type: targetType, target_id: targetId, details }).select().single()
+        const { error } = await client.from('audit_log').insert({ server_id: serverId, actor_id: actorId, action, target_type: targetType, target_id: targetId, details })
         if (error) throw error
-        return data as AuditLog
       },
 
       async list(serverId, offset = 0, limit = 50) {

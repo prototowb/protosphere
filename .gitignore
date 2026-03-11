@@ -4,8 +4,8 @@ pnpm-lock.yaml
 yarn.lock
 package-lock.json
 
-# Build output (.gitignore keeps dist out of development; CI force-adds it on main)
-# dist/
+# Build output (gitignored locally; CI force-adds with -f on every push)
+dist/
 .output/
 .nuxt/
 

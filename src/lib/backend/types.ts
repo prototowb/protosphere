@@ -110,7 +110,7 @@ export interface Backend {
     deleteChannelOverride(channelId: string, roleId: string): Promise<void>
   }
   audit_log: {
-    log(serverId: string | null, actorId: string, action: AuditLogAction, targetType: AuditLog['target_type'], targetId: string, details?: Record<string, unknown>): Promise<AuditLog>
+    log(serverId: string | null, actorId: string, action: AuditLogAction, targetType: AuditLog['target_type'], targetId: string, details?: Record<string, unknown>): Promise<void>
     list(serverId?: string | null, offset?: number, limit?: number): Promise<AuditLog[]>
   }
   reports: {
