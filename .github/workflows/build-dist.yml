@@ -58,6 +58,9 @@ jobs:
       - name: Clean dist
         run: rm -rf dist
 
+      - name: Sync emoji assets
+        run: npm run sync:emoji
+
       - name: Build
         run: npm run build
 
