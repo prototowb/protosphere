@@ -53,5 +53,4 @@ temp/
 # Development
 .turbo/
 
-# Twemoji SVG assets (run `npm run sync:emoji` once after cloning)
-public/emoji/
+# Twemoji SVG assets committed to repo; run `npm run sync:emoji` to update

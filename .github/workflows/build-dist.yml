@@ -58,15 +58,6 @@ jobs:
       - name: Clean dist
         run: rm -rf dist
 
-      - name: Cache emoji assets
-        uses: actions/cache@v4
-        with:
-          path: public/emoji
-          key: emoji-assets-${{ hashFiles('scripts/sync-twemoji.mjs') }}
-
-      - name: Sync emoji assets
-        run: npm run sync:emoji
-
       - name: Build
         run: npm run build
 
