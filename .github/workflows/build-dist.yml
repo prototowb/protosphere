@@ -4,9 +4,10 @@ on:
   push:
     branches:
       - development
+      - main
 
 concurrency:
-  group: build-dist-development
+  group: build-dist-${{ github.ref_name }}
   cancel-in-progress: true
 
 permissions:
@@ -71,4 +72,4 @@ jobs:
             exit 0
           fi
           git commit -m "chore(dist): update build output [skip ci]"
-          git push origin development
+          git push origin ${{ github.ref_name }}
