@@ -1546,7 +1546,7 @@ function onServerHeaderContext(event: MouseEvent) {
                     ? 'border-accent bg-accent/20 text-accent'
                     : 'border-bg-tertiary bg-bg-secondary text-text-secondary hover:border-accent/50'"
                 >
-                  <span>{{ group.emoji }}</span>
+                  <span v-twemoji>{{ group.emoji }}</span>
                   <span>{{ group.count }}</span>
                 </button>
               </div>
@@ -2114,6 +2114,7 @@ function onServerHeaderContext(event: MouseEvent) {
         @click="handleToggleReaction(emojiPickerForMsg!, emoji)"
         class="rounded p-1 text-base hover:bg-bg-hover"
         :title="emoji"
+        v-twemoji
       >{{ emoji }}</button>
     </div>
     <div

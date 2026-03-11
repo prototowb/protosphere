@@ -3,6 +3,7 @@ import { createPinia } from 'pinia'
 import App from './App.vue'
 import router from './router'
 import { useAuth } from './composables/useAuth'
+import { vTwemoji } from './directives/twemoji'
 import './assets/main.css'
 
 // Runtime environment validation (PTSPH-163)
@@ -23,6 +24,7 @@ const app = createApp(App)
 
 app.use(createPinia())
 app.use(router)
+app.directive('twemoji', vTwemoji)
 
 // Global error handler — catches unhandled component errors (PTSPH-161)
 app.config.errorHandler = (err, _instance, info) => {

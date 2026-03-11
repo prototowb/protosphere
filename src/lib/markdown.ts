@@ -28,10 +28,10 @@ export function renderMarkdown(escaped: string): string {
     (url) => `<a href="${url}" class="md-link" target="_blank" rel="noopener noreferrer">${url}</a>`,
   )
 
-  // Replace native emoji with Twemoji SVGs (Discord-style)
+  // Replace native emoji with Twemoji PNGs (Discord-style, CORB-safe)
   escaped = twemoji.parse(escaped, {
-    folder: 'svg',
-    ext: '.svg',
+    folder: '72x72',
+    ext: '.png',
     base: 'https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/',
     attributes: () => ({ class: 'emoji' }),
   }) as string
