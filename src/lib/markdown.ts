@@ -2,6 +2,8 @@
 // Operates on already-HTML-escaped text (safe against XSS).
 // Supports: code blocks, inline code, bold, italic, strikethrough, URL auto-linking.
 
+import twemoji from 'twemoji'
+
 export function renderMarkdown(escaped: string): string {
   // Fenced code blocks: ```lang\ncode\n```
   escaped = escaped.replace(/```(\w*)\n?([\s\S]*?)```/g, (_match, _lang: string, code: string) => {
@@ -25,6 +27,14 @@ export function renderMarkdown(escaped: string): string {
     /(?<!")https?:\/\/[^\s<]+/g,
     (url) => `<a href="${url}" class="md-link" target="_blank" rel="noopener noreferrer">${url}</a>`,
   )
+
+  // Replace native emoji with Twemoji SVGs (Discord-style)
+  escaped = twemoji.parse(escaped, {
+    folder: 'svg',
+    ext: '.svg',
+    base: 'https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/',
+    attributes: () => ({ class: 'emoji' }),
+  }) as string
 
   return escaped
 }

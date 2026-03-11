@@ -104,3 +104,11 @@ del {
   text-decoration: line-through;
   opacity: 0.7;
 }
+
+/* Twemoji — Discord-style emoji rendering */
+img.emoji {
+  height: 1.2em;
+  width: 1.2em;
+  vertical-align: -0.2em;
+  display: inline-block;
+}
