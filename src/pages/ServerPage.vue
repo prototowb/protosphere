@@ -4,8 +4,10 @@ import { useRoute, useRouter } from 'vue-router'
 import AppShell from '@/components/layout/AppShell.vue'
 import UserAvatar from '@/components/user/UserAvatar.vue'
 import EmojiPicker from '@/components/chat/EmojiPicker.vue'
+import MessageInput from '@/components/chat/MessageInput.vue'
 import MessageSearch from '@/components/chat/MessageSearch.vue'
 import MessageAttachments from '@/components/messages/MessageAttachments.vue'
+import EmojiIcon from '@/components/ui/EmojiIcon.vue'
 import { useServersStore } from '@/stores/servers'
 import { useChannelsStore } from '@/stores/channels'
 import { useMessagesStore } from '@/stores/messages'
@@ -44,6 +46,7 @@ import { usePolls } from '@/composables/usePolls'
 import { useEvents } from '@/composables/useEvents'
 import { Permission } from '@/lib/permissions'
 import { checkAutomod } from '@/lib/automod'
+import { expandShortcodes } from '@/lib/emojiNames'
 import { backend, isLocalMode } from '@/lib/backend'
 import { useRealtime } from '@/composables/useRealtime'
 import { usePresenceStore } from '@/stores/presence'
@@ -180,7 +183,7 @@ const serverId = ref('')
 const channelId = ref('')
 
 const messageInput = ref('')
-const messageInputEl = ref<HTMLInputElement | null>(null)
+const messageInputEl = ref<InstanceType<typeof MessageInput> | null>(null)
 const sending = ref(false)
 const messageListEl = ref<HTMLElement | null>(null)
 const fileInputEl = ref<HTMLInputElement | null>(null)
@@ -203,19 +206,7 @@ function openEmojiDrawer(event: MouseEvent) {
 }
 
 function insertEmoji(emoji: string) {
-  const input = messageInputEl.value
-  if (!input) {
-    messageInput.value += emoji
-    return
-  }
-  const start = input.selectionStart ?? messageInput.value.length
-  const end = input.selectionEnd ?? messageInput.value.length
-  messageInput.value = messageInput.value.slice(0, start) + emoji + messageInput.value.slice(end)
-  nextTick(() => {
-    input.focus()
-    const pos = start + [...emoji].length  // account for multi-codepoint emoji
-    input.setSelectionRange(pos, pos)
-  })
+  messageInputEl.value?.insertEmoji(emoji)
 }
 
 const editingId = ref<string | null>(null)
@@ -472,7 +463,7 @@ function scrollToMessage(messageId: string) {
 watch(messages, () => { if (!loadingOlder.value) scrollToBottom() })
 
 async function handleSendMessage() {
-  const content = messageInput.value.trim()
+  const content = expandShortcodes(messageInput.value.trim())
   const hasAttachments = pendingAttachments.value.length > 0
   if ((!content && !hasAttachments) || sending.value || uploadingFiles.value || !channelsStore.activeChannelId || !authStore.user?.id || slowmodeRemaining.value > 0) return
   if (!canPostInChannel.value) return
@@ -523,7 +514,7 @@ async function handleSendMessage() {
   }
 }
 
-async function uploadAttachments(files: FileList) {
+async function uploadAttachments(files: File[] | FileList) {
   if (!authStore.user?.id || !files.length) return
   uploadingFiles.value = true
   try {
@@ -1546,7 +1537,7 @@ function onServerHeaderContext(event: MouseEvent) {
                     ? 'border-accent bg-accent/20 text-accent'
                     : 'border-bg-tertiary bg-bg-secondary text-text-secondary hover:border-accent/50'"
                 >
-                  <span>{{ group.emoji }}</span>
+                  <EmojiIcon :emoji="group.emoji" size="1em" />
                   <span>{{ group.count }}</span>
                 </button>
               </div>
@@ -1709,15 +1700,14 @@ function onServerHeaderContext(event: MouseEvent) {
               <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>
             </svg>
           </button>
-          <input
+          <MessageInput
             ref="messageInputEl"
             v-model="messageInput"
-            type="text"
-            :placeholder="!canPostInChannel ? 'This is an announcement channel — only moderators can post' : slowmodeRemaining > 0 ? `Slowmode active — wait ${slowmodeRemaining}s` : `Message #${activeChannel?.name ?? 'general'}`"
             :disabled="!activeChannel || slowmodeRemaining > 0 || !canPostInChannel"
-            class="flex-1 bg-transparent text-text-primary placeholder-text-muted outline-none disabled:cursor-not-allowed disabled:opacity-60"
-            @keydown.enter.prevent="handleSendMessage"
+            :placeholder="!canPostInChannel ? 'This is an announcement channel — only moderators can post' : slowmodeRemaining > 0 ? `Slowmode active — wait ${slowmodeRemaining}s` : `Message #${activeChannel?.name ?? 'general'}`"
+            @submit="handleSendMessage"
             @input="handleInput"
+            @files="uploadAttachments"
           />
           <!-- Emoji drawer button -->
           <button
@@ -2114,7 +2104,7 @@ function onServerHeaderContext(event: MouseEvent) {
         @click="handleToggleReaction(emojiPickerForMsg!, emoji)"
         class="rounded p-1 text-base hover:bg-bg-hover"
         :title="emoji"
-      >{{ emoji }}</button>
+      ><EmojiIcon :emoji="emoji" size="1.25em" /></button>
     </div>
     <div
       v-if="emojiPickerForMsg"

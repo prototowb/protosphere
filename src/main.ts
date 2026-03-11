@@ -3,6 +3,7 @@ import { createPinia } from 'pinia'
 import App from './App.vue'
 import router from './router'
 import { useAuth } from './composables/useAuth'
+import { loadEmojiData } from './lib/emojiNames'
 import './assets/main.css'
 
 // Runtime environment validation (PTSPH-163)
@@ -32,6 +33,9 @@ app.config.errorHandler = (err, _instance, info) => {
   const msg = err instanceof Error ? err.message : String(err)
   router.push({ name: 'error', query: { error: msg } }).catch(() => {})
 }
+
+// Preload emoji data for tooltips and autocomplete (fire and forget)
+loadEmojiData()
 
 // Initialize auth listener before mounting so session is available to route guards
 const { initAuthListener } = useAuth()

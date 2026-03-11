@@ -2,7 +2,8 @@
 // Operates on already-HTML-escaped text (safe against XSS).
 // Supports: code blocks, inline code, bold, italic, strikethrough, URL auto-linking.
 
-import twemoji from 'twemoji'
+import twemoji from '@twemoji/api'
+import { getEmojiIconLabel } from '@/lib/emojiNames'
 
 export function renderMarkdown(escaped: string): string {
   // Fenced code blocks: ```lang\ncode\n```
@@ -28,12 +29,15 @@ export function renderMarkdown(escaped: string): string {
     (url) => `<a href="${url}" class="md-link" target="_blank" rel="noopener noreferrer">${url}</a>`,
   )
 
-  // Replace native emoji with Twemoji SVGs (Discord-style)
+  // Replace native emoji with Twemoji PNGs (Discord-style, CORB-safe)
   escaped = twemoji.parse(escaped, {
     folder: 'svg',
     ext: '.svg',
-    base: 'https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/',
-    attributes: () => ({ class: 'emoji' }),
+    base: '/emoji/',
+    attributes: (icon: string) => {
+      const label = getEmojiIconLabel(icon)
+      return label ? { class: 'emoji', title: label } : { class: 'emoji' }
+    },
   }) as string
 
   return escaped

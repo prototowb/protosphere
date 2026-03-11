@@ -995,7 +995,6 @@ export function createLocalBackend(): Backend {
         }
         logs.push(entry)
         writeJson(KEYS.audit_log, logs)
-        return entry
       },
 
       async list(serverId, offset = 0, limit = 50) {
