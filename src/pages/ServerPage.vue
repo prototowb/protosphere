@@ -6,6 +6,7 @@ import UserAvatar from '@/components/user/UserAvatar.vue'
 import EmojiPicker from '@/components/chat/EmojiPicker.vue'
 import MessageSearch from '@/components/chat/MessageSearch.vue'
 import MessageAttachments from '@/components/messages/MessageAttachments.vue'
+import EmojiIcon from '@/components/ui/EmojiIcon.vue'
 import { useServersStore } from '@/stores/servers'
 import { useChannelsStore } from '@/stores/channels'
 import { useMessagesStore } from '@/stores/messages'
@@ -1546,7 +1547,7 @@ function onServerHeaderContext(event: MouseEvent) {
                     ? 'border-accent bg-accent/20 text-accent'
                     : 'border-bg-tertiary bg-bg-secondary text-text-secondary hover:border-accent/50'"
                 >
-                  <span v-twemoji>{{ group.emoji }}</span>
+                  <EmojiIcon :emoji="group.emoji" size="1em" />
                   <span>{{ group.count }}</span>
                 </button>
               </div>
@@ -2114,8 +2115,7 @@ function onServerHeaderContext(event: MouseEvent) {
         @click="handleToggleReaction(emojiPickerForMsg!, emoji)"
         class="rounded p-1 text-base hover:bg-bg-hover"
         :title="emoji"
-        v-twemoji
-      >{{ emoji }}</button>
+      ><EmojiIcon :emoji="emoji" size="1.25em" /></button>
     </div>
     <div
       v-if="emojiPickerForMsg"
