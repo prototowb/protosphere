@@ -19,6 +19,7 @@ import { useMessageSearch } from '@/composables/useMessageSearch'
 import { useProfile } from '@/composables/useProfile'
 import { useDmNotificationPreferences } from '@/composables/useDmNotificationPreferences'
 import { isLocalMode } from '@/lib/backend'
+import { expandShortcodes } from '@/lib/emojiNames'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 import type { DirectMessage, Profile } from '@/lib/types'
 
@@ -168,7 +169,7 @@ function scrollToBottom() {
 }
 
 async function handleSend() {
-  const content = messageInput.value.trim()
+  const content = expandShortcodes(messageInput.value.trim())
   if (!content || sending.value || !dmGroupId.value) return
   sending.value = true
   const replyId = replyingTo.value?.id ?? null

@@ -1,63 +1,172 @@
 <script setup lang="ts">
-import { onMounted, onBeforeUnmount, ref } from 'vue'
+import { ref, computed, onMounted } from 'vue'
+import EmojiIcon from '@/components/ui/EmojiIcon.vue'
+import { loadEmojiData, getEmojiData } from '@/lib/emojiNames'
 
-const emit = defineEmits<{
-  select: [emoji: string]
-}>()
+const emit = defineEmits<{ select: [emoji: string] }>()
 
-const container = ref<HTMLElement | null>(null)
-let picker: HTMLElement | null = null
+const CATEGORY_ICONS: Record<string, string> = {
+  people:   '😀',
+  nature:   '🐶',
+  foods:    '🍕',
+  activity: '⚽',
+  places:   '✈️',
+  objects:  '💡',
+  symbols:  '❤️',
+  flags:    '🏳️',
+}
+
+const search = ref('')
+const activeCategory = ref('')
+const categories = ref<Array<{ id: string; emojis: string[] }>>([])
 
 onMounted(async () => {
-  const [{ Picker }, { default: data }] = await Promise.all([
-    import('emoji-mart'),
-    import('@emoji-mart/data'),
-  ])
-  picker = new (Picker as any)({
-    data,
-    theme: 'dark',
-    previewPosition: 'none',
-    skinTonePosition: 'search',
-    onEmojiSelect: (e: { native: string }) => emit('select', e.native),
-  }) as HTMLElement
-  container.value?.appendChild(picker)
+  await loadEmojiData()
+  const d = getEmojiData()
+  if (!d) return
+  categories.value = d.categories
+  activeCategory.value = d.categories[0]?.id ?? ''
 })
 
-onBeforeUnmount(() => {
-  if (picker && container.value?.contains(picker)) {
-    container.value.removeChild(picker)
+const visibleEmojis = computed<Array<{ native: string; name: string }>>(() => {
+  const d = getEmojiData()
+  if (!d) return []
+  if (search.value.trim()) {
+    const q = search.value.toLowerCase()
+    return Object.entries(d.names)
+      .filter(([, e]) => e.name.toLowerCase().includes(q) || e.id.includes(q))
+      .slice(0, 80)
+      .map(([native, e]) => ({ native, name: e.name }))
   }
-  picker = null
+  const cat = categories.value.find(c => c.id === activeCategory.value)
+  return (cat?.emojis ?? [])
+    .map(native => {
+      const e = d.names[native]
+      return e ? { native, name: e.name } : null
+    })
+    .filter((e): e is { native: string; name: string } => e !== null)
 })
 </script>
 
 <template>
-  <div ref="container" class="emoji-picker-host" />
+  <div class="ep-root">
+    <div class="ep-search">
+      <input v-model="search" class="ep-input" placeholder="Search emoji…" />
+    </div>
+    <div v-if="!search" class="ep-cats">
+      <button
+        v-for="cat in categories"
+        :key="cat.id"
+        class="ep-cat-btn"
+        :class="{ active: activeCategory === cat.id }"
+        @click="activeCategory = cat.id"
+        :title="cat.id"
+      >
+        <EmojiIcon :emoji="CATEGORY_ICONS[cat.id] ?? '❓'" size="1em" />
+      </button>
+    </div>
+    <div class="ep-grid">
+      <button
+        v-for="e in visibleEmojis"
+        :key="e.native"
+        class="ep-emoji-btn"
+        :title="e.name"
+        @click="emit('select', e.native)"
+      >
+        <EmojiIcon :emoji="e.native" size="1.4em" />
+      </button>
+    </div>
+  </div>
 </template>
 
-<style>
-/*
-  emoji-mart renders a <em-emoji-picker> custom element (shadow DOM).
-  Custom properties pierce the shadow boundary, so this is how we theme it.
-*/
-.emoji-picker-host em-emoji-picker {
-  /* background layers — RGB triples consumed as rgba(var, alpha) */
-  --em-rgb-background: 15, 23, 42;       /* bg-secondary (slate-900) */
-  --em-rgb-input: 30, 41, 59;            /* bg-tertiary (slate-800) */
-  --em-rgb-color: 248, 250, 252;         /* text-primary (slate-50)  */
-  --em-rgb-accent: 99, 102, 241;         /* accent (indigo-500)      */
-
-  /* border / hover */
-  --em-color-border: rgba(148, 163, 184, 0.12);
-  --em-color-border-over: rgba(148, 163, 184, 0.2);
-  --em-color-background-over: rgba(248, 250, 252, 0.06);
-
-  /* size */
+<style scoped>
+.ep-root {
   width: 352px;
   max-height: 440px;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--color-bg-secondary);
   border-radius: 0.75rem;
-
-  /* shadow to separate from page */
   box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
+  overflow: hidden;
+}
+
+.ep-search {
+  padding: 12px 12px 8px;
+  flex-shrink: 0;
+}
+
+.ep-input {
+  width: 100%;
+  box-sizing: border-box;
+  background-color: var(--color-bg-tertiary);
+  color: var(--color-text-primary);
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 0.875rem;
+  outline: none;
+  font-family: inherit;
+}
+
+.ep-input:focus {
+  border-color: rgba(99, 102, 241, 0.5);
+}
+
+.ep-cats {
+  display: flex;
+  padding: 0 8px 6px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+  flex-shrink: 0;
+}
+
+.ep-cat-btn {
+  flex: 1;
+  padding: 5px 0;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  opacity: 0.6;
+  transition: opacity 0.1s, background 0.1s;
+}
+
+.ep-cat-btn:hover,
+.ep-cat-btn.active {
+  opacity: 1;
+}
+
+.ep-cat-btn.active {
+  background: rgba(99, 102, 241, 0.25);
+}
+
+.ep-grid {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+  display: grid;
+  grid-template-columns: repeat(9, 1fr);
+  gap: 1px;
+  align-content: start;
+}
+
+.ep-emoji-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1;
+  border-radius: 6px;
+  padding: 3px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.ep-emoji-btn:hover {
+  background: rgba(248, 250, 252, 0.06);
 }
 </style>

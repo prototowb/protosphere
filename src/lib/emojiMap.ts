@@ -1,7 +1,22 @@
-import twemoji from 'twemoji'
+import twemoji from '@twemoji/api'
 
-const BASE = 'https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/'
+const BASE = '/emoji/'
 const cache = new Map<string, Promise<string>>()
+
+/** Synchronously returns the local SVG URL for an emoji (no fetch). */
+export function getEmojiUrl(emoji: string): string {
+  let url = ''
+  twemoji.parse(emoji, {
+    folder: 'svg',
+    ext: '.svg',
+    base: BASE,
+    callback: (icon, options) => {
+      url = `${(options as { base: string }).base}svg/${icon}.svg`
+      return url
+    },
+  })
+  return url
+}
 
 export function getEmojiSvg(emoji: string): Promise<string> {
   if (cache.has(emoji)) return cache.get(emoji)!
