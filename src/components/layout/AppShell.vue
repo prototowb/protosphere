@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, onMounted, watchEffect } from 'vue'
+import { ref, watch, watchEffect } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUiStore } from '@/stores/ui'
 import { useAuthStore } from '@/stores/auth'
@@ -76,17 +76,18 @@ function onUserBarContext(event: MouseEvent) {
   }))
 }
 
-onMounted(async () => {
-  if (authStore.user?.id) {
-    fetchProfile()
-    await fetchServers()
-    await fetchCommunity()
-    const isOwner = serversStore.servers.some((s) => s.owner_id === authStore.user?.id)
-    if (isOwner && communityStore.settings && !communityStore.settings.setup_complete) {
-      showSetupWizard.value = true
-    }
+// Watch for user ID becoming available — handles OAuth where the session arrives
+// asynchronously after mount, so onMounted would see user?.id as null and skip fetching.
+watch(() => authStore.user?.id, async (userId) => {
+  if (!userId) return
+  fetchProfile()
+  await fetchServers()
+  await fetchCommunity()
+  const isOwner = serversStore.servers.some((s) => s.owner_id === authStore.user?.id)
+  if (isOwner && communityStore.settings && !communityStore.settings.setup_complete) {
+    showSetupWizard.value = true
   }
-})
+}, { immediate: true })
 </script>
 
 <template>

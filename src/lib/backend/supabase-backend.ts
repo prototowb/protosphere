@@ -56,17 +56,11 @@ export function createSupabaseBackend(): Backend {
       },
 
       init(onSession) {
-        client.auth.getSession().then(({ data: { session } }) => {
-          if (session) {
-            onSession({
-              user: { id: session.user.id, email: session.user.email ?? '' },
-              access_token: session.access_token,
-            })
-          } else {
-            onSession(null)
-          }
-        })
-
+        // Use only onAuthStateChange — it fires with INITIAL_SESSION on first call,
+        // covering both normal sessions and OAuth PKCE code exchange.
+        // Using getSession() alongside it creates a race: getSession() can resolve
+        // with null before the PKCE exchange completes, setting loading=false with
+        // isAuthenticated=false, causing the router guard to redirect to login.
         client.auth.onAuthStateChange((_event, session) => {
           if (session) {
             onSession({
