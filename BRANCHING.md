@@ -25,7 +25,7 @@ This file is part of the Proto Gear documentation system. For complete context, 
 |-------------|-----------------|-------------|---------|
 | **Local** | local Supabase (`supabase start`) | `.env.local` | Day-to-day development |
 | **Staging** | `protocode-chat-staging` (`pysitxxjzejhvkawacit`) | `.env.staging` | Pre-production validation |
-| **Production** | main project | CI secrets | Live site |
+| **Production** | `protocode-chat` (`porlhhdajfaamvggcrbi`) | CI secrets | Live site |
 
 ### Migration Promotion Flow
 
@@ -35,8 +35,8 @@ local dev → staging → production
 
 1. Write and test migration locally with `supabase db reset`
 2. Push to staging: `supabase db push --workdir "G:/Projects/protocode-chat"` (CLI is linked to staging by default)
-3. Smoke-test against staging (`npm run dev` with `.env.staging`)
-4. Only then apply to production via Supabase dashboard → SQL editor or production project CLI link
+3. Smoke-test against staging: `npm run dev:staging`
+4. Push to production: `supabase db push --project-ref porlhhdajfaamvggcrbi --workdir "G:/Projects/protocode-chat"`
 
 **Never apply an untested migration directly to production.**
 
