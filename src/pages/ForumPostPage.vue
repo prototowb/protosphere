@@ -134,7 +134,7 @@ async function submitTopComment() {
   }
 }
 
-function handleCollaboratorAdded(userId: string) {
+function handleCollaboratorAdded(_userId: string) {
   showInviteDialog.value = false
   // Reload post to get updated collaborator list
   backend.forum.getPost(postId.value).then((p) => {

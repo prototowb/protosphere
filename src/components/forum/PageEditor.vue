@@ -58,7 +58,7 @@ watch(() => props.modelValue, (val) => {
   if (!editor.value) return
   const current = editor.value.getJSON()
   if (JSON.stringify(current) !== JSON.stringify(val)) {
-    editor.value.commands.setContent(val ?? '', false)
+    editor.value.commands.setContent(val ?? undefined)
   }
 })
 
