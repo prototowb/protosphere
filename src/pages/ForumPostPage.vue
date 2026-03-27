@@ -5,10 +5,14 @@ import { backend } from '@/lib/backend'
 import { useAuthStore } from '@/stores/auth'
 import { useToastStore } from '@/stores/toast'
 import UserAvatar from '@/components/user/UserAvatar.vue'
+import MessageAttachments from '@/components/messages/MessageAttachments.vue'
 import ForumCommentTree from '@/components/forum/ForumCommentTree.vue'
 import PageEditor from '@/components/forum/PageEditor.vue'
 import InviteCollaboratorDialog from '@/components/forum/InviteCollaboratorDialog.vue'
-import type { ForumPost, ForumVote, ForumComment, ForumCollaborator, Profile, Message } from '@/lib/types'
+import type {
+  ForumPost, ForumVote, ForumComment, ForumCollaborator,
+  ForumCommentReaction, Profile, Message,
+} from '@/lib/types'
 
 const route = useRoute()
 const router = useRouter()
@@ -28,6 +32,11 @@ const loading = ref(true)
 const post = ref<FullPost | null>(null)
 const comments = ref<(ForumComment & { profile: Profile })[]>([])
 const userVote = ref<ForumVote | null>(null)
+
+// Comment-level vote + reaction state
+const commentVoteMap = ref<Record<string, 1 | -1>>({})
+const reactionMap = ref<Record<string, ForumCommentReaction[]>>({})
+
 const newComment = ref('')
 const posting = ref(false)
 
@@ -58,21 +67,39 @@ const collaboratorIds = computed(() =>
 
 onMounted(async () => {
   try {
-    const [postData, commentData, voteData] = await Promise.all([
+    const uid = authStore.user?.id
+    const [postData, commentData, voteData, commentVotes, reactions] = await Promise.all([
       backend.forum.getPost(postId.value),
       backend.forum.listComments(postId.value),
-      authStore.user?.id ? backend.forum.getUserVote(postId.value, authStore.user.id) : null,
+      uid ? backend.forum.getUserVote(postId.value, uid) : null,
+      uid ? backend.forum.getUserCommentVotes(postId.value, uid) : [],
+      backend.forum.listCommentReactions(postId.value),
     ])
     post.value = postData
     pageContent.value = postData.content
     comments.value = commentData
     userVote.value = voteData
+
+    // Build comment vote map
+    const voteObj: Record<string, 1 | -1> = {}
+    for (const v of commentVotes) voteObj[v.comment_id] = v.value
+    commentVoteMap.value = voteObj
+
+    // Build reaction map
+    const rxnObj: Record<string, ForumCommentReaction[]> = {}
+    for (const r of reactions) {
+      if (!rxnObj[r.comment_id]) rxnObj[r.comment_id] = []
+      rxnObj[r.comment_id]!.push(r)
+    }
+    reactionMap.value = rxnObj
   } catch {
     toastStore.show('Failed to load forum post', 'error')
   } finally {
     loading.value = false
   }
 })
+
+// ── Post voting ──────────────────────────────────────────────────────────────
 
 async function handleVote(value: 1 | -1) {
   if (!authStore.user?.id || !post.value) return
@@ -92,22 +119,63 @@ async function handleVote(value: 1 | -1) {
   }
 }
 
-async function savePage() {
-  if (!authStore.user?.id || !pageContent.value) return
-  savingPage.value = true
+// ── Comment voting ────────────────────────────────────────────────────────────
+
+async function handleCommentVote(commentId: string, value: 1 | -1) {
+  if (!authStore.user?.id) return
+  const prev = commentVoteMap.value[commentId] ?? 0
+  const comment = comments.value.find((c) => c.id === commentId)
   try {
-    const updated = await backend.forum.updatePageContent(postId.value, pageContent.value, authStore.user.id)
-    if (post.value) {
-      post.value.updated_at = updated.updated_at
-      post.value.updated_by = updated.updated_by
-    }
-    toastStore.show('Page saved', 'success')
+    await backend.forum.voteComment(commentId, authStore.user.id, value)
+    commentVoteMap.value = { ...commentVoteMap.value, [commentId]: value }
+    if (comment) comment.vote_score = comment.vote_score - prev + value
   } catch {
-    toastStore.show('Failed to save page', 'error')
-  } finally {
-    savingPage.value = false
+    toastStore.show('Failed to vote', 'error')
   }
 }
+
+async function handleRemoveCommentVote(commentId: string) {
+  if (!authStore.user?.id) return
+  const prev = commentVoteMap.value[commentId] ?? 0
+  const comment = comments.value.find((c) => c.id === commentId)
+  try {
+    await backend.forum.removeCommentVote(commentId, authStore.user.id)
+    const map = { ...commentVoteMap.value }
+    delete map[commentId]
+    commentVoteMap.value = map
+    if (comment) comment.vote_score -= prev
+  } catch {
+    toastStore.show('Failed to remove vote', 'error')
+  }
+}
+
+// ── Comment reactions ─────────────────────────────────────────────────────────
+
+async function handleReact(commentId: string, emoji: string) {
+  if (!authStore.user?.id) return
+  try {
+    const reaction = await backend.forum.reactToComment(commentId, authStore.user.id, emoji)
+    const list = reactionMap.value[commentId] ?? []
+    reactionMap.value = { ...reactionMap.value, [commentId]: [...list, reaction] }
+  } catch {
+    toastStore.show('Failed to add reaction', 'error')
+  }
+}
+
+async function handleRemoveReaction(commentId: string, emoji: string) {
+  if (!authStore.user?.id) return
+  try {
+    await backend.forum.removeCommentReaction(commentId, authStore.user.id, emoji)
+    const list = (reactionMap.value[commentId] ?? []).filter(
+      (r) => !(r.user_id === authStore.user!.id && r.emoji === emoji)
+    )
+    reactionMap.value = { ...reactionMap.value, [commentId]: list }
+  } catch {
+    toastStore.show('Failed to remove reaction', 'error')
+  }
+}
+
+// ── Comments ──────────────────────────────────────────────────────────────────
 
 async function handleReply(parentId: string | null, content: string) {
   if (!authStore.user?.id) return
@@ -134,18 +202,46 @@ async function submitTopComment() {
   }
 }
 
+// ── Page type ─────────────────────────────────────────────────────────────────
+
+async function savePage() {
+  if (!authStore.user?.id || !pageContent.value) return
+  savingPage.value = true
+  try {
+    const updated = await backend.forum.updatePageContent(postId.value, pageContent.value, authStore.user.id)
+    if (post.value) {
+      post.value.updated_at = updated.updated_at
+      post.value.updated_by = updated.updated_by
+    }
+    toastStore.show('Page saved', 'success')
+  } catch {
+    toastStore.show('Failed to save page', 'error')
+  } finally {
+    savingPage.value = false
+  }
+}
+
 function handleCollaboratorAdded(_userId: string) {
   showInviteDialog.value = false
-  // Reload post to get updated collaborator list
   backend.forum.getPost(postId.value).then((p) => {
     if (post.value) post.value.collaborators = p.collaborators
   }).catch(() => {})
 }
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
 function formatTime(iso: string) {
   const d = new Date(iso)
   return d.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }) + ' at ' +
     d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+}
+
+// Comment input shared component helper
+function commentInputAttrs(placeholder: string) {
+  return {
+    placeholder,
+    class: 'w-full bg-transparent px-3 py-2.5 text-sm text-text-primary placeholder-text-muted outline-none resize-none',
+  }
 }
 </script>
 
@@ -165,7 +261,7 @@ function formatTime(iso: string) {
       <span class="text-text-muted">/</span>
       <span class="text-sm font-medium text-text-primary">Forum</span>
 
-      <!-- Page controls (right side) -->
+      <!-- Page controls -->
       <template v-if="isPageType && post">
         <div class="ml-auto flex items-center gap-2">
           <button
@@ -198,21 +294,14 @@ function formatTime(iso: string) {
     </div>
 
     <template v-else-if="post">
-      <!-- Page type layout: full-width editor + optional comment drawer -->
+
+      <!-- ── PAGE TYPE ──────────────────────────────────────────────────── -->
       <div v-if="isPageType" class="relative flex flex-1 overflow-hidden">
-        <!-- Page content area -->
         <div :class="['flex-1 overflow-y-auto px-6 py-8 transition-all', drawerOpen ? 'mr-80' : '']">
           <div class="mx-auto max-w-3xl">
-            <!-- Page header -->
             <div class="mb-6">
-              <div class="mb-2 flex items-center gap-2">
-                <span class="rounded px-1.5 py-0.5 text-xs font-medium uppercase tracking-wide bg-sky-500/20 text-sky-400">
-                  page
-                </span>
-              </div>
-              <h1 class="text-3xl font-bold text-text-primary">{{ post.title }}</h1>
-
-              <!-- Author + collaborators row -->
+              <span class="rounded px-1.5 py-0.5 text-xs font-medium uppercase tracking-wide bg-sky-500/20 text-sky-400">page</span>
+              <h1 class="mt-2 text-3xl font-bold text-text-primary">{{ post.title }}</h1>
               <div class="mt-3 flex flex-wrap items-center gap-3 text-sm text-text-muted">
                 <div class="flex items-center gap-2">
                   <UserAvatar :src="post.created_by_profile?.avatar_url" :alt="post.created_by_profile?.display_name" size="sm" />
@@ -221,115 +310,63 @@ function formatTime(iso: string) {
                 <span>·</span>
                 <span>{{ formatTime(post.created_at) }}</span>
                 <span v-if="post.updated_by" class="text-xs">· edited {{ formatTime(post.updated_at) }}</span>
-
-                <!-- Collaborator badges -->
                 <div v-if="post.collaborators.length" class="flex items-center gap-1">
                   <span class="text-xs text-text-muted">+</span>
                   <div class="flex -space-x-1.5">
-                    <UserAvatar
-                      v-for="c in post.collaborators"
-                      :key="c.user_id"
-                      :src="c.user.avatar_url"
-                      :alt="c.user.display_name"
-                      size="xs"
-                      class="ring-2 ring-bg-primary"
-                      :title="c.user.display_name"
-                    />
+                    <UserAvatar v-for="c in post.collaborators" :key="c.user_id" :src="c.user.avatar_url" :alt="c.user.display_name" size="xs" class="ring-2 ring-bg-primary" :title="c.user.display_name" />
                   </div>
                 </div>
-
-                <button
-                  v-if="canInvite"
-                  @click="showInviteDialog = true"
-                  class="ml-1 flex items-center gap-1 rounded-md bg-bg-secondary px-2 py-0.5 text-xs text-text-muted hover:bg-bg-hover hover:text-text-primary"
-                >
+                <button v-if="canInvite" @click="showInviteDialog = true" class="ml-1 flex items-center gap-1 rounded-md bg-bg-secondary px-2 py-0.5 text-xs text-text-muted hover:bg-bg-hover hover:text-text-primary">
                   <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                   Invite
                 </button>
               </div>
             </div>
 
-            <!-- Source message quote -->
-            <div
-              v-if="post.source_message"
-              class="mb-6 rounded-lg border border-bg-tertiary bg-bg-secondary px-4 py-3"
-            >
+            <!-- Source message -->
+            <div v-if="post.source_message" class="mb-6 rounded-lg border border-bg-tertiary bg-bg-secondary px-4 py-3">
               <p class="mb-1 text-xs font-semibold uppercase tracking-wide text-text-muted">Original message</p>
               <div class="flex gap-2.5">
                 <UserAvatar :src="post.source_message.profile?.avatar_url" :alt="post.source_message.profile?.display_name" size="sm" class="flex-shrink-0 mt-0.5" />
                 <div class="min-w-0">
                   <span class="text-sm font-semibold text-text-primary">{{ post.source_message.profile?.display_name }}</span>
                   <p class="mt-0.5 break-words text-sm text-text-secondary">{{ post.source_message.content }}</p>
+                  <MessageAttachments v-if="post.source_message.attachments?.length" :attachments="post.source_message.attachments" class="mt-2" />
                 </div>
               </div>
             </div>
 
-            <!-- Block editor -->
-            <PageEditor
-              v-model="pageContent"
-              :editable="canEdit"
-            />
-
-            <p v-if="!canEdit && !pageContent" class="mt-8 text-center text-sm text-text-muted italic">
-              This page has no content yet.
-            </p>
+            <PageEditor v-model="pageContent" :editable="canEdit" />
+            <p v-if="!canEdit && !pageContent" class="mt-8 text-center text-sm text-text-muted italic">This page has no content yet.</p>
           </div>
         </div>
 
         <!-- Comment drawer -->
-        <aside
-          v-if="drawerOpen"
-          class="absolute right-0 top-0 bottom-0 w-80 overflow-y-auto border-l border-bg-tertiary bg-bg-secondary px-4 py-6"
-        >
+        <aside v-if="drawerOpen" class="absolute right-0 top-0 bottom-0 w-80 overflow-y-auto border-l border-bg-tertiary bg-bg-secondary px-4 py-6">
           <h3 class="mb-4 text-sm font-semibold text-text-primary">Comments</h3>
-
           <div class="mb-4">
-            <textarea
-              v-model="newComment"
-              placeholder="Write a comment…"
-              rows="3"
-              class="w-full resize-none rounded-lg bg-bg-primary px-3 py-2 text-sm text-text-primary placeholder-text-muted outline-none ring-1 ring-bg-tertiary focus:ring-accent"
-              @keydown.ctrl.enter="submitTopComment"
-            />
-            <div class="mt-1.5 flex justify-end">
-              <button
-                @click="submitTopComment"
-                :disabled="!newComment.trim() || posting"
-                class="rounded-md bg-accent px-3 py-1 text-xs font-medium text-white hover:bg-accent-hover disabled:opacity-50"
-              >
-                Comment
-              </button>
+            <div class="rounded-lg bg-bg-primary ring-1 ring-bg-tertiary focus-within:ring-accent overflow-hidden">
+              <textarea v-bind="commentInputAttrs('Write a comment…')" v-model="newComment" rows="3" @keydown.ctrl.enter="submitTopComment" />
+              <div class="flex justify-end border-t border-bg-tertiary px-3 py-1.5">
+                <button @click="submitTopComment" :disabled="!newComment.trim() || posting" class="rounded bg-accent px-3 py-1 text-xs font-medium text-white hover:bg-accent-hover disabled:opacity-50">Comment</button>
+              </div>
             </div>
           </div>
-
-          <ForumCommentTree
-            :comments="comments"
-            :parent-id="null"
-            :depth="0"
-            :can-post="!!authStore.user"
-            @reply="handleReply"
-          />
+          <ForumCommentTree :comments="comments" :parent-id="null" :depth="0" :can-post="!!authStore.user" :user-votes="commentVoteMap" :reactions="reactionMap" :current-user-id="authStore.user?.id ?? null" @reply="handleReply" @vote="handleCommentVote" @remove-vote="handleRemoveCommentVote" @react="handleReact" @remove-reaction="handleRemoveReaction" />
           <p v-if="comments.length === 0" class="text-center text-xs text-text-muted py-4">No comments yet.</p>
         </aside>
       </div>
 
-      <!-- Meta type layout: centered, inline comments -->
+      <!-- ── THREAD TYPE ────────────────────────────────────────────────── -->
       <div v-else class="mx-auto w-full max-w-3xl flex-1 px-6 py-8">
         <!-- Post header -->
-        <div class="mb-6">
+        <div class="mb-5">
           <div class="mb-2 flex items-center gap-2">
-            <span class="rounded px-1.5 py-0.5 text-xs font-medium uppercase tracking-wide bg-violet-500/20 text-violet-400">
-              meta
-            </span>
+            <span class="rounded px-1.5 py-0.5 text-xs font-medium uppercase tracking-wide bg-violet-500/20 text-violet-400">thread</span>
           </div>
           <h1 class="text-2xl font-bold text-text-primary">{{ post.title }}</h1>
           <div class="mt-2 flex items-center gap-3 text-sm text-text-muted">
-            <UserAvatar
-              :src="post.created_by_profile?.avatar_url"
-              :alt="post.created_by_profile?.display_name"
-              size="sm"
-              class="flex-shrink-0"
-            />
+            <UserAvatar :src="post.created_by_profile?.avatar_url" :alt="post.created_by_profile?.display_name" size="sm" class="flex-shrink-0" />
             <span class="font-medium text-text-secondary">{{ post.created_by_profile?.display_name ?? 'Unknown' }}</span>
             <span v-if="(post.created_by_profile?.meta_points ?? 0) > 0" class="flex items-center gap-1">
               <span class="text-violet-400">▲</span>
@@ -340,51 +377,45 @@ function formatTime(iso: string) {
           </div>
         </div>
 
-        <!-- Source message quote -->
-        <div
-          v-if="post.source_message"
-          class="mb-6 rounded-lg border border-bg-tertiary bg-bg-secondary px-4 py-3"
-        >
-          <p class="mb-1 text-xs font-semibold uppercase tracking-wide text-text-muted">Original message</p>
-          <div class="flex gap-2.5">
-            <UserAvatar
-              :src="post.source_message.profile?.avatar_url"
-              :alt="post.source_message.profile?.display_name"
-              size="sm"
-              class="flex-shrink-0 mt-0.5"
-            />
-            <div class="min-w-0">
-              <span class="text-sm font-semibold text-text-primary">{{ post.source_message.profile?.display_name }}</span>
-              <p class="mt-0.5 break-words text-sm text-text-secondary">{{ post.source_message.content }}</p>
+        <!-- Source message + OP body block -->
+        <div class="mb-6 rounded-lg border border-bg-tertiary bg-bg-secondary overflow-hidden">
+          <!-- Source message -->
+          <div v-if="post.source_message" class="px-4 pt-4 pb-3">
+            <p class="mb-1.5 text-xs font-semibold uppercase tracking-wide text-text-muted">Original message</p>
+            <div class="flex gap-2.5">
+              <UserAvatar :src="post.source_message.profile?.avatar_url" :alt="post.source_message.profile?.display_name" size="sm" class="flex-shrink-0 mt-0.5" />
+              <div class="min-w-0">
+                <span class="text-sm font-semibold text-text-primary">{{ post.source_message.profile?.display_name }}</span>
+                <p class="mt-0.5 break-words text-sm text-text-secondary">{{ post.source_message.content }}</p>
+                <MessageAttachments v-if="post.source_message.attachments?.length" :attachments="post.source_message.attachments" class="mt-2" />
+              </div>
+            </div>
+          </div>
+
+          <!-- Reply indicator + OP body -->
+          <div v-if="post.body" class="relative px-4 pb-4" :class="post.source_message ? 'pt-0' : 'pt-4'">
+            <!-- Vertical reply line -->
+            <div v-if="post.source_message" class="absolute left-8 top-0 bottom-4 w-0.5 bg-bg-tertiary" />
+            <div v-if="post.source_message" class="absolute left-8 top-0 h-4 w-4 rounded-bl-lg border-b border-l border-bg-tertiary bg-transparent" style="margin-left: 0" />
+
+            <div class="flex gap-2.5" :class="post.source_message ? 'ml-6 mt-3' : ''">
+              <UserAvatar :src="post.created_by_profile?.avatar_url" :alt="post.created_by_profile?.display_name" size="sm" class="flex-shrink-0 mt-0.5" />
+              <div class="min-w-0 flex-1 rounded-lg bg-bg-primary px-3 py-2.5">
+                <span class="text-sm font-semibold text-text-primary">{{ post.created_by_profile?.display_name ?? 'Unknown' }}</span>
+                <p class="mt-0.5 break-words text-sm text-text-secondary leading-relaxed">{{ post.body }}</p>
+              </div>
             </div>
           </div>
         </div>
 
         <!-- Vote bar -->
         <div class="mb-6 flex items-center gap-3">
-          <button
-            @click="handleVote(1)"
-            class="flex items-center gap-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors"
-            :class="userVote?.value === 1
-              ? 'bg-emerald-500/20 text-emerald-400'
-              : 'bg-bg-secondary text-text-muted hover:bg-bg-hover hover:text-emerald-400'"
-          >
+          <button @click="handleVote(1)" class="flex items-center gap-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors" :class="userVote?.value === 1 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-bg-secondary text-text-muted hover:bg-bg-hover hover:text-emerald-400'">
             <svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M12 4l8 8H4z"/></svg>
             Upvote
           </button>
-          <span
-            class="text-lg font-bold"
-            :class="post.vote_score > 0 ? 'text-emerald-400' : post.vote_score < 0 ? 'text-red-400' : 'text-text-muted'"
-          >
-            {{ post.vote_score }}
-          </span>
-          <button
-            @click="handleVote(-1)"
-            class="flex items-center gap-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors"
-            :class="userVote?.value === -1
-              ? 'bg-red-500/20 text-red-400'
-              : 'bg-bg-secondary text-text-muted hover:bg-bg-hover hover:text-red-400'"
-          >
+          <span class="text-lg font-bold" :class="post.vote_score > 0 ? 'text-emerald-400' : post.vote_score < 0 ? 'text-red-400' : 'text-text-muted'">{{ post.vote_score }}</span>
+          <button @click="handleVote(-1)" class="flex items-center gap-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors" :class="userVote?.value === -1 ? 'bg-red-500/20 text-red-400' : 'bg-bg-secondary text-text-muted hover:bg-bg-hover hover:text-red-400'">
             <svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M12 20l-8-8h16z"/></svg>
             Downvote
           </button>
@@ -393,23 +424,14 @@ function formatTime(iso: string) {
 
         <hr class="mb-6 border-bg-tertiary" />
 
-        <!-- Comment input -->
+        <!-- Top-level comment input -->
         <div class="mb-6">
-          <textarea
-            v-model="newComment"
-            placeholder="Write a comment…"
-            rows="3"
-            class="w-full resize-none rounded-lg bg-bg-secondary px-4 py-3 text-sm text-text-primary placeholder-text-muted outline-none ring-1 ring-bg-tertiary focus:ring-accent"
-            @keydown.ctrl.enter="submitTopComment"
-          />
-          <div class="mt-2 flex justify-end">
-            <button
-              @click="submitTopComment"
-              :disabled="!newComment.trim() || posting"
-              class="rounded-md bg-accent px-4 py-1.5 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50"
-            >
-              Comment
-            </button>
+          <div class="rounded-lg bg-bg-secondary ring-1 ring-bg-tertiary focus-within:ring-accent overflow-hidden">
+            <textarea v-bind="commentInputAttrs('Write a comment…')" v-model="newComment" rows="3" @keydown.ctrl.enter="submitTopComment" />
+            <div class="flex items-center justify-between border-t border-bg-tertiary px-4 py-2">
+              <span class="text-xs text-text-muted">Ctrl+Enter to post</span>
+              <button @click="submitTopComment" :disabled="!newComment.trim() || posting" class="rounded-md bg-accent px-4 py-1.5 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50">Comment</button>
+            </div>
           </div>
         </div>
 
@@ -419,20 +441,21 @@ function formatTime(iso: string) {
           :parent-id="null"
           :depth="0"
           :can-post="!!authStore.user"
+          :user-votes="commentVoteMap"
+          :reactions="reactionMap"
+          :current-user-id="authStore.user?.id ?? null"
           @reply="handleReply"
+          @vote="handleCommentVote"
+          @remove-vote="handleRemoveCommentVote"
+          @react="handleReact"
+          @remove-reaction="handleRemoveReaction"
         />
-
-        <p v-if="comments.length === 0" class="text-center text-sm text-text-muted py-4">
-          No comments yet. Be the first!
-        </p>
+        <p v-if="comments.length === 0" class="text-center text-sm text-text-muted py-4">No comments yet. Be the first!</p>
       </div>
     </template>
 
-    <div v-else class="flex flex-1 items-center justify-center text-text-muted">
-      Post not found.
-    </div>
+    <div v-else class="flex flex-1 items-center justify-center text-text-muted">Post not found.</div>
 
-    <!-- Invite collaborator dialog -->
     <InviteCollaboratorDialog
       v-if="showInviteDialog && post && authStore.user"
       :post-id="post.id"

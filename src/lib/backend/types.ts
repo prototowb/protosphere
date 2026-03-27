@@ -1,4 +1,4 @@
-import type { Profile, Server, Channel, ChannelCategory, Member, Message, Attachment, Reaction, Ban, DirectMessageGroup, DirectMessage, Role, UserRole, ChannelRoleOverride, CommunitySettings, SpaceVisibility, SpaceType, AuditLog, AuditLogAction, Report, ReportCategory, ReportStatus, Mute, AutomodRule, Poll, PollOption, PollVote, PollWithResults, AppEvent, EventRsvp, RsvpStatus, CommunityInvite, CommunityInviteUsage, NotificationPreference, NotificationLevel, DmNotificationPreference, ForumPost, ForumPostType, ForumCollaborator, ForumComment, ForumVote } from '@/lib/types'
+import type { Profile, Server, Channel, ChannelCategory, Member, Message, Attachment, Reaction, Ban, DirectMessageGroup, DirectMessage, Role, UserRole, ChannelRoleOverride, CommunitySettings, SpaceVisibility, SpaceType, AuditLog, AuditLogAction, Report, ReportCategory, ReportStatus, Mute, AutomodRule, Poll, PollOption, PollVote, PollWithResults, AppEvent, EventRsvp, RsvpStatus, CommunityInvite, CommunityInviteUsage, NotificationPreference, NotificationLevel, DmNotificationPreference, ForumPost, ForumPostType, ForumCollaborator, ForumComment, ForumCommentVote, ForumCommentReaction, ForumVote } from '@/lib/types'
 
 export interface AuthUser {
   id: string
@@ -133,7 +133,7 @@ export interface Backend {
     delete(id: string): Promise<void>
   }
   forum: {
-    createPost(spaceId: string, type: ForumPostType, title: string, createdBy: string, sourceMessageId?: string | null): Promise<ForumPost>
+    createPost(spaceId: string, type: ForumPostType, title: string, createdBy: string, sourceMessageId?: string | null, body?: string | null): Promise<ForumPost>
     getPost(postId: string): Promise<ForumPost & { created_by_profile: Profile; source_message: (Message & { profile: Profile }) | null; collaborators: (ForumCollaborator & { user: Profile })[] }>
     listBySpace(spaceId: string): Promise<(ForumPost & { created_by_profile: Profile })[]>
     deletePost(postId: string): Promise<void>
@@ -146,6 +146,12 @@ export interface Backend {
     vote(postId: string, userId: string, value: 1 | -1): Promise<ForumVote>
     removeVote(postId: string, userId: string): Promise<void>
     getUserVote(postId: string, userId: string): Promise<ForumVote | null>
+    voteComment(commentId: string, userId: string, value: 1 | -1): Promise<ForumCommentVote>
+    removeCommentVote(commentId: string, userId: string): Promise<void>
+    getUserCommentVotes(postId: string, userId: string): Promise<ForumCommentVote[]>
+    reactToComment(commentId: string, userId: string, emoji: string): Promise<ForumCommentReaction>
+    removeCommentReaction(commentId: string, userId: string, emoji: string): Promise<void>
+    listCommentReactions(postId: string): Promise<ForumCommentReaction[]>
   }
   polls: {
     create(channelId: string, question: string, options: string[], createdBy: string): Promise<Poll & { options: PollOption[] }>

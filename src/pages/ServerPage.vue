@@ -909,7 +909,7 @@ function handleCreateForumPost(msg: Message & { profile: Profile }) {
   showForumPostDialog.value = true
 }
 
-async function submitForumPost(type: ForumPostType, title: string) {
+async function submitForumPost(type: ForumPostType, title: string, body: string) {
   if (!authStore.user?.id) return
   showForumPostDialog.value = false
   try {
@@ -919,6 +919,7 @@ async function submitForumPost(type: ForumPostType, title: string) {
       title,
       authStore.user.id,
       pendingForumMsg.value?.id ?? null,
+      body || null,
     )
     forumPosts.value.unshift({ ...post, created_by_profile: (await backend.profiles.get(authStore.user.id)) })
     toastStore.show('Forum post created', 'success')
@@ -1408,7 +1409,7 @@ function onServerHeaderContext(event: MouseEvent) {
           >
             <span
               class="flex-shrink-0 text-[9px] font-bold uppercase tracking-wide"
-              :class="post.type === 'meta' ? 'text-violet-400' : 'text-sky-400'"
+              :class="post.type === 'thread' ? 'text-violet-400' : 'text-sky-400'"
             >{{ post.type[0] }}</span>
             <span class="truncate">{{ post.title }}</span>
             <span v-if="post.vote_score !== 0" class="ml-auto flex-shrink-0 text-[10px]" :class="post.vote_score > 0 ? 'text-emerald-400' : 'text-red-400'">

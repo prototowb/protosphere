@@ -1,4 +1,4 @@
-import type { Profile, Server, Channel, ChannelCategory, Member, Message, Attachment, Reaction, Ban, DirectMessageGroup, DirectMessage, Role, UserRole, ChannelRoleOverride, CommunitySettings, AuditLog, Report, Mute, AutomodRule, Poll, PollOption, PollVote, AppEvent, EventRsvp, CommunityInvite, NotificationPreference, DmNotificationPreference, ForumPost, ForumCollaborator, ForumComment, ForumVote } from '@/lib/types'
+import type { Profile, Server, Channel, ChannelCategory, Member, Message, Attachment, Reaction, Ban, DirectMessageGroup, DirectMessage, Role, UserRole, ChannelRoleOverride, CommunitySettings, AuditLog, Report, Mute, AutomodRule, Poll, PollOption, PollVote, AppEvent, EventRsvp, CommunityInvite, NotificationPreference, DmNotificationPreference, ForumPost, ForumCollaborator, ForumComment, ForumCommentVote, ForumCommentReaction, ForumVote } from '@/lib/types'
 import type { Backend } from './types'
 import { supabase } from '@/lib/supabase'
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -902,10 +902,10 @@ export function createSupabaseBackend(): Backend {
     },
 
     forum: {
-      async createPost(spaceId, type, title, createdBy, sourceMessageId = null) {
+      async createPost(spaceId, type, title, createdBy, sourceMessageId = null, body = null) {
         const { data, error } = await client
           .from('forum_posts')
-          .insert({ space_id: spaceId, type, title, created_by: createdBy, source_message_id: sourceMessageId })
+          .insert({ space_id: spaceId, type, title, body, created_by: createdBy, source_message_id: sourceMessageId })
           .select()
           .single()
         if (error) throw error
@@ -1028,6 +1028,63 @@ export function createSupabaseBackend(): Backend {
           .eq('user_id', userId)
           .maybeSingle()
         return data as ForumVote | null
+      },
+
+      async voteComment(commentId, userId, value) {
+        const { data, error } = await client
+          .from('forum_comment_votes')
+          .upsert({ comment_id: commentId, user_id: userId, value })
+          .select()
+          .single()
+        if (error) throw error
+        return data as ForumCommentVote
+      },
+
+      async removeCommentVote(commentId, userId) {
+        const { error } = await client
+          .from('forum_comment_votes')
+          .delete()
+          .eq('comment_id', commentId)
+          .eq('user_id', userId)
+        if (error) throw error
+      },
+
+      async getUserCommentVotes(postId, userId) {
+        const { data: comments } = await client.from('forum_comments').select('id').eq('post_id', postId)
+        const ids = (comments ?? []).map((c: { id: string }) => c.id)
+        if (!ids.length) return []
+        const { data, error } = await client.from('forum_comment_votes').select('*').eq('user_id', userId).in('comment_id', ids)
+        if (error) throw error
+        return (data ?? []) as ForumCommentVote[]
+      },
+
+      async reactToComment(commentId, userId, emoji) {
+        const { data, error } = await client
+          .from('forum_comment_reactions')
+          .upsert({ comment_id: commentId, user_id: userId, emoji })
+          .select()
+          .single()
+        if (error) throw error
+        return data as ForumCommentReaction
+      },
+
+      async removeCommentReaction(commentId, userId, emoji) {
+        const { error } = await client
+          .from('forum_comment_reactions')
+          .delete()
+          .eq('comment_id', commentId)
+          .eq('user_id', userId)
+          .eq('emoji', emoji)
+        if (error) throw error
+      },
+
+      async listCommentReactions(postId) {
+        const { data: comments } = await client.from('forum_comments').select('id').eq('post_id', postId)
+        const ids = (comments ?? []).map((c: { id: string }) => c.id)
+        if (!ids.length) return []
+        const { data, error } = await client.from('forum_comment_reactions').select('*').in('comment_id', ids).order('created_at')
+        if (error) throw error
+        return (data ?? []) as ForumCommentReaction[]
       },
     },
 

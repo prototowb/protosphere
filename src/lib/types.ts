@@ -15,7 +15,7 @@ export type RegistrationMode = 'open' | 'approval' | 'invite_only' | 'closed'
 
 export type ProfileStatus = 'active' | 'pending' | 'rejected'
 
-export type ForumPostType = 'meta' | 'page'
+export type ForumPostType = 'thread' | 'page'
 
 export interface Profile {
   id: string
@@ -370,6 +370,7 @@ export interface ForumPost {
   source_message_id: string | null
   type: ForumPostType
   title: string
+  body: string | null
   content: Record<string, unknown> | null
   vote_score: number
   created_by: string
@@ -392,8 +393,22 @@ export interface ForumComment {
   parent_comment_id: string | null
   author_id: string
   content: string
+  vote_score: number
   created_at: string
   edited_at: string | null
+}
+
+export interface ForumCommentVote {
+  comment_id: string
+  user_id: string
+  value: 1 | -1
+}
+
+export interface ForumCommentReaction {
+  comment_id: string
+  user_id: string
+  emoji: string
+  created_at: string
 }
 
 export interface ForumVote {

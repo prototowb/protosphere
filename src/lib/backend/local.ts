@@ -1,4 +1,4 @@
-import type { Profile, Server, Channel, ChannelCategory, Member, Message, Attachment, Reaction, Ban, DirectMessageGroup, DirectMessageMember, DirectMessage, Role, UserRole, ChannelRoleOverride, CommunitySettings, AuditLog, Report, Mute, AutomodRule, Poll, PollOption, PollVote, AppEvent, EventRsvp, CommunityInvite, NotificationPreference, DmNotificationPreference, ForumPost, ForumCollaborator, ForumComment, ForumVote } from '@/lib/types'
+import type { Profile, Server, Channel, ChannelCategory, Member, Message, Attachment, Reaction, Ban, DirectMessageGroup, DirectMessageMember, DirectMessage, Role, UserRole, ChannelRoleOverride, CommunitySettings, AuditLog, Report, Mute, AutomodRule, Poll, PollOption, PollVote, AppEvent, EventRsvp, CommunityInvite, NotificationPreference, DmNotificationPreference, ForumPost, ForumCollaborator, ForumComment, ForumCommentVote, ForumCommentReaction, ForumVote } from '@/lib/types'
 import type { AuthSession, Backend } from './types'
 import { serializePermissions, PermissionPresets, Permission } from '@/lib/permissions'
 
@@ -1159,7 +1159,7 @@ export function createLocalBackend(): Backend {
     },
 
     forum: {
-      async createPost(spaceId, type, title, createdBy, sourceMessageId = null) {
+      async createPost(spaceId, type, title, createdBy, sourceMessageId = null, body = null) {
         const posts = readJson<ForumPost[]>('protosphere_forum_posts', [])
         const post: ForumPost = {
           id: crypto.randomUUID(),
@@ -1167,6 +1167,7 @@ export function createLocalBackend(): Backend {
           source_message_id: sourceMessageId,
           type,
           title,
+          body: body ?? null,
           content: null,
           vote_score: 0,
           created_by: createdBy,
@@ -1267,6 +1268,7 @@ export function createLocalBackend(): Backend {
           parent_comment_id: parentCommentId,
           author_id: authorId,
           content,
+          vote_score: 0,
           created_at: new Date().toISOString(),
           edited_at: null,
         }
@@ -1317,6 +1319,60 @@ export function createLocalBackend(): Backend {
       async getUserVote(postId, userId) {
         const votes = readJson<ForumVote[]>('protosphere_forum_votes', [])
         return votes.find((v) => v.post_id === postId && v.user_id === userId) ?? null
+      },
+
+      async voteComment(commentId, userId, value) {
+        const votes = readJson<ForumCommentVote[]>('protosphere_forum_comment_votes', [])
+        const idx = votes.findIndex((v) => v.comment_id === commentId && v.user_id === userId)
+        const prev = idx !== -1 ? votes[idx]!.value : 0
+        const entry: ForumCommentVote = { comment_id: commentId, user_id: userId, value }
+        if (idx !== -1) votes[idx] = entry
+        else votes.push(entry)
+        localStorage.setItem('protosphere_forum_comment_votes', JSON.stringify(votes))
+        const comments = readJson<ForumComment[]>('protosphere_forum_comments', [])
+        const c = comments.find((x) => x.id === commentId)
+        if (c) { c.vote_score = c.vote_score - prev + value; localStorage.setItem('protosphere_forum_comments', JSON.stringify(comments)) }
+        return entry
+      },
+
+      async removeCommentVote(commentId, userId) {
+        const votes = readJson<ForumCommentVote[]>('protosphere_forum_comment_votes', [])
+        const existing = votes.find((v) => v.comment_id === commentId && v.user_id === userId)
+        if (existing) {
+          const comments = readJson<ForumComment[]>('protosphere_forum_comments', [])
+          const c = comments.find((x) => x.id === commentId)
+          if (c) { c.vote_score -= existing.value; localStorage.setItem('protosphere_forum_comments', JSON.stringify(comments)) }
+          localStorage.setItem('protosphere_forum_comment_votes', JSON.stringify(votes.filter((v) => !(v.comment_id === commentId && v.user_id === userId))))
+        }
+      },
+
+      async getUserCommentVotes(postId, userId) {
+        const votes = readJson<ForumCommentVote[]>('protosphere_forum_comment_votes', [])
+        const comments = readJson<ForumComment[]>('protosphere_forum_comments', [])
+        const postCommentIds = new Set(comments.filter((c) => c.post_id === postId).map((c) => c.id))
+        return votes.filter((v) => v.user_id === userId && postCommentIds.has(v.comment_id))
+      },
+
+      async reactToComment(commentId, userId, emoji) {
+        const reactions = readJson<ForumCommentReaction[]>('protosphere_forum_comment_reactions', [])
+        const existing = reactions.find((r) => r.comment_id === commentId && r.user_id === userId && r.emoji === emoji)
+        if (existing) return existing
+        const reaction: ForumCommentReaction = { comment_id: commentId, user_id: userId, emoji, created_at: new Date().toISOString() }
+        reactions.push(reaction)
+        localStorage.setItem('protosphere_forum_comment_reactions', JSON.stringify(reactions))
+        return reaction
+      },
+
+      async removeCommentReaction(commentId, userId, emoji) {
+        const reactions = readJson<ForumCommentReaction[]>('protosphere_forum_comment_reactions', [])
+        localStorage.setItem('protosphere_forum_comment_reactions', JSON.stringify(reactions.filter((r) => !(r.comment_id === commentId && r.user_id === userId && r.emoji === emoji))))
+      },
+
+      async listCommentReactions(postId) {
+        const reactions = readJson<ForumCommentReaction[]>('protosphere_forum_comment_reactions', [])
+        const comments = readJson<ForumComment[]>('protosphere_forum_comments', [])
+        const postCommentIds = new Set(comments.filter((c) => c.post_id === postId).map((c) => c.id))
+        return reactions.filter((r) => postCommentIds.has(r.comment_id)).sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
       },
     },
 
