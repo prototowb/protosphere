@@ -519,6 +519,7 @@ export function createLocalBackend(): Backend {
           attachments,
           is_pinned: false,
           created_at: new Date().toISOString(),
+          expires_at: null,
         }
         messages.push(message)
         writeJson(KEYS.messages, messages)
@@ -822,6 +823,7 @@ export function createLocalBackend(): Backend {
           reply_to_id: replyToId ?? null,
           attachments: [],
           created_at: new Date().toISOString(),
+          expires_at: null,
         }
         messages.push(message)
         writeJson(KEYS.dm_messages, messages)

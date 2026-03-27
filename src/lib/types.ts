@@ -101,6 +101,7 @@ export interface Message {
   attachments: Attachment[]
   is_pinned: boolean
   created_at: string
+  expires_at: string | null
 }
 
 export interface Member {
@@ -147,6 +148,7 @@ export interface DirectMessage {
   reply_to_id: string | null
   attachments: Attachment[]
   created_at: string
+  expires_at: string | null
 }
 
 export interface Ban {

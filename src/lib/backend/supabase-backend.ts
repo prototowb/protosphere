@@ -341,10 +341,12 @@ export function createSupabaseBackend(): Backend {
 
     messages: {
       async list(channelId: string, before?: string, limit = 50) {
+        const now = new Date().toISOString()
         let query = client
           .from('messages')
           .select('*, profile:profiles!author_id(*)')
           .eq('channel_id', channelId)
+          .or(`expires_at.is.null,expires_at.gt.${now}`)
           .order('created_at', { ascending: false })
           .limit(limit + 1)
         if (before) query = query.lt('created_at', before)
@@ -404,11 +406,13 @@ export function createSupabaseBackend(): Backend {
       },
 
       async listPinned(channelId: string) {
+        const now = new Date().toISOString()
         const { data, error } = await client
           .from('messages')
           .select('*, profile:profiles!author_id(*)')
           .eq('channel_id', channelId)
           .eq('is_pinned', true)
+          .or(`expires_at.is.null,expires_at.gt.${now}`)
           .order('created_at')
         if (error) throw error
         return data as (Message & { profile: Profile })[]
@@ -423,11 +427,13 @@ export function createSupabaseBackend(): Backend {
       },
 
       async search(channelId: string, query: string, limit = 25) {
+        const now = new Date().toISOString()
         const { data, error } = await client
           .from('messages')
           .select('*, profile:profiles!author_id(*)')
           .eq('channel_id', channelId)
           .textSearch('search_tsv', query, { type: 'websearch' })
+          .or(`expires_at.is.null,expires_at.gt.${now}`)
           .order('created_at', { ascending: false })
           .limit(limit)
         if (error) throw error
@@ -569,6 +575,7 @@ export function createSupabaseBackend(): Backend {
             .from('direct_messages')
             .select('*')
             .eq('dm_group_id', group.id)
+            .or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`)
             .order('created_at', { ascending: false })
             .limit(1)
             .maybeSingle()
@@ -634,10 +641,12 @@ export function createSupabaseBackend(): Backend {
       },
 
       async listMessages(dmGroupId: string) {
+        const now = new Date().toISOString()
         const { data, error } = await client
           .from('direct_messages')
           .select('*, profile:profiles!author_id(*)')
           .eq('dm_group_id', dmGroupId)
+          .or(`expires_at.is.null,expires_at.gt.${now}`)
           .order('created_at')
         if (error) throw error
         return data as (DirectMessage & { profile: Profile })[]

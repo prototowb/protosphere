@@ -586,6 +586,11 @@ function formatTime(iso: string) {
   return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
 
+function isExpiringSoon(expiresAt: string | null | undefined): boolean {
+  if (!expiresAt) return false
+  return new Date(expiresAt).getTime() - Date.now() < 12 * 60 * 60 * 1000
+}
+
 function formatDate(iso: string) {
   const d = new Date(iso)
   const today = new Date()
@@ -1498,6 +1503,11 @@ function onServerHeaderContext(event: MouseEvent) {
               <div v-if="msg.showHeader" class="mb-0.5 flex items-baseline gap-2">
                 <span class="font-semibold text-text-primary">{{ msg.profile.display_name }}</span>
                 <span class="text-xs text-text-muted">{{ formatTime(msg.created_at) }}</span>
+                <span
+                  v-if="isExpiringSoon(msg.expires_at)"
+                  class="h-1.5 w-1.5 rounded-full bg-amber-400"
+                  title="This message expires soon"
+                />
               </div>
 
               <!-- Edit mode -->
