@@ -1,4 +1,4 @@
-import type { Profile, Server, Channel, ChannelCategory, Member, Message, Attachment, Reaction, Ban, DirectMessageGroup, DirectMessageMember, DirectMessage, Role, UserRole, ChannelRoleOverride, CommunitySettings, AuditLog, Report, Mute, AutomodRule, Poll, PollOption, PollVote, AppEvent, EventRsvp, CommunityInvite, NotificationPreference, DmNotificationPreference } from '@/lib/types'
+import type { Profile, Server, Channel, ChannelCategory, Member, Message, Attachment, Reaction, Ban, DirectMessageGroup, DirectMessageMember, DirectMessage, Role, UserRole, ChannelRoleOverride, CommunitySettings, AuditLog, Report, Mute, AutomodRule, Poll, PollOption, PollVote, AppEvent, EventRsvp, CommunityInvite, NotificationPreference, DmNotificationPreference, ForumPost, ForumComment, ForumVote } from '@/lib/types'
 import type { AuthSession, Backend } from './types'
 import { serializePermissions, PermissionPresets, Permission } from '@/lib/permissions'
 
@@ -114,6 +114,7 @@ export function createLocalBackend(): Backend {
           location: '',
           display_banner_url: null,
           account_status: 'active',
+          meta_points: 0,
           created_at: now,
           updated_at: now,
         }
@@ -275,8 +276,6 @@ export function createLocalBackend(): Backend {
           is_default: true,
           slowmode_seconds: 0,
           category_id: null,
-          parent_message_id: null,
-          parent_channel_id: null,
           created_at: new Date().toISOString(),
         })
         writeJson(KEYS.channels, channels)
@@ -348,7 +347,7 @@ export function createLocalBackend(): Backend {
       async list(serverId: string) {
         const channels = readJson<Channel[]>(KEYS.channels, [])
         return channels
-          .filter((c) => c.server_id === serverId && c.parent_message_id === null)
+          .filter((c) => c.server_id === serverId)
           .sort((a, b) => a.position - b.position)
       },
 
@@ -373,8 +372,6 @@ export function createLocalBackend(): Backend {
           is_default: data.is_default ?? false,
           slowmode_seconds: 0,
           category_id: data.category_id ?? null,
-          parent_message_id: null,
-          parent_channel_id: null,
           created_at: new Date().toISOString(),
         }
         channels.push(channel)
@@ -520,6 +517,7 @@ export function createLocalBackend(): Backend {
           is_pinned: false,
           created_at: new Date().toISOString(),
           expires_at: null,
+          forum_post_id: null,
         }
         messages.push(message)
         writeJson(KEYS.messages, messages)
@@ -1160,31 +1158,119 @@ export function createLocalBackend(): Backend {
       },
     },
 
-    threads: {
-      async create(serverId, parentChannelId, parentMessageId, name) {
-        const channels = readJson<Channel[]>(KEYS.channels, [])
-        const thread: Channel = {
+    forum: {
+      async createPost(spaceId, type, title, createdBy, sourceMessageId = null) {
+        const posts = readJson<ForumPost[]>('protosphere_forum_posts', [])
+        const post: ForumPost = {
           id: crypto.randomUUID(),
-          server_id: serverId,
-          name,
-          description: '',
-          type: 'text',
-          position: 0,
-          is_default: false,
-          slowmode_seconds: 0,
-          category_id: null,
-          parent_message_id: parentMessageId,
-          parent_channel_id: parentChannelId,
+          space_id: spaceId,
+          source_message_id: sourceMessageId,
+          type,
+          title,
+          content: null,
+          vote_score: 0,
+          created_by: createdBy,
+          marked_by: null,
           created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
         }
-        channels.push(thread)
-        writeJson(KEYS.channels, channels)
-        return thread
+        posts.push(post)
+        localStorage.setItem('protosphere_forum_posts', JSON.stringify(posts))
+        if (sourceMessageId) {
+          const messages = readJson<Message[]>(KEYS.messages, [])
+          const msg = messages.find((m) => m.id === sourceMessageId)
+          if (msg) { msg.expires_at = null; msg.forum_post_id = post.id; localStorage.setItem(KEYS.messages, JSON.stringify(messages)) }
+        }
+        return post
       },
 
-      async listByChannel(channelId) {
-        const channels = readJson<Channel[]>(KEYS.channels, [])
-        return channels.filter((c) => c.parent_channel_id === channelId)
+      async getPost(postId) {
+        const posts = readJson<ForumPost[]>('protosphere_forum_posts', [])
+        const post = posts.find((p) => p.id === postId)
+        if (!post) throw new Error('Forum post not found')
+        const profiles = readJson<Record<string, Profile>>('protosphere_profiles', {})
+        const messages = readJson<Message[]>(KEYS.messages, [])
+        const srcMsg = post.source_message_id ? messages.find((m) => m.id === post.source_message_id) ?? null : null
+        return {
+          ...post,
+          created_by_profile: profiles[post.created_by] ?? null,
+          source_message: srcMsg ? { ...srcMsg, profile: profiles[srcMsg.author_id] ?? null } : null,
+        } as ForumPost & { created_by_profile: Profile; source_message: (Message & { profile: Profile }) | null }
+      },
+
+      async listBySpace(spaceId) {
+        const posts = readJson<ForumPost[]>('protosphere_forum_posts', [])
+        const profiles = readJson<Record<string, Profile>>('protosphere_profiles', {})
+        return posts
+          .filter((p) => p.space_id === spaceId)
+          .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+          .map((p) => ({ ...p, created_by_profile: profiles[p.created_by] ?? null })) as (ForumPost & { created_by_profile: Profile })[]
+      },
+
+      async deletePost(postId) {
+        const posts = readJson<ForumPost[]>('protosphere_forum_posts', [])
+        localStorage.setItem('protosphere_forum_posts', JSON.stringify(posts.filter((p) => p.id !== postId)))
+      },
+
+      async addComment(postId, authorId, content, parentCommentId = null) {
+        const comments = readJson<ForumComment[]>('protosphere_forum_comments', [])
+        const profiles = readJson<Record<string, Profile>>('protosphere_profiles', {})
+        const comment: ForumComment = {
+          id: crypto.randomUUID(),
+          post_id: postId,
+          parent_comment_id: parentCommentId,
+          author_id: authorId,
+          content,
+          created_at: new Date().toISOString(),
+          edited_at: null,
+        }
+        comments.push(comment)
+        localStorage.setItem('protosphere_forum_comments', JSON.stringify(comments))
+        return { ...comment, profile: profiles[authorId] ?? null } as ForumComment & { profile: Profile }
+      },
+
+      async listComments(postId) {
+        const comments = readJson<ForumComment[]>('protosphere_forum_comments', [])
+        const profiles = readJson<Record<string, Profile>>('protosphere_profiles', {})
+        return comments
+          .filter((c) => c.post_id === postId)
+          .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+          .map((c) => ({ ...c, profile: profiles[c.author_id] ?? null })) as (ForumComment & { profile: Profile })[]
+      },
+
+      async vote(postId, userId, value) {
+        const votes = readJson<ForumVote[]>('protosphere_forum_votes', [])
+        const existing = votes.find((v) => v.post_id === postId && v.user_id === userId)
+        if (existing) {
+          const delta = value - existing.value
+          existing.value = value
+          const posts = readJson<ForumPost[]>('protosphere_forum_posts', [])
+          const post = posts.find((p) => p.id === postId)
+          if (post) { post.vote_score += delta; localStorage.setItem('protosphere_forum_posts', JSON.stringify(posts)) }
+        } else {
+          votes.push({ post_id: postId, user_id: userId, value })
+          const posts = readJson<ForumPost[]>('protosphere_forum_posts', [])
+          const post = posts.find((p) => p.id === postId)
+          if (post) { post.vote_score += value; localStorage.setItem('protosphere_forum_posts', JSON.stringify(posts)) }
+        }
+        localStorage.setItem('protosphere_forum_votes', JSON.stringify(votes))
+        return { post_id: postId, user_id: userId, value } as ForumVote
+      },
+
+      async removeVote(postId, userId) {
+        const votes = readJson<ForumVote[]>('protosphere_forum_votes', [])
+        const existing = votes.find((v) => v.post_id === postId && v.user_id === userId)
+        if (existing) {
+          const posts = readJson<ForumPost[]>('protosphere_forum_posts', [])
+          const post = posts.find((p) => p.id === postId)
+          if (post) { post.vote_score -= existing.value; localStorage.setItem('protosphere_forum_posts', JSON.stringify(posts)) }
+          localStorage.setItem('protosphere_forum_votes', JSON.stringify(votes.filter((v) => !(v.post_id === postId && v.user_id === userId))))
+        }
+      },
+
+      async getUserVote(postId, userId) {
+        const votes = readJson<ForumVote[]>('protosphere_forum_votes', [])
+        return votes.find((v) => v.post_id === postId && v.user_id === userId) ?? null
       },
     },
 

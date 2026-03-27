@@ -38,6 +38,11 @@ const router = createRouter({
       alias: '/spaces/:serverId/:channelId',
     },
     {
+      path: '/spaces/:spaceId/forum/:postId',
+      name: 'forum-post',
+      component: () => import('@/pages/ForumPostPage.vue'),
+    },
+    {
       path: '/settings',
       name: 'settings',
       component: () => import('@/pages/SettingsPage.vue'),

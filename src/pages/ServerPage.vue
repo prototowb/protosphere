@@ -33,7 +33,7 @@ import { messageContextItems, memberContextItems, channelContextItems, categoryC
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 import PollCard from '@/components/chat/PollCard.vue'
 const ReportDialog = defineAsyncComponent(() => import('@/components/moderation/ReportDialog.vue'))
-const ThreadPanel = defineAsyncComponent(() => import('@/components/chat/ThreadPanel.vue'))
+const CreateForumPostDialog = defineAsyncComponent(() => import('@/components/forum/CreateForumPostDialog.vue'))
 const CreatePollDialog = defineAsyncComponent(() => import('@/components/chat/CreatePollDialog.vue'))
 const EventsPanel = defineAsyncComponent(() => import('@/components/community/EventsPanel.vue'))
 const PinnedMessagesPanel = defineAsyncComponent(() => import('@/components/chat/PinnedMessagesPanel.vue'))
@@ -41,7 +41,6 @@ import { useRoles } from '@/composables/useRoles'
 import { usePermissions } from '@/composables/usePermissions'
 import { useMutes } from '@/composables/useMutes'
 import { useMutesStore } from '@/stores/mutes'
-import { useThreads } from '@/composables/useThreads'
 import { usePolls } from '@/composables/usePolls'
 import { useEvents } from '@/composables/useEvents'
 import { Permission } from '@/lib/permissions'
@@ -50,7 +49,7 @@ import { expandShortcodes } from '@/lib/emojiNames'
 import { backend, isLocalMode } from '@/lib/backend'
 import { useRealtime } from '@/composables/useRealtime'
 import { usePresenceStore } from '@/stores/presence'
-import type { Message, Profile, Member, MemberRole, Channel, ChannelCategory, AutomodRule, RsvpStatus, UserStatus, NotificationLevel, Attachment } from '@/lib/types'
+import type { Message, Profile, Member, MemberRole, Channel, ChannelCategory, AutomodRule, RsvpStatus, UserStatus, NotificationLevel, Attachment, ForumPost, ForumPostType } from '@/lib/types'
 import { useNotificationPreferences } from '@/composables/useNotificationPreferences'
 
 const route = useRoute()
@@ -72,7 +71,6 @@ const toastStore = useToastStore()
 const contextMenuStore = useContextMenuStore()
 const { fetchMutes, muteMember } = useMutes()
 const mutesStore = useMutesStore()
-const { threads, fetchThreadsForChannel, createThread } = useThreads()
 const { polls, fetchPolls, createPoll, vote: votePoll, closePoll } = usePolls()
 const { events, rsvpsByEvent, fetchEvents, createEvent, rsvp: rsvpEvent, loadRsvps } = useEvents()
 const { openDM } = useDMs()
@@ -167,10 +165,15 @@ const reportDialogTargetId = ref('')
 const automodRules = ref<AutomodRule[]>([])
 
 // Engagement panels
-const activeThread = ref<Channel | null>(null)
 const showPollsPanel = ref(false)
 const showEventsPanel = ref(false)
 const showCreatePoll = ref(false)
+
+// Forum
+const forumPosts = ref<(ForumPost & { created_by_profile: Profile })[]>([])
+const forumSectionOpen = ref(true)
+const showForumPostDialog = ref(false)
+const pendingForumMsg = ref<(Message & { profile: Profile }) | null>(null)
 
 // Announcement space: only MANAGE_MESSAGES holders can post
 const isAnnouncementSpace = computed(() => currentServer.value?.space_type === 'announcement')
@@ -258,6 +261,7 @@ function loadServer() {
     collapsedCategories.value = loadCollapsedCategories(serverId.value)
     fetchChannels(serverId.value)
     fetchCategories(serverId.value)
+    backend.forum.listBySpace(serverId.value).then((posts) => { forumPosts.value = posts }).catch(() => {})
     fetchMembers(serverId.value).then(() => {
       if (authStore.user?.id) {
         fetchServerRoles(serverId.value)
@@ -333,7 +337,6 @@ watch(() => channelsStore.activeChannelId, (id) => {
     })
     fetchReactionsForChannel(id)
     fetchPolls(id).catch(() => {})
-    fetchThreadsForChannel(id).catch(() => {})
     if (!isLocalMode) {
       stopMessages()
       stopTypingChannel()
@@ -900,22 +903,30 @@ function handleBan(userId: string) {
   }
 }
 
-// ── Thread ────────────────────────────────────────────────
-function handleCreateThread(msg: Message & { profile: Profile }) {
-  confirmDialog.value = {
-    title: 'Create Thread',
-    message: `Start a thread from this message.`,
-    confirmLabel: 'Create',
-    danger: false,
-    inputPlaceholder: 'Thread name',
-    onConfirm: async (name: string) => {
-      confirmDialog.value = null
-      if (!name.trim() || !channelsStore.activeChannelId) return
-      const thread = await createThread(serverId.value, channelsStore.activeChannelId, msg.id, name.trim())
-      activeThread.value = thread
-      showPollsPanel.value = false
-      showEventsPanel.value = false
-    },
+// ── Forum ─────────────────────────────────────────────────
+function handleCreateForumPost(msg: Message & { profile: Profile }) {
+  pendingForumMsg.value = msg
+  showForumPostDialog.value = true
+}
+
+async function submitForumPost(type: ForumPostType, title: string) {
+  if (!authStore.user?.id) return
+  showForumPostDialog.value = false
+  try {
+    const post = await backend.forum.createPost(
+      serverId.value,
+      type,
+      title,
+      authStore.user.id,
+      pendingForumMsg.value?.id ?? null,
+    )
+    forumPosts.value.unshift({ ...post, created_by_profile: (await backend.profiles.get(authStore.user.id)) })
+    toastStore.show('Forum post created', 'success')
+    router.push(`/spaces/${serverId.value}/forum/${post.id}`)
+  } catch {
+    toastStore.show('Failed to create forum post', 'error')
+  } finally {
+    pendingForumMsg.value = null
   }
 }
 
@@ -1012,7 +1023,6 @@ async function refreshPinnedPanel() {
 async function togglePinnedPanel() {
   showPinnedPanel.value = !showPinnedPanel.value
   if (showPinnedPanel.value) {
-    activeThread.value = null
     showPollsPanel.value = false
     showEventsPanel.value = false
     await refreshPinnedPanel()
@@ -1036,7 +1046,6 @@ async function handleCreatePollSubmit(data: { question: string; options: string[
   showCreatePoll.value = false
   showPollsPanel.value = true
   showPinnedPanel.value = false
-  activeThread.value = null
   showEventsPanel.value = false
 }
 
@@ -1069,7 +1078,7 @@ function onMessageContext(event: MouseEvent, msg: Message & { profile: Profile }
       emojiPickerForMsg.value = msg.id
     },
     onReport: !isAuthor ? () => handleReport('message', msg.id) : undefined,
-    onCreateThread: canModerate.value ? () => handleCreateThread(msg) : undefined,
+    onCreateForumPost: canModerate.value ? () => handleCreateForumPost(msg) : undefined,
   }))
 }
 
@@ -1373,6 +1382,42 @@ function onServerHeaderContext(event: MouseEvent) {
           </template>
         </div>
       </div>
+
+      <!-- ── Forum section ─────────────────────────────────── -->
+      <div class="mx-2 mt-2">
+        <button
+          @click="forumSectionOpen = !forumSectionOpen"
+          class="flex w-full items-center gap-1 px-2 py-1 text-xs font-semibold uppercase tracking-wide text-text-muted hover:text-text-primary"
+        >
+          <svg
+            class="h-3 w-3 flex-shrink-0 transition-transform"
+            :class="forumSectionOpen ? 'rotate-90' : ''"
+            viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          >
+            <polyline points="9 18 15 12 9 6"/>
+          </svg>
+          Forum
+          <span class="ml-auto text-[10px] font-normal">{{ forumPosts.length }}</span>
+        </button>
+        <div v-if="forumSectionOpen" class="mt-0.5 space-y-0.5">
+          <router-link
+            v-for="post in forumPosts"
+            :key="post.id"
+            :to="`/spaces/${serverId}/forum/${post.id}`"
+            class="flex items-center gap-1.5 rounded px-2 py-1 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary"
+          >
+            <span
+              class="flex-shrink-0 text-[9px] font-bold uppercase tracking-wide"
+              :class="post.type === 'meta' ? 'text-violet-400' : 'text-sky-400'"
+            >{{ post.type[0] }}</span>
+            <span class="truncate">{{ post.title }}</span>
+            <span v-if="post.vote_score !== 0" class="ml-auto flex-shrink-0 text-[10px]" :class="post.vote_score > 0 ? 'text-emerald-400' : 'text-red-400'">
+              {{ post.vote_score > 0 ? '+' : '' }}{{ post.vote_score }}
+            </span>
+          </router-link>
+          <p v-if="forumPosts.length === 0" class="px-2 py-1 text-[11px] text-text-muted">No forum posts yet.</p>
+        </div>
+      </div>
     </template>
 
     <template #top-bar>
@@ -1410,7 +1455,7 @@ function onServerHeaderContext(event: MouseEvent) {
           </button>
           <!-- Polls panel toggle -->
           <button
-            @click="showPollsPanel = !showPollsPanel; if (showPollsPanel) { showPinnedPanel = false; activeThread = null; showEventsPanel = false }"
+            @click="showPollsPanel = !showPollsPanel; if (showPollsPanel) { showPinnedPanel = false; showEventsPanel = false }"
             :class="showPollsPanel ? 'text-text-primary bg-bg-hover' : 'text-text-muted hover:text-text-primary hover:bg-bg-hover'"
             class="rounded p-1.5"
             title="Polls"
@@ -1421,7 +1466,7 @@ function onServerHeaderContext(event: MouseEvent) {
           </button>
           <!-- Events panel toggle -->
           <button
-            @click="showEventsPanel = !showEventsPanel; if (showEventsPanel) { showPinnedPanel = false; activeThread = null; showPollsPanel = false }"
+            @click="showEventsPanel = !showEventsPanel; if (showEventsPanel) { showPinnedPanel = false; showPollsPanel = false }"
             :class="showEventsPanel ? 'text-text-primary bg-bg-hover' : 'text-text-muted hover:text-text-primary hover:bg-bg-hover'"
             class="rounded p-1.5"
             title="Events"
@@ -1552,17 +1597,17 @@ function onServerHeaderContext(event: MouseEvent) {
                 </button>
               </div>
 
-              <!-- Thread link -->
-              <button
-                v-if="threads.find(t => t.parent_message_id === msg.id)"
-                @click="activeThread = threads.find(t => t.parent_message_id === msg.id) ?? null"
-                class="mt-1 flex items-center gap-1.5 text-xs text-accent hover:underline"
+              <!-- Forum post link -->
+              <router-link
+                v-if="msg.forum_post_id"
+                :to="`/spaces/${serverId}/forum/${msg.forum_post_id}`"
+                class="mt-1 inline-flex items-center gap-1.5 text-xs text-violet-400 hover:underline"
               >
                 <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
                 </svg>
-                {{ threads.find(t => t.parent_message_id === msg.id)?.name }}
-              </button>
+                Forum post
+              </router-link>
             </div>
 
             <!-- Hover actions -->
@@ -1768,13 +1813,6 @@ function onServerHeaderContext(event: MouseEvent) {
         @unpin="handleUnpinMessage"
       />
 
-      <!-- Thread panel -->
-      <ThreadPanel
-        v-else-if="activeThread"
-        :thread="activeThread"
-        :can-post="canPostInChannel"
-        @close="activeThread = null"
-      />
 
       <!-- Polls panel -->
       <div v-else-if="showPollsPanel" class="flex h-full flex-col">
@@ -2138,6 +2176,14 @@ function onServerHeaderContext(event: MouseEvent) {
     v-if="showCreatePoll"
     @create="handleCreatePollSubmit"
     @close="showCreatePoll = false"
+  />
+
+  <CreateForumPostDialog
+    v-if="showForumPostDialog"
+    :space-id="serverId"
+    :source-message-id="pendingForumMsg?.id"
+    @confirm="submitForumPost"
+    @cancel="showForumPostDialog = false; pendingForumMsg = null"
   />
 
   <!-- Confirm dialog -->

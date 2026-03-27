@@ -1,4 +1,4 @@
-import type { Profile, Server, Channel, ChannelCategory, Member, Message, Attachment, Reaction, Ban, DirectMessageGroup, DirectMessage, Role, UserRole, ChannelRoleOverride, CommunitySettings, AuditLog, Report, Mute, AutomodRule, Poll, PollOption, PollVote, AppEvent, EventRsvp, CommunityInvite, NotificationPreference, DmNotificationPreference } from '@/lib/types'
+import type { Profile, Server, Channel, ChannelCategory, Member, Message, Attachment, Reaction, Ban, DirectMessageGroup, DirectMessage, Role, UserRole, ChannelRoleOverride, CommunitySettings, AuditLog, Report, Mute, AutomodRule, Poll, PollOption, PollVote, AppEvent, EventRsvp, CommunityInvite, NotificationPreference, DmNotificationPreference, ForumPost, ForumComment, ForumVote } from '@/lib/types'
 import type { Backend } from './types'
 import { supabase } from '@/lib/supabase'
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -242,7 +242,6 @@ export function createSupabaseBackend(): Backend {
           .from('channels')
           .select('*')
           .eq('server_id', serverId)
-          .is('parent_message_id', null)
           .order('position')
         if (error) throw error
         return data as Channel[]
@@ -902,24 +901,93 @@ export function createSupabaseBackend(): Backend {
       },
     },
 
-    threads: {
-      async create(serverId, parentChannelId, parentMessageId, name) {
+    forum: {
+      async createPost(spaceId, type, title, createdBy, sourceMessageId = null) {
         const { data, error } = await client
-          .from('channels')
-          .insert({ server_id: serverId, name, description: '', type: 'text', position: 0, is_default: false, slowmode_seconds: 0, parent_message_id: parentMessageId, parent_channel_id: parentChannelId })
+          .from('forum_posts')
+          .insert({ space_id: spaceId, type, title, created_by: createdBy, source_message_id: sourceMessageId })
           .select()
           .single()
         if (error) throw error
-        return data as Channel
+        // Clear expiry on source message (PTSPH-182)
+        if (sourceMessageId) {
+          await client.from('messages').update({ expires_at: null, forum_post_id: data.id }).eq('id', sourceMessageId)
+        }
+        return data as ForumPost
       },
 
-      async listByChannel(channelId) {
+      async getPost(postId) {
         const { data, error } = await client
-          .from('channels')
-          .select('*')
-          .eq('parent_channel_id', channelId)
+          .from('forum_posts')
+          .select('*, created_by_profile:profiles!created_by(*), source_message:messages(*, profile:profiles!author_id(*))')
+          .eq('id', postId)
+          .single()
         if (error) throw error
-        return data as Channel[]
+        return data as ForumPost & { created_by_profile: Profile; source_message: (Message & { profile: Profile }) | null }
+      },
+
+      async listBySpace(spaceId) {
+        const { data, error } = await client
+          .from('forum_posts')
+          .select('*, created_by_profile:profiles!created_by(*)')
+          .eq('space_id', spaceId)
+          .order('created_at', { ascending: false })
+        if (error) throw error
+        return data as (ForumPost & { created_by_profile: Profile })[]
+      },
+
+      async deletePost(postId) {
+        const { error } = await client.from('forum_posts').delete().eq('id', postId)
+        if (error) throw error
+      },
+
+      async addComment(postId, authorId, content, parentCommentId = null) {
+        const { data, error } = await client
+          .from('forum_comments')
+          .insert({ post_id: postId, author_id: authorId, content, parent_comment_id: parentCommentId })
+          .select('*, profile:profiles!author_id(*)')
+          .single()
+        if (error) throw error
+        return data as ForumComment & { profile: Profile }
+      },
+
+      async listComments(postId) {
+        const { data, error } = await client
+          .from('forum_comments')
+          .select('*, profile:profiles!author_id(*)')
+          .eq('post_id', postId)
+          .order('created_at')
+        if (error) throw error
+        return data as (ForumComment & { profile: Profile })[]
+      },
+
+      async vote(postId, userId, value) {
+        const { data, error } = await client
+          .from('forum_post_votes')
+          .upsert({ post_id: postId, user_id: userId, value }, { onConflict: 'post_id,user_id' })
+          .select()
+          .single()
+        if (error) throw error
+        return data as ForumVote
+      },
+
+      async removeVote(postId, userId) {
+        const { error } = await client
+          .from('forum_post_votes')
+          .delete()
+          .eq('post_id', postId)
+          .eq('user_id', userId)
+        if (error) throw error
+      },
+
+      async getUserVote(postId, userId) {
+        const { data } = await client
+          .from('forum_post_votes')
+          .select('*')
+          .eq('post_id', postId)
+          .eq('user_id', userId)
+          .maybeSingle()
+        return data as ForumVote | null
       },
     },
 

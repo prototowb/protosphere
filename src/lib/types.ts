@@ -15,6 +15,8 @@ export type RegistrationMode = 'open' | 'approval' | 'invite_only' | 'closed'
 
 export type ProfileStatus = 'active' | 'pending' | 'rejected'
 
+export type ForumPostType = 'meta' | 'page'
+
 export interface Profile {
   id: string
   username: string
@@ -28,6 +30,7 @@ export interface Profile {
   location: string
   display_banner_url: string | null
   account_status: ProfileStatus
+  meta_points: number
   created_at: string
   updated_at: string
 }
@@ -79,8 +82,6 @@ export interface Channel {
   is_default: boolean
   slowmode_seconds: number
   category_id: string | null
-  parent_message_id: string | null
-  parent_channel_id: string | null
   created_at: string
 }
 
@@ -102,6 +103,7 @@ export interface Message {
   is_pinned: boolean
   created_at: string
   expires_at: string | null
+  forum_post_id: string | null
 }
 
 export interface Member {
@@ -358,4 +360,43 @@ export interface DmNotificationPreference {
   user_id: string
   group_id: string
   muted: boolean
+}
+
+// ── Forum ─────────────────────────────────────────────────────
+
+export interface ForumPost {
+  id: string
+  space_id: string
+  source_message_id: string | null
+  type: ForumPostType
+  title: string
+  content: Record<string, unknown> | null
+  vote_score: number
+  created_by: string
+  marked_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ForumCollaborator {
+  post_id: string
+  user_id: string
+  invited_by: string
+  added_at: string
+}
+
+export interface ForumComment {
+  id: string
+  post_id: string
+  parent_comment_id: string | null
+  author_id: string
+  content: string
+  created_at: string
+  edited_at: string | null
+}
+
+export interface ForumVote {
+  post_id: string
+  user_id: string
+  value: 1 | -1
 }

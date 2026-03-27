@@ -19,7 +19,7 @@ export function messageContextItems(
     onAddReaction: () => void
     onCopyId: () => void
     onReport?: () => void
-    onCreateThread?: () => void
+    onCreateForumPost?: () => void
   },
 ): ContextMenuItem[] {
   const items: ContextMenuItem[] = [
@@ -29,8 +29,8 @@ export function messageContextItems(
     { label: 'Copy Message ID', action: opts.onCopyId },
   ]
 
-  if (opts.canModerate && opts.onCreateThread) {
-    items.push({ label: 'Create Thread', action: opts.onCreateThread })
+  if (opts.canModerate && opts.onCreateForumPost) {
+    items.push({ label: 'Create Forum Post', action: opts.onCreateForumPost })
   }
 
   if (opts.isAuthor) {
