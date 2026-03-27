@@ -58,7 +58,8 @@ watch(() => props.modelValue, (val) => {
   if (!editor.value) return
   const current = editor.value.getJSON()
   if (JSON.stringify(current) !== JSON.stringify(val)) {
-    editor.value.commands.setContent(val ?? undefined)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    editor.value.commands.setContent((val ?? null) as any)
   }
 })
 
