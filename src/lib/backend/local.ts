@@ -1,4 +1,4 @@
-import type { Profile, Server, Channel, ChannelCategory, Member, Message, Attachment, Reaction, Ban, DirectMessageGroup, DirectMessageMember, DirectMessage, Role, UserRole, ChannelRoleOverride, CommunitySettings, AuditLog, Report, Mute, AutomodRule, Poll, PollOption, PollVote, AppEvent, EventRsvp, CommunityInvite, NotificationPreference, DmNotificationPreference, ForumPost, ForumComment, ForumVote } from '@/lib/types'
+import type { Profile, Server, Channel, ChannelCategory, Member, Message, Attachment, Reaction, Ban, DirectMessageGroup, DirectMessageMember, DirectMessage, Role, UserRole, ChannelRoleOverride, CommunitySettings, AuditLog, Report, Mute, AutomodRule, Poll, PollOption, PollVote, AppEvent, EventRsvp, CommunityInvite, NotificationPreference, DmNotificationPreference, ForumPost, ForumCollaborator, ForumComment, ForumVote } from '@/lib/types'
 import type { AuthSession, Backend } from './types'
 import { serializePermissions, PermissionPresets, Permission } from '@/lib/permissions'
 
@@ -1171,6 +1171,7 @@ export function createLocalBackend(): Backend {
           vote_score: 0,
           created_by: createdBy,
           marked_by: null,
+          updated_by: null,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         }
@@ -1190,12 +1191,16 @@ export function createLocalBackend(): Backend {
         if (!post) throw new Error('Forum post not found')
         const profiles = readJson<Record<string, Profile>>('protosphere_profiles', {})
         const messages = readJson<Message[]>(KEYS.messages, [])
+        const collabs = readJson<ForumCollaborator[]>('protosphere_forum_collaborators', [])
         const srcMsg = post.source_message_id ? messages.find((m) => m.id === post.source_message_id) ?? null : null
         return {
           ...post,
           created_by_profile: profiles[post.created_by] ?? null,
           source_message: srcMsg ? { ...srcMsg, profile: profiles[srcMsg.author_id] ?? null } : null,
-        } as ForumPost & { created_by_profile: Profile; source_message: (Message & { profile: Profile }) | null }
+          collaborators: collabs
+            .filter((c) => c.post_id === postId)
+            .map((c) => ({ ...c, user: profiles[c.user_id] ?? null })),
+        } as ForumPost & { created_by_profile: Profile; source_message: (Message & { profile: Profile }) | null; collaborators: (ForumCollaborator & { user: Profile })[] }
       },
 
       async listBySpace(spaceId) {
@@ -1210,6 +1215,47 @@ export function createLocalBackend(): Backend {
       async deletePost(postId) {
         const posts = readJson<ForumPost[]>('protosphere_forum_posts', [])
         localStorage.setItem('protosphere_forum_posts', JSON.stringify(posts.filter((p) => p.id !== postId)))
+      },
+
+      async updatePageContent(postId, content, updatedBy) {
+        const posts = readJson<ForumPost[]>('protosphere_forum_posts', [])
+        const idx = posts.findIndex((p) => p.id === postId)
+        if (idx === -1) throw new Error('Forum post not found')
+        const post = posts[idx]!
+        const updated = { ...post, content, updated_by: updatedBy, updated_at: new Date().toISOString() }
+        posts[idx] = updated
+        localStorage.setItem('protosphere_forum_posts', JSON.stringify(posts))
+        return updated
+      },
+
+      async addCollaborator(postId, userId, invitedBy) {
+        const collabs = readJson<ForumCollaborator[]>('protosphere_forum_collaborators', [])
+        const existing = collabs.find((c) => c.post_id === postId && c.user_id === userId)
+        if (existing) throw new Error('Already a collaborator')
+        const collab: ForumCollaborator = {
+          post_id: postId,
+          user_id: userId,
+          invited_by: invitedBy,
+          added_at: new Date().toISOString(),
+        }
+        collabs.push(collab)
+        localStorage.setItem('protosphere_forum_collaborators', JSON.stringify(collabs))
+        const profiles = readJson<Record<string, Profile>>('protosphere_profiles', {})
+        return { ...collab, user: profiles[userId] ?? null } as ForumCollaborator & { user: Profile }
+      },
+
+      async listCollaborators(postId) {
+        const collabs = readJson<ForumCollaborator[]>('protosphere_forum_collaborators', [])
+        const profiles = readJson<Record<string, Profile>>('protosphere_profiles', {})
+        return collabs
+          .filter((c) => c.post_id === postId)
+          .sort((a, b) => new Date(a.added_at).getTime() - new Date(b.added_at).getTime())
+          .map((c) => ({ ...c, user: profiles[c.user_id] ?? null })) as (ForumCollaborator & { user: Profile })[]
+      },
+
+      async removeCollaborator(postId, userId) {
+        const collabs = readJson<ForumCollaborator[]>('protosphere_forum_collaborators', [])
+        localStorage.setItem('protosphere_forum_collaborators', JSON.stringify(collabs.filter((c) => !(c.post_id === postId && c.user_id === userId))))
       },
 
       async addComment(postId, authorId, content, parentCommentId = null) {

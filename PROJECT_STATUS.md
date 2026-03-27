@@ -5,12 +5,12 @@
 ## Current State
 
 ```yaml
-project_phase: "Active Development — M20 Performance & Notifications"
+project_phase: "Active Development — M23 Forum Page Type"
 protogear_enabled: true
 framework: "Vue 3 + TypeScript 5.9 + Vite 7 + Tailwind CSS 4 + Pinia + Supabase"
 project_type: "Single-Community Communication Platform"
 initialization_date: "2026-02-20"
-current_milestone: "M20 — Performance, Notifications & Admin Insights"
+current_milestone: "M23 — Forum Page Type & Collaboration"
 local_supabase: true
 ```
 
@@ -35,6 +35,73 @@ Backend adapter auto-detects mode via `VITE_SUPABASE_URL` env var. Local mode us
 ---
 
 ## Active Tickets
+
+### M21 — Message Retention Policy ✅
+
+**Goal:** Ephemeral messaging — channel messages expire after 3 days, DM messages after 6 months. Forum posts are permanent and exempt. Users are made aware of these rules.
+
+| Ticket | Title | Priority | Status |
+|--------|-------|----------|--------|
+| PTSPH-180 | Message expiry schema + GH Actions cleanup | High | ✅ Done |
+| PTSPH-181 | Filter expired messages from all queries | High | ✅ Done |
+| PTSPH-182 | Forum post exemption | High | ✅ Done |
+| PTSPH-183 | Message expiry UI indicator | Medium | ✅ Done |
+
+**Migrations:** `039_message_expiry.sql` — applied staging + production
+
+---
+
+### M22 — Forum Foundation & Meta Posts ✅
+
+**Goal:** Replace the existing thread system with a first-class forum. Any message can be promoted to a permanent forum post. Forum posts appear in a dedicated section in the space sidebar. First post type: Meta (classic forum layout + voting + meta points).
+
+**Replaces:** `ThreadPanel.vue`, `useThreads.ts`, `parent_message_id` thread channels — removed.
+
+| Ticket | Title | Priority | Status |
+|--------|-------|----------|--------|
+| PTSPH-184 | Forum data model migration | High | ✅ Done |
+| PTSPH-185 | Forum comments + voting schema | High | ✅ Done |
+| PTSPH-186 | Meta points system | Medium | ✅ Done |
+| PTSPH-187 | Backend: forum namespace | High | ✅ Done |
+| PTSPH-188 | Remove old thread system | Medium | ✅ Done |
+| PTSPH-189 | Forum section in space sidebar | High | ✅ Done |
+| PTSPH-190 | Mark as forum post action + dialog | High | ✅ Done |
+| PTSPH-191 | Meta post type UI | High | ✅ Done |
+
+**Migrations:** `040_forum_foundation.sql`, `041_forum_comments_votes.sql`, `042_meta_points.sql` — applied staging
+
+---
+
+### M23 — Forum Page Type & Collaboration 🚧
+
+**Goal:** The Page post type turns a marked message into a collaborative, structured document (Notion-like block editor). Only the message author and the person who marked it can edit initially; they can invite collaborators from the comment section. Uses TipTap v2 for the block editor.
+
+| Ticket | Title | Priority | Status | Description |
+|--------|-------|----------|--------|-------------|
+| PTSPH-192 | Page editor schema | High | 🔲 Todo | Add `content JSONB` column to `forum_posts` (stores TipTap/ProseMirror JSON doc); add `updated_at`, `updated_by` columns; migration; `forum.updatePageContent(postId, content)` in backend |
+| PTSPH-193 | TipTap block editor integration | High | 🔲 Todo | Install `@tiptap/vue-3` + core extensions (Heading, Paragraph, BulletList, OrderedList, Blockquote, CodeBlock, Image, HorizontalRule, Link); `PageEditor.vue` component; toolbar with block-type picker; read-only mode for non-collaborators |
+| PTSPH-194 | Page layout & design controls | Medium | 🔲 Todo | Extended block types: Callout (info/warning/success), Embed (iframe), custom Cover image at top of page; CSS-driven layout (full-width vs centered content width toggle); page renders as styled HTML that looks like a web article |
+| PTSPH-195 | Page collaboration & permissions | High | 🔲 Todo | Gate editor to `created_by` + `marked_by` + `forum_collaborators`; "Invite to collaborate" button in comment section — opens user picker, adds to `forum_collaborators`; collaborator badge list at top of page; `ForumPostPage` shows sidebar comment drawer (slide-in panel) instead of inline comments for Page type |
+| PTSPH-196 | Page comment drawer | Medium | 🔲 Todo | Right-side drawer on `ForumPostPage` (Page type): same `ForumCommentTree` component but in a `<aside>` panel; toggle button in page header; reuses forum_comments data |
+
+**Migrations:** `043_forum_page_content.sql`
+
+---
+
+### M24 — Onboarding Tour 🔲
+
+**Goal:** After account creation, walk new users through the platform's unique rules (message expiry, forum system) and help them customize their profile before they engage with the community.
+
+| Ticket | Title | Priority | Status | Description |
+|--------|-------|----------|--------|-------------|
+| PTSPH-197 | Tour component system | Medium | 🔲 Todo | `OnboardingTour.vue` — multi-step modal overlay with progress dots, "Next" / "Skip" controls; triggered once after first login (flag `onboarding_complete` on profiles, migration); stores completion in `profiles` via `profiles.completeOnboarding()` |
+| PTSPH-198 | Message rules step | High | 🔲 Todo | Step explaining ephemeral messages (3-day channel TTL, 6-month DM TTL, forum post exemption); visual diagram showing message → forum post lifecycle |
+| PTSPH-199 | Platform tour steps | Medium | 🔲 Todo | Steps highlighting: spaces sidebar, forum section, DM, admin panel (owners only); each step spotlights the relevant UI element with a highlight ring |
+| PTSPH-200 | Profile setup step | Medium | 🔲 Todo | Final onboarding step: inline mini profile editor (avatar upload, display name, bio, pronouns); submits via `updateProfile()`; skip allowed |
+
+**Migration:** `044_onboarding_complete_flag.sql`
+
+---
 
 ### M20 — Performance, Notifications & Admin Insights ✅
 
@@ -192,7 +259,9 @@ Backend adapter auto-detects mode via `VITE_SUPABASE_URL` env var. Local mode us
 M11 (Roles & Permissions) ──┐
                              ├─→ M13 (Moderation) ──┐
 M12 (Spaces & Community) ───┤                       ├─→ M15 (Supabase & Real-time) ──→ M16 (UI Redesign) ──→ M17 (Auth) ──→ M18 (Deploy) ──→ M19 (Social) ──→ M20 (Perf & Notifications)
-                             └─→ M14 (Engagement) ──┘
+                             └─→ M14 (Engagement) ──┘                                                                                                                        │
+                                                                                                                                                                               ↓
+                                                                                                                                M21 (Message Retention) ──→ M22 (Forum Foundation) ──→ M23 (Forum Page) ──→ M24 (Onboarding Tour)
 ```
 
 ---
@@ -431,6 +500,8 @@ supabase/migrations/
 
 ## Recent Updates
 
+- 2026-03-27: M21–M24 planned. Message retention (3-day channel TTL, 6-month DM TTL via pg_cron), Forum system (replaces thread system; Meta + Page post types; TipTap block editor; voting; meta points; collaboration invitations), Onboarding tour (post-signup walkthrough explaining TTL rules, UI tour, profile setup). PTSPH-180–200.
+- 2026-03-27: Staging environment set up (`protocode-chat-staging`). CI split: development→staging creds, main→prod creds. OAuth signup fixed (RLS bypass on auth triggers via `SET row_security = off`; missing profiles INSERT policy; PKCE race condition in auth.init). AppShell watches `authStore.user?.id` instead of `onMounted` for OAuth redirect compatibility.
 - 2026-03-09: RLS bug fixes. Migration 023: fix `servers_update` infinite recursion (42P17) — replaced self-referencing policy with direct column + `user_has_permission()`. Migration 024: DM group auto-join trigger (42501) — `AFTER INSERT` trigger adds creator to `direct_message_members` before RETURNING evaluates SELECT policy; `community_settings` singleton unique index `((true))` + duplicate row cleanup (PGRST116). Build workflow restored to `push: branches: [main]`. `supabase-backend.ts` defensive fix: `.limit(1)` on `community.get()`.
 - 2026-03-10: M20 complete. PTSPH-173+177: file/image attachments — `messages.upload()` in both backends, `MessageAttachments.vue`, paperclip button + pending preview in ServerPage. PTSPH-174+178: DM notification prefs — `dm_notification_preferences` table (032), bell mute toggle in DMPage; `useUnread`/`useDmUnread` skip muted channels/groups. PTSPH-175: server-side FTS — `search_tsv` generated tsvector (033), `messages.search()`, dual-mode `useMessageSearch` overloads. PTSPH-176: admin dashboard — `AdminDashboardPage` at `/admin`, `useAdminStats.ts`, Dashboard link in CommunitySidebar.
 - 2026-03-09: M20 started. PTSPH-179: `PinnedMessagesPanel.vue` extracted from ServerPage as standalone component. PTSPH-172: cursor-based message pagination (`before` + `limit` params in both backends, `paginationByChannel` in messagesStore, `fetchOlderMessages` in useMessages, "Load earlier messages" button in ServerPage with scroll-position preservation). Migration 022 committed. GitHub Actions build-dist workflow paused (push trigger → `workflow_dispatch`) while testing hoster build.

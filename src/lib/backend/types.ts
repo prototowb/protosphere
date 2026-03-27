@@ -1,4 +1,4 @@
-import type { Profile, Server, Channel, ChannelCategory, Member, Message, Attachment, Reaction, Ban, DirectMessageGroup, DirectMessage, Role, UserRole, ChannelRoleOverride, CommunitySettings, SpaceVisibility, SpaceType, AuditLog, AuditLogAction, Report, ReportCategory, ReportStatus, Mute, AutomodRule, Poll, PollOption, PollVote, PollWithResults, AppEvent, EventRsvp, RsvpStatus, CommunityInvite, CommunityInviteUsage, NotificationPreference, NotificationLevel, DmNotificationPreference, ForumPost, ForumPostType, ForumComment, ForumVote } from '@/lib/types'
+import type { Profile, Server, Channel, ChannelCategory, Member, Message, Attachment, Reaction, Ban, DirectMessageGroup, DirectMessage, Role, UserRole, ChannelRoleOverride, CommunitySettings, SpaceVisibility, SpaceType, AuditLog, AuditLogAction, Report, ReportCategory, ReportStatus, Mute, AutomodRule, Poll, PollOption, PollVote, PollWithResults, AppEvent, EventRsvp, RsvpStatus, CommunityInvite, CommunityInviteUsage, NotificationPreference, NotificationLevel, DmNotificationPreference, ForumPost, ForumPostType, ForumCollaborator, ForumComment, ForumVote } from '@/lib/types'
 
 export interface AuthUser {
   id: string
@@ -134,9 +134,13 @@ export interface Backend {
   }
   forum: {
     createPost(spaceId: string, type: ForumPostType, title: string, createdBy: string, sourceMessageId?: string | null): Promise<ForumPost>
-    getPost(postId: string): Promise<ForumPost & { created_by_profile: Profile; source_message: (Message & { profile: Profile }) | null }>
+    getPost(postId: string): Promise<ForumPost & { created_by_profile: Profile; source_message: (Message & { profile: Profile }) | null; collaborators: (ForumCollaborator & { user: Profile })[] }>
     listBySpace(spaceId: string): Promise<(ForumPost & { created_by_profile: Profile })[]>
     deletePost(postId: string): Promise<void>
+    updatePageContent(postId: string, content: Record<string, unknown>, updatedBy: string): Promise<ForumPost>
+    addCollaborator(postId: string, userId: string, invitedBy: string): Promise<ForumCollaborator & { user: Profile }>
+    listCollaborators(postId: string): Promise<(ForumCollaborator & { user: Profile })[]>
+    removeCollaborator(postId: string, userId: string): Promise<void>
     addComment(postId: string, authorId: string, content: string, parentCommentId?: string | null): Promise<ForumComment & { profile: Profile }>
     listComments(postId: string): Promise<(ForumComment & { profile: Profile })[]>
     vote(postId: string, userId: string, value: 1 | -1): Promise<ForumVote>

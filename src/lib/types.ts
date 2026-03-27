@@ -374,6 +374,7 @@ export interface ForumPost {
   vote_score: number
   created_by: string
   marked_by: string | null
+  updated_by: string | null
   created_at: string
   updated_at: string
 }

@@ -1,4 +1,4 @@
-import type { Profile, Server, Channel, ChannelCategory, Member, Message, Attachment, Reaction, Ban, DirectMessageGroup, DirectMessage, Role, UserRole, ChannelRoleOverride, CommunitySettings, AuditLog, Report, Mute, AutomodRule, Poll, PollOption, PollVote, AppEvent, EventRsvp, CommunityInvite, NotificationPreference, DmNotificationPreference, ForumPost, ForumComment, ForumVote } from '@/lib/types'
+import type { Profile, Server, Channel, ChannelCategory, Member, Message, Attachment, Reaction, Ban, DirectMessageGroup, DirectMessage, Role, UserRole, ChannelRoleOverride, CommunitySettings, AuditLog, Report, Mute, AutomodRule, Poll, PollOption, PollVote, AppEvent, EventRsvp, CommunityInvite, NotificationPreference, DmNotificationPreference, ForumPost, ForumCollaborator, ForumComment, ForumVote } from '@/lib/types'
 import type { Backend } from './types'
 import { supabase } from '@/lib/supabase'
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -919,11 +919,11 @@ export function createSupabaseBackend(): Backend {
       async getPost(postId) {
         const { data, error } = await client
           .from('forum_posts')
-          .select('*, created_by_profile:profiles!created_by(*), source_message:messages!source_message_id(*, profile:profiles!author_id(*))')
+          .select('*, created_by_profile:profiles!created_by(*), source_message:messages!source_message_id(*, profile:profiles!author_id(*)), collaborators:forum_collaborators(*, user:profiles!user_id(*))')
           .eq('id', postId)
           .single()
         if (error) throw error
-        return data as ForumPost & { created_by_profile: Profile; source_message: (Message & { profile: Profile }) | null }
+        return data as ForumPost & { created_by_profile: Profile; source_message: (Message & { profile: Profile }) | null; collaborators: (ForumCollaborator & { user: Profile })[] }
       },
 
       async listBySpace(spaceId) {
@@ -938,6 +938,46 @@ export function createSupabaseBackend(): Backend {
 
       async deletePost(postId) {
         const { error } = await client.from('forum_posts').delete().eq('id', postId)
+        if (error) throw error
+      },
+
+      async updatePageContent(postId, content, updatedBy) {
+        const { data, error } = await client
+          .from('forum_posts')
+          .update({ content, updated_by: updatedBy })
+          .eq('id', postId)
+          .select()
+          .single()
+        if (error) throw error
+        return data as ForumPost
+      },
+
+      async addCollaborator(postId, userId, invitedBy) {
+        const { data, error } = await client
+          .from('forum_collaborators')
+          .insert({ post_id: postId, user_id: userId, invited_by: invitedBy })
+          .select('*, user:profiles!user_id(*)')
+          .single()
+        if (error) throw error
+        return data as ForumCollaborator & { user: Profile }
+      },
+
+      async listCollaborators(postId) {
+        const { data, error } = await client
+          .from('forum_collaborators')
+          .select('*, user:profiles!user_id(*)')
+          .eq('post_id', postId)
+          .order('added_at')
+        if (error) throw error
+        return data as (ForumCollaborator & { user: Profile })[]
+      },
+
+      async removeCollaborator(postId, userId) {
+        const { error } = await client
+          .from('forum_collaborators')
+          .delete()
+          .eq('post_id', postId)
+          .eq('user_id', userId)
         if (error) throw error
       },
 

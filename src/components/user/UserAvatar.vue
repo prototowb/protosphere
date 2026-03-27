@@ -6,22 +6,25 @@ const props = defineProps<{
   src?: string | null
   alt?: string
   status?: UserStatus
-  size?: 'sm' | 'md' | 'lg'
+  size?: 'xs' | 'sm' | 'md' | 'lg'
 }>()
 
 const sizeClasses = {
+  xs: 'h-6 w-6',
   sm: 'h-8 w-8',
   md: 'h-10 w-10',
   lg: 'h-16 w-16',
 } as const
 
 const textSizeClasses = {
+  xs: 'text-[10px]',
   sm: 'text-xs',
   md: 'text-sm',
   lg: 'text-xl',
 } as const
 
 const indicatorPosition = {
+  xs: '-bottom-0.5 -right-0.5',
   sm: '-bottom-1 -right-1',
   md: '-bottom-1 -right-1',
   lg: '-bottom-1.5 -right-1.5',
