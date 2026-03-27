@@ -919,7 +919,7 @@ export function createSupabaseBackend(): Backend {
       async getPost(postId) {
         const { data, error } = await client
           .from('forum_posts')
-          .select('*, created_by_profile:profiles!created_by(*), source_message:messages(*, profile:profiles!author_id(*))')
+          .select('*, created_by_profile:profiles!created_by(*), source_message:messages!source_message_id(*, profile:profiles!author_id(*))')
           .eq('id', postId)
           .single()
         if (error) throw error
