@@ -218,7 +218,7 @@ const editingContent = ref('')
 const replyingTo = ref<(Message & { profile: Profile }) | null>(null)
 
 // Emoji picker
-const QUICK_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '😡', '🎉', '🔥']
+
 const emojiPickerForMsg = ref<string | null>(null)
 const pickerAnchorRect = ref<{ top: number; right: number } | null>(null)
 
@@ -2139,21 +2139,15 @@ function onServerHeaderContext(event: MouseEvent) {
     />
   </Teleport>
 
-  <!-- Reaction emoji picker (teleported to body to escape overflow containers) -->
+  <!-- Reaction emoji picker (full picker, teleported to body) -->
   <Teleport to="body">
     <div
       v-if="emojiPickerForMsg && pickerAnchorRect"
-      class="fixed z-[9999] flex gap-1 rounded-lg border border-bg-tertiary bg-bg-primary p-1.5 shadow-lg"
+      class="fixed z-[9999]"
       :style="{ top: pickerAnchorRect.top + 'px', right: pickerAnchorRect.right + 'px' }"
       @click.stop
     >
-      <button
-        v-for="emoji in QUICK_EMOJIS"
-        :key="emoji"
-        @click="handleToggleReaction(emojiPickerForMsg!, emoji)"
-        class="rounded p-1 text-base hover:bg-bg-hover"
-        :title="emoji"
-      ><EmojiIcon :emoji="emoji" size="1.25em" /></button>
+      <EmojiPicker @select="handleToggleReaction(emojiPickerForMsg!, $event)" />
     </div>
     <div
       v-if="emojiPickerForMsg"

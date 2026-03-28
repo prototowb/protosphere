@@ -1277,6 +1277,18 @@ export function createLocalBackend(): Backend {
         return { ...comment, profile: profiles[authorId] ?? null } as ForumComment & { profile: Profile }
       },
 
+      async editComment(commentId, authorId, content) {
+        const comments = readJson<ForumComment[]>('protosphere_forum_comments', [])
+        const comment = comments.find((c) => c.id === commentId && c.author_id === authorId)
+        if (!comment) throw new Error('Comment not found')
+        comment.content = content
+        comment.edited_at = new Date().toISOString()
+        writeJson('protosphere_forum_comments', comments)
+        const profiles = readJson<Record<string, Profile>>('protosphere_profiles', {})
+        const profile = profiles[comment.author_id] ?? null
+        return { ...comment, profile } as ForumComment & { profile: Profile }
+      },
+
       async listComments(postId) {
         const comments = readJson<ForumComment[]>('protosphere_forum_comments', [])
         const profiles = readJson<Record<string, Profile>>('protosphere_profiles', {})

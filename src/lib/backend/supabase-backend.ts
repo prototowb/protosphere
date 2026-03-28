@@ -991,6 +991,18 @@ export function createSupabaseBackend(): Backend {
         return data as ForumComment & { profile: Profile }
       },
 
+      async editComment(commentId, authorId, content) {
+        const { data, error } = await client
+          .from('forum_comments')
+          .update({ content, edited_at: new Date().toISOString() })
+          .eq('id', commentId)
+          .eq('author_id', authorId)
+          .select(`*, profile:profiles!author_id(*)`)
+          .single()
+        if (error) throw error
+        return data as ForumComment & { profile: Profile }
+      },
+
       async listComments(postId) {
         const { data, error } = await client
           .from('forum_comments')

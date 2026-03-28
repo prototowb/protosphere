@@ -9,6 +9,8 @@ import MessageAttachments from '@/components/messages/MessageAttachments.vue'
 import ForumCommentTree from '@/components/forum/ForumCommentTree.vue'
 import PageEditor from '@/components/forum/PageEditor.vue'
 import InviteCollaboratorDialog from '@/components/forum/InviteCollaboratorDialog.vue'
+import MessageInput from '@/components/chat/MessageInput.vue'
+import EmojiPicker from '@/components/chat/EmojiPicker.vue'
 import type {
   ForumPost, ForumVote, ForumComment, ForumCollaborator,
   ForumCommentReaction, Profile, Message,
@@ -39,6 +41,9 @@ const reactionMap = ref<Record<string, ForumCommentReaction[]>>({})
 
 const newComment = ref('')
 const posting = ref(false)
+const commentInputEl = ref<InstanceType<typeof MessageInput> | null>(null)
+const emojiDrawerOpen = ref(false)
+const emojiDrawerAnchor = ref<{ bottom: number; right: number } | null>(null)
 
 // Page type state
 const pageContent = ref<Record<string, unknown> | null>(null)
@@ -187,6 +192,17 @@ async function handleReply(parentId: string | null, content: string) {
   }
 }
 
+async function handleEditComment(commentId: string, content: string) {
+  if (!authStore.user?.id) return
+  try {
+    const updated = await backend.forum.editComment(commentId, authStore.user.id, content)
+    const idx = comments.value.findIndex((c) => c.id === commentId)
+    if (idx !== -1) comments.value[idx] = { ...comments.value[idx]!, ...updated }
+  } catch {
+    toastStore.show('Failed to edit comment', 'error')
+  }
+}
+
 async function submitTopComment() {
   const content = newComment.value.trim()
   if (!content || posting.value || !authStore.user?.id) return
@@ -200,6 +216,19 @@ async function submitTopComment() {
   } finally {
     posting.value = false
   }
+}
+
+function openEmojiDrawer(event: MouseEvent) {
+  if (emojiDrawerOpen.value) { emojiDrawerOpen.value = false; return }
+  const btn = event.currentTarget as HTMLElement
+  const rect = btn.getBoundingClientRect()
+  emojiDrawerAnchor.value = { bottom: window.innerHeight - rect.top + 8, right: window.innerWidth - rect.right }
+  emojiDrawerOpen.value = true
+}
+
+function insertCommentEmoji(emoji: string) {
+  commentInputEl.value?.insertEmoji(emoji)
+  emojiDrawerOpen.value = false
 }
 
 // ── Page type ─────────────────────────────────────────────────────────────────
@@ -236,17 +265,11 @@ function formatTime(iso: string) {
     d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
 
-// Comment input shared component helper
-function commentInputAttrs(placeholder: string) {
-  return {
-    placeholder,
-    class: 'w-full bg-transparent px-3 py-2.5 text-sm text-text-primary placeholder-text-muted outline-none resize-none',
-  }
-}
+
 </script>
 
 <template>
-  <div class="flex min-h-screen flex-col bg-bg-primary">
+  <div class="flex h-screen flex-col bg-bg-primary">
     <!-- Top bar -->
     <div class="flex items-center gap-3 border-b border-bg-tertiary bg-bg-secondary px-6 py-3">
       <button
@@ -346,19 +369,21 @@ function commentInputAttrs(placeholder: string) {
           <h3 class="mb-4 text-sm font-semibold text-text-primary">Comments</h3>
           <div class="mb-4">
             <div class="rounded-lg bg-bg-primary ring-1 ring-bg-tertiary focus-within:ring-accent overflow-hidden">
-              <textarea v-bind="commentInputAttrs('Write a comment…')" v-model="newComment" rows="3" @keydown.ctrl.enter="submitTopComment" />
+              <textarea placeholder="Write a comment…" class="w-full bg-transparent px-3 py-2.5 text-sm text-text-primary placeholder-text-muted outline-none resize-none" v-model="newComment" rows="3" @keydown.ctrl.enter="submitTopComment" />
               <div class="flex justify-end border-t border-bg-tertiary px-3 py-1.5">
                 <button @click="submitTopComment" :disabled="!newComment.trim() || posting" class="rounded bg-accent px-3 py-1 text-xs font-medium text-white hover:bg-accent-hover disabled:opacity-50">Comment</button>
               </div>
             </div>
           </div>
-          <ForumCommentTree :comments="comments" :parent-id="null" :depth="0" :can-post="!!authStore.user" :user-votes="commentVoteMap" :reactions="reactionMap" :current-user-id="authStore.user?.id ?? null" @reply="handleReply" @vote="handleCommentVote" @remove-vote="handleRemoveCommentVote" @react="handleReact" @remove-reaction="handleRemoveReaction" />
+          <ForumCommentTree :comments="comments" :parent-id="null" :depth="0" :can-post="!!authStore.user" :user-votes="commentVoteMap" :reactions="reactionMap" :current-user-id="authStore.user?.id ?? null" @reply="handleReply" @vote="handleCommentVote" @remove-vote="handleRemoveCommentVote" @react="handleReact" @remove-reaction="handleRemoveReaction" @edit="handleEditComment" />
           <p v-if="comments.length === 0" class="text-center text-xs text-text-muted py-4">No comments yet.</p>
         </aside>
       </div>
 
       <!-- ── THREAD TYPE ────────────────────────────────────────────────── -->
-      <div v-else class="mx-auto w-full max-w-3xl flex-1 px-6 py-8">
+      <div v-else class="relative flex flex-1 flex-col overflow-hidden">
+        <div class="flex-1 overflow-y-auto">
+        <div class="mx-auto w-full max-w-3xl px-6 py-8 pb-4">
         <!-- Post header -->
         <div class="mb-5">
           <div class="mb-2 flex items-center gap-2">
@@ -412,28 +437,18 @@ function commentInputAttrs(placeholder: string) {
         <div class="mb-6 flex items-center gap-3">
           <button @click="handleVote(1)" class="flex items-center gap-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors" :class="userVote?.value === 1 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-bg-secondary text-text-muted hover:bg-bg-hover hover:text-emerald-400'">
             <svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M12 4l8 8H4z"/></svg>
-            Upvote
           </button>
-          <span class="text-lg font-bold" :class="post.vote_score > 0 ? 'text-emerald-400' : post.vote_score < 0 ? 'text-red-400' : 'text-text-muted'">{{ post.vote_score }}</span>
+          <span class="flex items-baseline gap-1">
+            <span class="text-lg font-bold" :class="post.vote_score > 0 ? 'text-emerald-400' : post.vote_score < 0 ? 'text-red-400' : 'text-text-muted'">{{ post.vote_score }}</span>
+            <span class="text-xs font-medium text-violet-400">meta</span>
+          </span>
           <button @click="handleVote(-1)" class="flex items-center gap-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors" :class="userVote?.value === -1 ? 'bg-red-500/20 text-red-400' : 'bg-bg-secondary text-text-muted hover:bg-bg-hover hover:text-red-400'">
             <svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M12 20l-8-8h16z"/></svg>
-            Downvote
           </button>
           <span class="text-sm text-text-muted">{{ comments.length }} comment{{ comments.length !== 1 ? 's' : '' }}</span>
         </div>
 
         <hr class="mb-6 border-bg-tertiary" />
-
-        <!-- Top-level comment input -->
-        <div class="mb-6">
-          <div class="rounded-lg bg-bg-secondary ring-1 ring-bg-tertiary focus-within:ring-accent overflow-hidden">
-            <textarea v-bind="commentInputAttrs('Write a comment…')" v-model="newComment" rows="3" @keydown.ctrl.enter="submitTopComment" />
-            <div class="flex items-center justify-between border-t border-bg-tertiary px-4 py-2">
-              <span class="text-xs text-text-muted">Ctrl+Enter to post</span>
-              <button @click="submitTopComment" :disabled="!newComment.trim() || posting" class="rounded-md bg-accent px-4 py-1.5 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50">Comment</button>
-            </div>
-          </div>
-        </div>
 
         <!-- Comment tree -->
         <ForumCommentTree
@@ -449,8 +464,47 @@ function commentInputAttrs(placeholder: string) {
           @remove-vote="handleRemoveCommentVote"
           @react="handleReact"
           @remove-reaction="handleRemoveReaction"
+          @edit="handleEditComment"
         />
-        <p v-if="comments.length === 0" class="text-center text-sm text-text-muted py-4">No comments yet. Be the first!</p>
+          <p v-if="comments.length === 0" class="text-center text-sm text-text-muted py-4">No comments yet. Be the first!</p>
+        </div>
+        </div>
+
+        <!-- Floating comment input bar -->
+        <div class="border-t border-bg-tertiary bg-bg-primary px-4 py-3">
+          <form @submit.prevent="submitTopComment" class="flex items-center gap-2 rounded-lg bg-bg-tertiary px-4 py-3">
+            <MessageInput
+              ref="commentInputEl"
+              v-model="newComment"
+              placeholder="Write a comment…"
+              @submit="submitTopComment"
+            />
+            <!-- Emoji button -->
+            <button
+              type="button"
+              @click="openEmojiDrawer($event)"
+              :class="emojiDrawerOpen ? 'text-accent' : 'text-text-muted hover:text-text-primary'"
+              class="flex-shrink-0 rounded p-1 transition-colors"
+              title="Emoji"
+            >
+              <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
+                <circle cx="12" cy="12" r="10"/>
+                <path d="M8 14s1.5 2 4 2 4-2 4-2"/>
+                <line x1="9" y1="9" x2="9.01" y2="9" stroke-linecap="round" stroke-width="2.5"/>
+                <line x1="15" y1="9" x2="15.01" y2="9" stroke-linecap="round" stroke-width="2.5"/>
+              </svg>
+            </button>
+            <button
+              type="submit"
+              :disabled="!newComment.trim() || posting"
+              class="min-w-8 rounded p-1 text-text-muted transition-colors hover:text-text-primary disabled:opacity-30"
+            >
+              <svg class="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+              </svg>
+            </button>
+          </form>
+        </div>
       </div>
     </template>
 
@@ -464,5 +518,21 @@ function commentInputAttrs(placeholder: string) {
       @added="handleCollaboratorAdded"
       @close="showInviteDialog = false"
     />
+
+  <Teleport to="body">
+    <div
+      v-if="emojiDrawerOpen && emojiDrawerAnchor"
+      class="fixed z-[9997]"
+      :style="{ bottom: emojiDrawerAnchor.bottom + 'px', right: emojiDrawerAnchor.right + 'px' }"
+      @click.stop
+    >
+      <EmojiPicker @select="insertCommentEmoji" />
+    </div>
+    <div
+      v-if="emojiDrawerOpen"
+      class="fixed inset-0 z-[9996]"
+      @click="emojiDrawerOpen = false"
+    />
+  </Teleport>
   </div>
 </template>
