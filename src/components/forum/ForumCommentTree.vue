@@ -154,11 +154,11 @@ const depthColors = ['border-violet-500/40', 'border-sky-500/40', 'border-emeral
 </script>
 
 <template>
-  <div>
+  <div class="space-y-3">
     <div
       v-for="comment in children"
       :key="comment.id"
-      :class="['mb-4', depth > 0 ? `ml-8 border-l-2 pl-5 ${depthColors[(depth - 1) % depthColors.length]}` : '']"
+      :class="[depth > 0 ? `ml-8 border-l-2 pl-5 ${depthColors[(depth - 1) % depthColors.length]}` : '']"
     >
       <!-- Comment card -->
       <div class="rounded-lg bg-bg-secondary px-4 py-3">
@@ -206,7 +206,7 @@ const depthColors = ['border-violet-500/40', 'border-sky-500/40', 'border-emeral
             <button
               @click="handleVote(comment.id, 1)"
               :class="[
-                'flex items-center gap-0.5 rounded px-1.5 py-0.5 text-xs font-medium transition-colors',
+                'flex items-center gap-0.5 rounded px-1 py-0.5 text-xs font-medium transition-colors',
                 userVotes[comment.id] === 1
                   ? 'bg-emerald-500/20 text-emerald-400'
                   : 'text-text-muted hover:bg-bg-hover hover:text-emerald-400',
@@ -221,7 +221,7 @@ const depthColors = ['border-violet-500/40', 'border-sky-500/40', 'border-emeral
             <button
               @click="handleVote(comment.id, -1)"
               :class="[
-                'flex items-center gap-0.5 rounded px-1.5 py-0.5 text-xs font-medium transition-colors',
+                'flex items-center gap-0.5 rounded px-1 py-0.5 text-sm font-medium transition-colors',
                 userVotes[comment.id] === -1
                   ? 'bg-red-500/20 text-red-400'
                   : 'text-text-muted hover:bg-bg-hover hover:text-red-400',
@@ -238,7 +238,7 @@ const depthColors = ['border-violet-500/40', 'border-sky-500/40', 'border-emeral
               :key="r.emoji"
               @click="handleReaction(comment.id, r.emoji)"
               :class="[
-                'flex items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-xs transition-colors',
+                'flex items-center gap-0.5 rounded-full border px-1 text-sm transition-colors',
                 r.mine
                   ? 'border-accent/50 bg-accent/10 text-text-primary'
                   : 'border-bg-tertiary bg-bg-primary text-text-secondary hover:border-accent/30',
@@ -250,7 +250,7 @@ const depthColors = ['border-violet-500/40', 'border-sky-500/40', 'border-emeral
             <!-- Add reaction -->
             <button
               @click="openReactionPicker(comment.id, $event)"
-              :class="['rounded-full border px-1.5 py-0.5 text-xs text-text-muted transition-colors', showReactionPicker === comment.id ? 'border-accent/50 bg-accent/10 text-accent' : 'border-bg-tertiary bg-bg-primary hover:border-accent/30 hover:text-text-primary']"
+              :class="['rounded-full border px-1 text-sm text-text-muted transition-colors', showReactionPicker === comment.id ? 'border-accent/50 bg-accent/10 text-accent' : 'border-bg-tertiary bg-bg-primary hover:border-accent/30 hover:text-text-primary']"
             >
               +
             </button>
@@ -320,7 +320,7 @@ const depthColors = ['border-violet-500/40', 'border-sky-500/40', 'border-emeral
       </div>
 
       <!-- Recursive children -->
-      <ForumCommentTree
+      <ForumCommentTree class="mt-2"
         :comments="comments"
         :parent-id="comment.id"
         :depth="depth + 1"
