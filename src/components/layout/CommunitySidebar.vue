@@ -200,7 +200,7 @@ function copyInviteCode() {
         <span class="flex-1">Direct Messages</span>
         <span
           v-if="totalDmUnread > 0"
-          class="flex h-4 min-w-4 items-center justify-center rounded-full bg-danger px-1 text-[10px] font-bold text-white"
+          class="flex h-4 min-w-4 items-center justify-center rounded bg-danger px-1 text-[10px] font-bold text-white"
         >{{ totalDmUnread > 99 ? '99+' : totalDmUnread }}</span>
       </router-link>
 
@@ -265,7 +265,7 @@ function copyInviteCode() {
         <span v-if="space.visibility !== 'public'" class="flex-shrink-0 text-xs" :title="space.visibility">{{ VISIBILITY_ICON[space.visibility] }}</span>
         <span
           v-if="mentionsStore.mentionsByServer[space.id]"
-          class="flex h-4 min-w-4 flex-shrink-0 items-center justify-center rounded-full bg-danger px-1 text-[10px] font-bold text-white"
+          class="flex h-4 min-w-4 flex-shrink-0 items-center justify-center rounded bg-danger px-1 text-[10px] font-bold text-white"
         >{{ (mentionsStore.mentionsByServer[space.id] ?? 0) > 99 ? '99+' : mentionsStore.mentionsByServer[space.id] }}</span>
       </router-link>
 
@@ -341,7 +341,7 @@ function copyInviteCode() {
         <span>DMs</span>
         <span
           v-if="totalDmUnread > 0"
-          class="flex h-4 min-w-4 items-center justify-center rounded-full bg-danger px-1 text-[10px] font-bold text-white"
+          class="flex h-4 min-w-4 items-center justify-center rounded bg-danger px-1 text-[10px] font-bold text-white"
         >{{ totalDmUnread > 99 ? '99+' : totalDmUnread }}</span>
       </router-link>
 
@@ -404,7 +404,7 @@ function copyInviteCode() {
         <span v-if="space.visibility !== 'public'" class="flex-shrink-0 text-[10px]" :title="space.visibility">{{ VISIBILITY_ICON[space.visibility] }}</span>
         <span
           v-if="mentionsStore.mentionsByServer[space.id]"
-          class="flex h-4 min-w-4 flex-shrink-0 items-center justify-center rounded-full bg-danger px-1 text-[10px] font-bold text-white"
+          class="flex h-4 min-w-4 flex-shrink-0 items-center justify-center rounded bg-danger px-1 text-[10px] font-bold text-white"
         >{{ (mentionsStore.mentionsByServer[space.id] ?? 0) > 99 ? '99+' : mentionsStore.mentionsByServer[space.id] }}</span>
       </router-link>
 

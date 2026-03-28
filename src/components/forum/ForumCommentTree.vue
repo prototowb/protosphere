@@ -4,6 +4,7 @@ import UserAvatar from '@/components/user/UserAvatar.vue'
 import MessageInput from '@/components/chat/MessageInput.vue'
 import EmojiPicker from '@/components/chat/EmojiPicker.vue'
 import EmojiIcon from '@/components/ui/EmojiIcon.vue'
+import RichText from '@/components/ui/RichText.vue'
 import type { ForumComment, ForumCommentReaction, Profile } from '@/lib/types'
 
 const props = defineProps<{
@@ -44,6 +45,8 @@ function setReplyInputRef(el: unknown) { replyInputEl.value = el as InstanceType
 // Edit state
 const editingCommentId = ref<string | null>(null)
 const editContent = ref('')
+const editInputEl = ref<InstanceType<typeof MessageInput> | null>(null)
+function setEditInputRef(el: unknown) { editInputEl.value = el as InstanceType<typeof MessageInput> | null }
 
 // Reaction picker — per-comment emoji picker
 const showReactionPicker = ref<string | null>(null)
@@ -52,6 +55,10 @@ const reactionPickerAnchor = ref<{ top: number; right: number } | null>(null)
 // Reply emoji picker
 const replyEmojiOpen = ref(false)
 const replyEmojiAnchor = ref<{ bottom: number; right: number } | null>(null)
+
+// Edit emoji picker
+const editEmojiOpen = ref(false)
+const editEmojiAnchor = ref<{ bottom: number; right: number } | null>(null)
 
 function formatDate(iso: string) {
   const d = new Date(iso)
@@ -119,6 +126,22 @@ function insertReplyEmoji(emoji: string) {
   replyEmojiOpen.value = false
 }
 
+function openEditEmoji(event: MouseEvent) {
+  if (editEmojiOpen.value) {
+    editEmojiOpen.value = false
+    return
+  }
+  const btn = event.currentTarget as HTMLElement
+  const rect = btn.getBoundingClientRect()
+  editEmojiAnchor.value = { bottom: window.innerHeight - rect.top + 8, right: window.innerWidth - rect.right }
+  editEmojiOpen.value = true
+}
+
+function insertEditEmoji(emoji: string) {
+  editInputEl.value?.insertEmoji(emoji)
+  editEmojiOpen.value = false
+}
+
 function startEdit(comment: ForumComment & { profile: Profile }) {
   editingCommentId.value = comment.id
   editContent.value = comment.content
@@ -127,6 +150,7 @@ function startEdit(comment: ForumComment & { profile: Profile }) {
 function cancelEdit() {
   editingCommentId.value = null
   editContent.value = ''
+  editEmojiOpen.value = false
 }
 
 function submitEdit(commentId: string) {
@@ -193,27 +217,45 @@ const depthColors = ['border-violet-500/40', 'border-sky-500/40', 'border-emeral
 
         <!-- Edit mode -->
         <div v-if="editingCommentId === comment.id" class="mb-2">
-          <textarea
-            v-model="editContent"
-            rows="3"
-            class="w-full resize-none rounded-lg bg-bg-primary px-3 py-2 text-sm text-text-primary placeholder-text-muted outline-none ring-1 ring-bg-tertiary focus:ring-accent"
-            @keydown.ctrl.enter="submitEdit(comment.id)"
-            @keydown.escape="cancelEdit"
-          />
-          <div class="mt-1.5 flex items-center justify-end gap-2">
-            <button @click="cancelEdit" class="text-xs text-text-muted hover:text-text-primary">Cancel</button>
-            <button
-              @click="submitEdit(comment.id)"
-              :disabled="!editContent.trim()"
-              class="rounded bg-accent px-2.5 py-1 text-xs font-medium text-white hover:bg-accent-hover disabled:opacity-50"
-            >
-              Save
-            </button>
+          <div class="rounded-lg bg-bg-primary overflow-hidden ring-1 ring-bg-tertiary focus-within:ring-accent">
+            <div class="flex items-center gap-2 px-3 py-2">
+              <MessageInput
+                :ref="setEditInputRef"
+                v-model="editContent"
+                placeholder="Edit your comment…"
+                class="flex-1 min-w-0 text-sm"
+                @submit="submitEdit(comment.id)"
+              />
+              <!-- Edit emoji button -->
+              <button
+                type="button"
+                @click="openEditEmoji($event)"
+                :class="editEmojiOpen ? 'text-accent' : 'text-text-muted hover:text-text-primary'"
+                class="flex-shrink-0 rounded p-1 transition-colors"
+              >
+                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
+                  <circle cx="12" cy="12" r="10"/>
+                  <path d="M8 14s1.5 2 4 2 4-2 4-2"/>
+                  <line x1="9" y1="9" x2="9.01" y2="9" stroke-linecap="round" stroke-width="2.5"/>
+                  <line x1="15" y1="9" x2="15.01" y2="9" stroke-linecap="round" stroke-width="2.5"/>
+                </svg>
+              </button>
+            </div>
+            <div class="flex items-center justify-end gap-2 border-t border-bg-secondary px-3 py-1.5">
+              <button @click="cancelEdit" class="text-xs text-text-muted hover:text-text-primary">Cancel</button>
+              <button
+                @click="submitEdit(comment.id)"
+                :disabled="!editContent.trim()"
+                class="rounded bg-accent px-2.5 py-1 text-xs font-medium text-white hover:bg-accent-hover disabled:opacity-50"
+              >
+                Save
+              </button>
+            </div>
           </div>
         </div>
 
         <!-- Content -->
-        <p v-else class="mb-3 break-words text-sm text-text-secondary leading-relaxed">{{ comment.content }}</p>
+        <p v-else class="ml-8 mb-3 break-words text-sm text-text-secondary leading-relaxed"><RichText :text="comment.content" /></p>
 
         <!-- Action bar -->
         <div class="flex items-center gap-3">
@@ -254,7 +296,7 @@ const depthColors = ['border-violet-500/40', 'border-sky-500/40', 'border-emeral
               :key="r.emoji"
               @click="handleReaction(comment.id, r.emoji)"
               :class="[
-                'flex items-center gap-0.5 rounded-full border px-1 text-sm transition-colors',
+                'flex items-center gap-0.5 rounded border px-1 text-sm transition-colors',
                 r.mine
                   ? 'border-accent/50 bg-accent/10 text-text-primary'
                   : 'border-bg-tertiary bg-bg-primary text-text-secondary hover:border-accent/30',
@@ -266,7 +308,7 @@ const depthColors = ['border-violet-500/40', 'border-sky-500/40', 'border-emeral
             <!-- Add reaction -->
             <button
               @click="openReactionPicker(comment.id, $event)"
-              :class="['rounded-full border px-1.5 text-sm text-text-muted transition-colors', showReactionPicker === comment.id ? 'border-accent/50 bg-accent/10 text-accent' : 'border-bg-tertiary bg-bg-primary hover:border-accent/30 hover:text-text-primary']"
+              :class="['rounded border px-1.5 text-sm text-text-muted transition-colors', showReactionPicker === comment.id ? 'border-accent/50 bg-accent/10 text-accent' : 'border-bg-tertiary bg-bg-primary hover:border-accent/30 hover:text-text-primary']"
             >
               +
             </button>
@@ -284,8 +326,16 @@ const depthColors = ['border-violet-500/40', 'border-sky-500/40', 'border-emeral
       </div>
 
       <!-- Inline reply input -->
-      <div v-if="replyingTo === comment.id" class="mt-1.5 ml-4">
-        <div class="rounded-lg bg-bg-tertiary overflow-hidden">
+      <Transition
+        enter-active-class="transition-all duration-200 ease-out"
+        leave-active-class="transition-all duration-150 ease-in"
+        enter-from-class="opacity-0 -translate-y-1 scale-y-95"
+        enter-to-class="opacity-100 translate-y-0 scale-y-100"
+        leave-from-class="opacity-100 translate-y-0 scale-y-100"
+        leave-to-class="opacity-0 -translate-y-1 scale-y-95"
+      >
+      <div v-if="replyingTo === comment.id" class="mt-1.5 ml-4 mb-4 origin-top">
+        <div class="rounded-lg bg-bg-tertiary overflow-hidden shadow-[6px_12px_24px_-6px_#2b2a51] border-2 border-[#3c3a67]">
           <div class="flex items-center gap-2 px-3 py-2">
             <MessageInput
               :ref="setReplyInputRef"
@@ -321,6 +371,7 @@ const depthColors = ['border-violet-500/40', 'border-sky-500/40', 'border-emeral
           </div>
         </div>
       </div>
+      </Transition>
 
       <!-- Recursive children -->
       <ForumCommentTree class="mt-2"
@@ -355,6 +406,20 @@ const depthColors = ['border-violet-500/40', 'border-sky-500/40', 'border-emeral
       v-if="showReactionPicker"
       class="fixed inset-0 z-[9998]"
       @click="showReactionPicker = null; reactionPickerAnchor = null"
+    />
+    <!-- Edit emoji drawer -->
+    <div
+      v-if="editEmojiOpen && editEmojiAnchor"
+      class="fixed z-[9997]"
+      :style="{ bottom: editEmojiAnchor.bottom + 'px', right: editEmojiAnchor.right + 'px' }"
+      @click.stop
+    >
+      <EmojiPicker @select="insertEditEmoji($event)" />
+    </div>
+    <div
+      v-if="editEmojiOpen"
+      class="fixed inset-0 z-[9996]"
+      @click="editEmojiOpen = false"
     />
     <!-- Reply emoji drawer -->
     <div

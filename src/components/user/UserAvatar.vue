@@ -39,12 +39,12 @@ const initial = (props.alt ?? '?').charAt(0).toUpperCase()
       v-if="src"
       :src="src"
       :alt="alt ?? 'Avatar'"
-      :class="['rounded-full object-cover', sizeClasses[size ?? 'md']]"
+      :class="['rounded object-cover', sizeClasses[size ?? 'md']]"
     />
     <div
       v-else
       :class="[
-        'flex items-center justify-center rounded-full bg-accent font-medium text-white',
+        'flex items-center justify-center rounded bg-accent font-medium text-white',
         sizeClasses[size ?? 'md'],
         textSizeClasses[size ?? 'md'],
       ]"

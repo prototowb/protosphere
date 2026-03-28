@@ -1588,7 +1588,7 @@ function onServerHeaderContext(event: MouseEvent) {
                   v-for="group in getReactionGroups(msg.id)"
                   :key="group.emoji"
                   @click="handleToggleReaction(msg.id, group.emoji)"
-                  class="flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs transition-colors"
+                  class="flex items-center gap-1 rounded border px-2 py-0.5 text-xs transition-colors"
                   :class="group.iMine
                     ? 'border-accent bg-accent/20 text-accent'
                     : 'border-bg-tertiary bg-bg-secondary text-text-secondary hover:border-accent/50'"

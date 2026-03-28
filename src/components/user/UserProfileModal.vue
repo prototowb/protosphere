@@ -33,7 +33,7 @@ onMounted(async () => {
 
       <!-- Loading -->
       <div v-if="loading" class="p-8 text-center">
-        <div class="mx-auto h-16 w-16 animate-pulse rounded-full bg-bg-tertiary" />
+        <div class="mx-auto h-16 w-16 animate-pulse rounded bg-bg-tertiary" />
         <div class="mt-4 h-4 w-32 mx-auto animate-pulse rounded bg-bg-tertiary" />
       </div>
 

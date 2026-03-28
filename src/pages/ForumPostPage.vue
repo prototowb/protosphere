@@ -8,6 +8,7 @@ import UserAvatar from '@/components/user/UserAvatar.vue'
 import MessageAttachments from '@/components/messages/MessageAttachments.vue'
 import ForumCommentTree from '@/components/forum/ForumCommentTree.vue'
 import PageEditor from '@/components/forum/PageEditor.vue'
+import RichText from '@/components/ui/RichText.vue'
 import InviteCollaboratorDialog from '@/components/forum/InviteCollaboratorDialog.vue'
 import MessageInput from '@/components/chat/MessageInput.vue'
 import EmojiPicker from '@/components/chat/EmojiPicker.vue'
@@ -427,7 +428,7 @@ function formatTime(iso: string) {
               <UserAvatar :src="post.created_by_profile?.avatar_url" :alt="post.created_by_profile?.display_name" size="sm" class="flex-shrink-0 mt-0.5" />
               <div class="min-w-0 flex-1 rounded-lg bg-bg-primary px-3 py-2.5">
                 <span class="text-sm font-semibold text-text-primary">{{ post.created_by_profile?.display_name ?? 'Unknown' }}</span>
-                <p class="mt-0.5 break-words text-sm text-text-secondary leading-relaxed">{{ post.body }}</p>
+                <p class="mt-0.5 break-words text-sm text-text-secondary leading-relaxed"><RichText :text="post.body" /></p>
               </div>
             </div>
           </div>
