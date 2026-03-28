@@ -3,6 +3,7 @@ import { ref, computed } from 'vue'
 import UserAvatar from '@/components/user/UserAvatar.vue'
 import MessageInput from '@/components/chat/MessageInput.vue'
 import EmojiPicker from '@/components/chat/EmojiPicker.vue'
+import EmojiIcon from '@/components/ui/EmojiIcon.vue'
 import type { ForumComment, ForumCommentReaction, Profile } from '@/lib/types'
 
 const props = defineProps<{
@@ -38,6 +39,7 @@ const children = computed(() => {
 const replyingTo = ref<string | null>(null)
 const replyContent = ref('')
 const replyInputEl = ref<InstanceType<typeof MessageInput> | null>(null)
+function setReplyInputRef(el: unknown) { replyInputEl.value = el as InstanceType<typeof MessageInput> | null }
 
 // Edit state
 const editingCommentId = ref<string | null>(null)
@@ -154,14 +156,14 @@ const depthColors = ['border-violet-500/40', 'border-sky-500/40', 'border-emeral
 </script>
 
 <template>
-  <div class="space-y-3">
+  <div class="space-y-2">
     <div
       v-for="comment in children"
       :key="comment.id"
       :class="[depth > 0 ? `ml-8 border-l-2 pl-5 ${depthColors[(depth - 1) % depthColors.length]}` : '']"
     >
       <!-- Comment card -->
-      <div class="rounded-lg bg-bg-secondary px-4 py-3">
+      <div class="mb-2 rounded-lg bg-bg-secondary px-4 py-3">
         <!-- Author row -->
         <div class="mb-2 flex items-center gap-2">
           <UserAvatar
@@ -172,7 +174,21 @@ const depthColors = ['border-violet-500/40', 'border-sky-500/40', 'border-emeral
           />
           <span class="text-sm font-semibold text-text-primary">{{ comment.profile?.display_name ?? 'Unknown' }}</span>
           <span class="text-xs text-text-muted">{{ formatDate(comment.created_at) }}</span>
-          <span v-if="comment.edited_at" class="text-xs text-text-muted italic">(edited)</span>
+          <span v-if="comment.edited_at" class="text-xs text-text-muted
+          italic">(edited)</span>
+          
+          <!-- Edit button (own comments only) -->
+          <button
+            v-if="canPost && comment.author_id === currentUserId && editingCommentId !== comment.id"
+            @click="startEdit(comment)"
+            class="ml-auto text-xs text-text-muted hover:text-text-primary"
+            title="Edit"
+          >
+            <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+            </svg>
+          </button>
         </div>
 
         <!-- Edit mode -->
@@ -244,30 +260,17 @@ const depthColors = ['border-violet-500/40', 'border-sky-500/40', 'border-emeral
                   : 'border-bg-tertiary bg-bg-primary text-text-secondary hover:border-accent/30',
               ]"
             >
-              {{ r.emoji }} {{ r.count }}
+              <EmojiIcon :emoji="r.emoji" size="1em" /> {{ r.count }}
             </button>
 
             <!-- Add reaction -->
             <button
               @click="openReactionPicker(comment.id, $event)"
-              :class="['rounded-full border px-1 text-sm text-text-muted transition-colors', showReactionPicker === comment.id ? 'border-accent/50 bg-accent/10 text-accent' : 'border-bg-tertiary bg-bg-primary hover:border-accent/30 hover:text-text-primary']"
+              :class="['rounded-full border px-1.5 text-sm text-text-muted transition-colors', showReactionPicker === comment.id ? 'border-accent/50 bg-accent/10 text-accent' : 'border-bg-tertiary bg-bg-primary hover:border-accent/30 hover:text-text-primary']"
             >
               +
             </button>
           </div>
-
-          <!-- Edit button (own comments only) -->
-          <button
-            v-if="canPost && comment.author_id === currentUserId && editingCommentId !== comment.id"
-            @click="startEdit(comment)"
-            class="text-xs text-text-muted hover:text-text-primary"
-            title="Edit"
-          >
-            <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-            </svg>
-          </button>
 
           <!-- Reply -->
           <button
@@ -285,7 +288,7 @@ const depthColors = ['border-violet-500/40', 'border-sky-500/40', 'border-emeral
         <div class="rounded-lg bg-bg-tertiary overflow-hidden">
           <div class="flex items-center gap-2 px-3 py-2">
             <MessageInput
-              ref="replyInputEl"
+              :ref="setReplyInputRef"
               v-model="replyContent"
               placeholder="Write a reply…"
               class="flex-1 min-w-0 text-sm"

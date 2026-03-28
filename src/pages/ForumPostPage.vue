@@ -403,7 +403,7 @@ function formatTime(iso: string) {
         </div>
 
         <!-- Source message + OP body block -->
-        <div class="mb-6 rounded-lg border border-bg-tertiary bg-bg-secondary overflow-hidden">
+        <div class="mb-3 rounded-lg border border-bg-tertiary bg-bg-secondary overflow-hidden">
           <!-- Source message -->
           <div v-if="post.source_message" class="px-4 pt-4 pb-3">
             <p class="mb-1.5 text-xs font-semibold uppercase tracking-wide text-text-muted">Original message</p>
@@ -434,15 +434,15 @@ function formatTime(iso: string) {
         </div>
 
         <!-- Vote bar -->
-        <div class="mb-6 flex items-center gap-3">
-          <button @click="handleVote(1)" class="flex items-center gap-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors" :class="userVote?.value === 1 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-bg-secondary text-text-muted hover:bg-bg-hover hover:text-emerald-400'">
+        <div class="mb-3 px-2 flex items-baseline gap-3">
+          <button @click="handleVote(1)" class="flex items-center gap-1 rounded-md px-1.5 py-1.5 text-sm font-medium transition-colors" :class="userVote?.value === 1 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-bg-secondary text-text-muted hover:bg-bg-hover hover:text-emerald-400'">
             <svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M12 4l8 8H4z"/></svg>
           </button>
           <span class="flex items-baseline gap-1.5">
-            <span class="text-lg font-bold" :class="post.vote_score > 0 ? 'text-emerald-400' : post.vote_score < 0 ? 'text-red-400' : 'text-text-muted'">{{ post.vote_score }}</span>
+            <span class="font-bold" :class="post.vote_score > 0 ? 'text-emerald-400' : post.vote_score < 0 ? 'text-red-400' : 'text-text-muted'">{{ post.vote_score }}</span>
             <span class="text-sm font-semibold text-violet-400">meta</span>
           </span>
-          <button @click="handleVote(-1)" class="flex items-center gap-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors" :class="userVote?.value === -1 ? 'bg-red-500/20 text-red-400' : 'bg-bg-secondary text-text-muted hover:bg-bg-hover hover:text-red-400'">
+          <button @click="handleVote(-1)" class="flex items-center gap-1 rounded-md px-1.5 py-1.5 text-sm font-medium transition-colors" :class="userVote?.value === -1 ? 'bg-red-500/20 text-red-400' : 'bg-bg-secondary text-text-muted hover:bg-bg-hover hover:text-red-400'">
             <svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M12 20l-8-8h16z"/></svg>
           </button>
           <span class="text-sm text-text-muted">{{ comments.length }} comment{{ comments.length !== 1 ? 's' : '' }}</span>
