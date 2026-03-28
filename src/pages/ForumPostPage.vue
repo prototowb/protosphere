@@ -438,9 +438,9 @@ function formatTime(iso: string) {
           <button @click="handleVote(1)" class="flex items-center gap-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors" :class="userVote?.value === 1 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-bg-secondary text-text-muted hover:bg-bg-hover hover:text-emerald-400'">
             <svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M12 4l8 8H4z"/></svg>
           </button>
-          <span class="flex items-baseline gap-1">
+          <span class="flex items-baseline gap-1.5">
             <span class="text-lg font-bold" :class="post.vote_score > 0 ? 'text-emerald-400' : post.vote_score < 0 ? 'text-red-400' : 'text-text-muted'">{{ post.vote_score }}</span>
-            <span class="text-xs font-medium text-violet-400">meta</span>
+            <span class="text-sm font-semibold text-violet-400">meta</span>
           </span>
           <button @click="handleVote(-1)" class="flex items-center gap-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors" :class="userVote?.value === -1 ? 'bg-red-500/20 text-red-400' : 'bg-bg-secondary text-text-muted hover:bg-bg-hover hover:text-red-400'">
             <svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M12 20l-8-8h16z"/></svg>
@@ -471,8 +471,8 @@ function formatTime(iso: string) {
         </div>
 
         <!-- Floating comment input bar -->
-        <div class="border-t border-bg-tertiary bg-bg-primary px-4 py-3">
-          <form @submit.prevent="submitTopComment" class="flex items-center gap-2 rounded-lg bg-bg-tertiary px-4 py-3">
+        <div class="bg-bg-primary px-6 pb-4 pt-2">
+          <form @submit.prevent="submitTopComment" class="mx-auto flex w-full max-w-3xl items-center gap-2 rounded-xl bg-bg-tertiary px-4 py-3 shadow-lg shadow-black/30 ring-1 ring-bg-tertiary/50">
             <MessageInput
               ref="commentInputEl"
               v-model="newComment"

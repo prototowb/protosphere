@@ -158,7 +158,7 @@ const depthColors = ['border-violet-500/40', 'border-sky-500/40', 'border-emeral
     <div
       v-for="comment in children"
       :key="comment.id"
-      :class="['mb-4', depth > 0 ? `ml-4 border-l-2 pl-3 ${depthColors[(depth - 1) % depthColors.length]}` : '']"
+      :class="['mb-4', depth > 0 ? `ml-8 border-l-2 pl-5 ${depthColors[(depth - 1) % depthColors.length]}` : '']"
     >
       <!-- Comment card -->
       <div class="rounded-lg bg-bg-secondary px-4 py-3">
