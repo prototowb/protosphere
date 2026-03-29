@@ -83,7 +83,8 @@ onMounted(async () => {
       backend.forum.listCommentReactions(postId.value),
     ])
     post.value = postData
-    pageContent.value = (postData.content as PageContent | null) ?? { blocks: [], customCss: '' }
+    const c = postData.content as PageContent | null
+    pageContent.value = (c && Array.isArray(c.blocks)) ? c : { blocks: [], customCss: '' }
     comments.value = commentData
     userVote.value = voteData
 
