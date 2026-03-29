@@ -6,14 +6,15 @@ import { useToastStore } from '@/stores/toast'
 import UserAvatar from '@/components/user/UserAvatar.vue'
 import MessageAttachments from '@/components/messages/MessageAttachments.vue'
 import ForumCommentTree from '@/components/forum/ForumCommentTree.vue'
-import PageEditor from '@/components/forum/PageEditor.vue'
+import BlockEditor from '@/components/editor/BlockEditor.vue'
+import BlockRenderer from '@/components/editor/BlockRenderer.vue'
 import RichText from '@/components/ui/RichText.vue'
 import InviteCollaboratorDialog from '@/components/forum/InviteCollaboratorDialog.vue'
 import MessageInput from '@/components/chat/MessageInput.vue'
 import EmojiPicker from '@/components/chat/EmojiPicker.vue'
 import type {
   ForumPost, ForumVote, ForumComment, ForumCollaborator,
-  ForumCommentReaction, Profile, Message,
+  ForumCommentReaction, Profile, Message, PageContent,
 } from '@/lib/types'
 
 const props = defineProps<{ postId: string; spaceId: string }>()
@@ -44,7 +45,7 @@ const emojiDrawerOpen = ref(false)
 const emojiDrawerAnchor = ref<{ bottom: number; right: number } | null>(null)
 
 // Page type state
-const pageContent = ref<Record<string, unknown> | null>(null)
+const pageContent = ref<PageContent>({ blocks: [], customCss: '' })
 const savingPage = ref(false)
 const drawerOpen = ref(false)
 const showInviteDialog = ref(false)
@@ -85,7 +86,7 @@ async function loadPost() {
       backend.forum.listCommentReactions(props.postId),
     ])
     post.value = postData
-    pageContent.value = postData.content
+    pageContent.value = (postData.content as PageContent | null) ?? { blocks: [], customCss: '' }
     comments.value = commentData
     userVote.value = voteData
 
@@ -265,7 +266,7 @@ function insertCommentEmoji(emoji: string) {
 // ── Page type ─────────────────────────────────────────────────────────────────
 
 async function savePage() {
-  if (!authStore.user?.id || !pageContent.value) return
+  if (!authStore.user?.id) return
   savingPage.value = true
   try {
     const updated = await backend.forum.updatePageContent(props.postId, pageContent.value, authStore.user.id)
@@ -402,8 +403,8 @@ function formatTime(iso: string) {
               </div>
             </div>
 
-            <PageEditor v-model="pageContent" :editable="canEdit" />
-            <p v-if="!canEdit && !pageContent" class="mt-8 text-center text-sm text-text-muted italic">This page has no content yet.</p>
+            <BlockEditor v-if="canEdit" v-model="pageContent" class="h-full" />
+            <BlockRenderer v-else :content="pageContent" />
           </div>
         </div>
 

@@ -364,6 +364,23 @@ export interface DmNotificationPreference {
 
 // ── Forum ─────────────────────────────────────────────────────
 
+// ── Block editor ─────────────────────────────────────────────────────────────
+
+export interface HeroBlock    { id: string; type: 'hero';      title: string; subtitle: string; backgroundUrl?: string; textAlign?: 'left' | 'center' | 'right' }
+export interface TextBlock    { id: string; type: 'text';      html: string }
+export interface ImageBlock   { id: string; type: 'image';     url: string; caption?: string; fullWidth?: boolean }
+export interface ColumnsBlock { id: string; type: 'columns';   cols: 2 | 3; items: string[] }
+export interface CalloutBlock { id: string; type: 'callout';   variant: 'info' | 'warning' | 'success' | 'error'; title?: string; text: string }
+export interface DividerBlock { id: string; type: 'divider' }
+export interface LinkCardBlock{ id: string; type: 'link-card'; url: string; title: string; description?: string; imageUrl?: string }
+
+export type Block = HeroBlock | TextBlock | ImageBlock | ColumnsBlock | CalloutBlock | DividerBlock | LinkCardBlock
+
+export interface PageContent {
+  blocks: Block[]
+  customCss: string
+}
+
 export interface ForumPost {
   id: string
   space_id: string
@@ -371,7 +388,7 @@ export interface ForumPost {
   type: ForumPostType
   title: string
   body: string | null
-  content: Record<string, unknown> | null
+  content: PageContent | null
   vote_score: number
   is_deleted: boolean
   created_by: string
