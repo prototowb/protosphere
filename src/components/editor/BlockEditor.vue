@@ -180,9 +180,7 @@ const blockTypes: { type: Block['type']; label: string; icon: string }[] = [
         <template v-if="sourceMessage">
           <div class="mt-2 border-t border-bg-tertiary pt-2">
             <p class="mb-1 px-2 text-xs font-semibold uppercase tracking-wide text-text-muted">From message</p>
-            <p class="mb-1.5 px-2 text-xs text-text-muted truncate">
-              {{ sourceMessage.profile?.display_name ?? 'Unknown' }}<template v-if="sourceMessage.created_at"> · {{ new Date(sourceMessage.created_at).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }) }}</template>
-            </p>
+            <p class="mb-1.5 px-2 text-xs text-text-muted truncate">{{ sourceMessage.profile?.display_name ?? 'Unknown' }}{{ sourceMessage.created_at ? ' · ' + new Date(sourceMessage.created_at).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }) : '' }}</p>
             <button
               v-if="sourceMessage.content"
               @click="importSourceText(sourceMessage.content!)"
