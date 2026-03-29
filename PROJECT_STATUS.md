@@ -10,7 +10,7 @@ protogear_enabled: true
 framework: "Vue 3 + TypeScript 5.9 + Vite 7 + Tailwind CSS 4 + Pinia + Supabase"
 project_type: "Single-Community Communication Platform"
 initialization_date: "2026-02-20"
-current_milestone: "M23 — Forum Page Type & Collaboration"
+current_milestone: "M23 — Block Editor (Forum Pages + Profile Pages)"
 local_supabase: true
 ```
 
@@ -72,19 +72,21 @@ Backend adapter auto-detects mode via `VITE_SUPABASE_URL` env var. Local mode us
 
 ---
 
-### M23 — Forum Page Type & Collaboration 🚧
+### M23 — Block Editor (Forum Pages + Profile Pages) 🚧
 
-**Goal:** The Page post type turns a marked message into a collaborative, structured document (Notion-like block editor). Only the message author and the person who marked it can edit initially; they can invite collaborators from the comment section. Uses TipTap v2 for the block editor.
+**Goal:** A hybrid visual block editor with a CSS-override escape hatch. Used for both collaborative forum Page posts and personal user profile pages. Output is sanitized HTML/CSS (no JS). Replaces the TipTap-based PageEditor.
+
+**Editor model:** `{ blocks: Block[], customCss: string }` stored as JSONB. Block types: Hero, Text, Image, Columns, Callout, Divider, Link card. Collaboration is sequential (last-write-wins).
 
 | Ticket | Title | Priority | Status | Description |
 |--------|-------|----------|--------|-------------|
-| PTSPH-192 | Page editor schema | High | 🔲 Todo | Add `content JSONB` column to `forum_posts` (stores TipTap/ProseMirror JSON doc); add `updated_at`, `updated_by` columns; migration; `forum.updatePageContent(postId, content)` in backend |
-| PTSPH-193 | TipTap block editor integration | High | 🔲 Todo | Install `@tiptap/vue-3` + core extensions (Heading, Paragraph, BulletList, OrderedList, Blockquote, CodeBlock, Image, HorizontalRule, Link); `PageEditor.vue` component; toolbar with block-type picker; read-only mode for non-collaborators |
-| PTSPH-194 | Page layout & design controls | Medium | 🔲 Todo | Extended block types: Callout (info/warning/success), Embed (iframe), custom Cover image at top of page; CSS-driven layout (full-width vs centered content width toggle); page renders as styled HTML that looks like a web article |
-| PTSPH-195 | Page collaboration & permissions | High | 🔲 Todo | Gate editor to `created_by` + `marked_by` + `forum_collaborators`; "Invite to collaborate" button in comment section — opens user picker, adds to `forum_collaborators`; collaborator badge list at top of page; `ForumPostPage` shows sidebar comment drawer (slide-in panel) instead of inline comments for Page type |
-| PTSPH-196 | Page comment drawer | Medium | 🔲 Todo | Right-side drawer on `ForumPostPage` (Page type): same `ForumCommentTree` component but in a `<aside>` panel; toggle button in page header; reuses forum_comments data |
+| PTSPH-192 | Block data model + BlockRenderer | High | 🔲 Todo | `PageContent` + `Block` types; `BlockRenderer.vue` — renders block JSON to sanitized HTML/CSS for display (read-only); DOMPurify sanitization; replace `content JSONB` schema if needed |
+| PTSPH-193 | BlockEditor core + basic blocks | High | 🔲 Todo | `BlockEditor.vue` — block list with add/move/delete; block type picker; inline editing for Hero, Text, Divider, Image (URL input + caption) |
+| PTSPH-194 | Advanced blocks + CSS override panel | Medium | 🔲 Todo | Columns (2/3 col), Callout (info/warning/success), Link card; global "Custom CSS" textarea panel; live preview pane next to editor |
+| PTSPH-195 | Forum page integration | High | 🔲 Todo | Replace `PageEditor.vue` with `BlockEditor.vue` in `ForumPostView.vue`; wire `updatePageContent` to save `{ blocks, customCss }`; read-only `BlockRenderer` for non-collaborators |
+| PTSPH-196 | User profile pages | High | 🔲 Todo | Migration: `profile_page JSONB` on profiles; `/u/:username` route + `UserProfilePage.vue` (public read-only); `/settings/page` or inline in SettingsPage for editing own page; `profiles.updatePage()` in both backends |
 
-**Migrations:** `043_forum_page_content.sql`
+**Migrations:** `043_forum_page_content.sql` (existing — `content JSONB` on forum_posts already done)
 
 ---
 

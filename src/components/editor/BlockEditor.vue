@@ -10,11 +10,17 @@ const emit = defineEmits<{ 'update:modelValue': [PageContent] }>()
 
 function uid() { return Math.random().toString(36).slice(2, 10) }
 
+// Normalise to always have both required fields
+const safeValue = computed<PageContent>(() => ({
+  blocks: Array.isArray(props.modelValue?.blocks) ? props.modelValue.blocks : [],
+  customCss: props.modelValue?.customCss ?? '',
+}))
+
 function patch(blocks: Block[]) {
-  emit('update:modelValue', { ...props.modelValue, blocks })
+  emit('update:modelValue', { ...safeValue.value, blocks })
 }
 function patchCss(customCss: string) {
-  emit('update:modelValue', { ...props.modelValue, customCss })
+  emit('update:modelValue', { ...safeValue.value, customCss })
 }
 
 // ── UI state ──────────────────────────────────────────────────────────────────
@@ -25,7 +31,7 @@ const editingId = ref<string | null>(null)
 const addMenuOpen = ref(false)
 
 const editingBlock = computed(() =>
-  editingId.value ? props.modelValue.blocks.find(b => b.id === editingId.value) ?? null : null
+  editingId.value ? safeValue.value.blocks.find(b => b.id === editingId.value) ?? null : null
 )
 
 // ── block CRUD ────────────────────────────────────────────────────────────────
@@ -41,17 +47,17 @@ function addBlock(type: Block['type']) {
   else if (type === 'callout')  block = { id, type, variant: 'info', title: '', text: 'Callout text' }
   else if (type === 'divider')  block = { id, type }
   else block = { id, type: 'link-card', url: 'https://', title: 'Link title', description: '' }
-  patch([...props.modelValue.blocks, block])
+  patch([...safeValue.value.blocks, block])
   editingId.value = id
 }
 
 function removeBlock(id: string) {
   if (editingId.value === id) editingId.value = null
-  patch(props.modelValue.blocks.filter(b => b.id !== id))
+  patch(safeValue.value.blocks.filter(b => b.id !== id))
 }
 
 function moveBlock(id: string, dir: -1 | 1) {
-  const blocks = [...props.modelValue.blocks]
+  const blocks = [...safeValue.value.blocks]
   const idx = blocks.findIndex(b => b.id === id)
   if (idx === -1) return
   const next = idx + dir
@@ -61,7 +67,7 @@ function moveBlock(id: string, dir: -1 | 1) {
 }
 
 function updateBlock(id: string, updates: Partial<Block>) {
-  patch(props.modelValue.blocks.map(b => b.id === id ? { ...b, ...updates } as Block : b))
+  patch(safeValue.value.blocks.map(b => b.id === id ? { ...b, ...updates } as Block : b))
 }
 
 function updateColumnItem(block: ColumnsBlock, idx: number, html: string) {
@@ -98,14 +104,14 @@ const blockTypes: { type: Block['type']; label: string; icon: string }[] = [
 
     <!-- Preview tab -->
     <div v-if="activeTab === 'preview'" class="flex-1 overflow-y-auto p-6">
-      <BlockRenderer :content="modelValue" />
+      <BlockRenderer :content="safeValue" />
     </div>
 
     <!-- CSS tab -->
     <div v-else-if="activeTab === 'css'" class="flex flex-1 flex-col gap-3 overflow-hidden p-4">
       <p class="text-xs text-text-muted">Write CSS to style the page. Only CSS rules are allowed — no JavaScript. Use class names or element selectors from your blocks.</p>
       <textarea
-        :value="modelValue.customCss"
+        :value="safeValue.customCss"
         @input="patchCss(($event.target as HTMLTextAreaElement).value)"
         class="flex-1 resize-none rounded border border-bg-tertiary bg-bg-primary px-3 py-2 font-mono text-sm text-text-primary outline-none focus:border-accent"
         placeholder=".block-renderer h1 { color: hotpink; }"
@@ -120,7 +126,7 @@ const blockTypes: { type: Block['type']; label: string; icon: string }[] = [
       <div class="flex w-64 flex-shrink-0 flex-col gap-1 overflow-y-auto border-r border-bg-tertiary bg-bg-primary p-2">
 
         <div
-          v-for="(block, idx) in modelValue.blocks"
+          v-for="(block, idx) in safeValue.blocks"
           :key="block.id"
           @click="editingId = editingId === block.id ? null : block.id"
           :class="['group flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm transition-colors', editingId === block.id ? 'bg-accent/20 text-accent' : 'hover:bg-bg-hover text-text-secondary']"
@@ -130,7 +136,7 @@ const blockTypes: { type: Block['type']; label: string; icon: string }[] = [
           <button @click.stop="moveBlock(block.id, -1)" :disabled="idx === 0" class="hidden rounded p-0.5 text-text-muted hover:text-text-primary disabled:opacity-30 group-hover:block">
             <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="18 15 12 9 6 15"/></svg>
           </button>
-          <button @click.stop="moveBlock(block.id, 1)" :disabled="idx === modelValue.blocks.length - 1" class="hidden rounded p-0.5 text-text-muted hover:text-text-primary disabled:opacity-30 group-hover:block">
+          <button @click.stop="moveBlock(block.id, 1)" :disabled="idx === safeValue.blocks.length - 1" class="hidden rounded p-0.5 text-text-muted hover:text-text-primary disabled:opacity-30 group-hover:block">
             <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
           </button>
           <!-- Delete -->

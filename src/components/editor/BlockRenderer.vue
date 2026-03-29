@@ -32,11 +32,11 @@ function sanitise(html: string): string {
 
 const scopeId = computed(() => `bpe-${Math.random().toString(36).slice(2, 7)}`)
 const scopedCss = computed(() => {
-  if (!props.content.customCss.trim()) return ''
+  const css = props.content?.customCss ?? ''
+  if (!css.trim()) return ''
   // Prefix every rule with the scope id so it only affects this renderer
-  return props.content.customCss
-    .replace(/([^\r\n,{}]+)(,(?=[^}]*{)|\s*{)/g, (_, sel, sep) =>
-      `#${scopeId.value} ${sel.trim()}${sep}`)
+  return css.replace(/([^\r\n,{}]+)(,(?=[^}]*{)|\s*{)/g, (_, sel, sep) =>
+    `#${scopeId.value} ${sel.trim()}${sep}`)
 })
 </script>
 
@@ -45,7 +45,7 @@ const scopedCss = computed(() => {
     <!-- Scoped custom CSS -->
     <component :is="'style'" v-if="scopedCss">{{ scopedCss }}</component>
 
-    <template v-for="block in content.blocks" :key="block.id">
+    <template v-for="block in (content.blocks ?? [])" :key="block.id">
 
       <!-- Hero -->
       <div
@@ -118,6 +118,6 @@ const scopedCss = computed(() => {
 
     </template>
 
-    <p v-if="content.blocks.length === 0" class="text-center text-sm text-text-muted italic">No content yet.</p>
+    <p v-if="!(content.blocks ?? []).length" class="text-center text-sm text-text-muted italic">No content yet.</p>
   </div>
 </template>
