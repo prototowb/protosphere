@@ -1,9 +1,13 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import BlockRenderer from './BlockRenderer.vue'
-import type { Block, PageContent, HeroBlock, TextBlock, ImageBlock, ColumnsBlock, CalloutBlock, LinkCardBlock } from '@/lib/types'
+import type { Block, PageContent, HeroBlock, TextBlock, ImageBlock, ColumnsBlock, CalloutBlock, LinkCardBlock, Attachment } from '@/lib/types'
 
-const props = defineProps<{ modelValue: PageContent; readOnly?: boolean }>()
+const props = defineProps<{
+  modelValue: PageContent
+  readOnly?: boolean
+  sourceMessage?: { content?: string | null; attachments?: Attachment[] | null } | null
+}>()
 const emit = defineEmits<{ 'update:modelValue': [PageContent] }>()
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -76,6 +80,28 @@ function updateColumnItem(block: ColumnsBlock, idx: number, html: string) {
   updateBlock(block.id, { items } as Partial<Block>)
 }
 
+// ── source message imports ────────────────────────────────────────────────────
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
+function importSourceText(text: string) {
+  const id = uid()
+  patch([...safeValue.value.blocks, { id, type: 'text', html: `<p>${escapeHtml(text)}</p>` } as TextBlock])
+  editingId.value = id
+}
+
+function importAttachment(att: Attachment) {
+  const id = uid()
+  const isImage = att.mime_type?.startsWith('image/')
+  const block: Block = isImage
+    ? ({ id, type: 'image', url: att.url, caption: att.filename ?? '' } as ImageBlock)
+    : ({ id, type: 'link-card', url: att.url, title: att.filename ?? 'Attachment', description: att.size ? `${(att.size / 1024).toFixed(1)} KB` : undefined } as LinkCardBlock)
+  patch([...safeValue.value.blocks, block])
+  editingId.value = id
+}
+
 // ── block type meta ───────────────────────────────────────────────────────────
 
 const blockTypes: { type: Block['type']; label: string; icon: string }[] = [
@@ -144,6 +170,30 @@ const blockTypes: { type: Block['type']; label: string; icon: string }[] = [
             <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </div>
+
+        <!-- Import from source message -->
+        <template v-if="sourceMessage">
+          <div class="mt-2 border-t border-bg-tertiary pt-2">
+            <p class="mb-1 px-2 text-xs font-semibold uppercase tracking-wide text-text-muted">From message</p>
+            <button
+              v-if="sourceMessage.content"
+              @click="importSourceText(sourceMessage.content!)"
+              class="flex w-full items-center gap-2 rounded px-2 py-1.5 text-sm text-text-secondary hover:bg-bg-hover hover:text-text-primary"
+            >
+              <svg class="h-3.5 w-3.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="17" y1="10" x2="3" y2="10"/><line x1="21" y1="6" x2="3" y2="6"/><line x1="21" y1="14" x2="3" y2="14"/><line x1="17" y1="18" x2="3" y2="18"/></svg>
+              <span class="truncate">Message text</span>
+            </button>
+            <button
+              v-for="(att, i) in (sourceMessage.attachments ?? [])"
+              :key="i"
+              @click="importAttachment(att)"
+              class="flex w-full items-center gap-2 rounded px-2 py-1.5 text-sm text-text-secondary hover:bg-bg-hover hover:text-text-primary"
+            >
+              <svg class="h-3.5 w-3.5 flex-shrink-0 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              <span class="truncate text-xs">{{ att.filename }}</span>
+            </button>
+          </div>
+        </template>
 
         <!-- Add block button -->
         <div class="relative mt-1">

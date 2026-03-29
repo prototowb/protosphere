@@ -45,8 +45,10 @@ const emojiDrawerOpen = ref(false)
 const emojiDrawerAnchor = ref<{ bottom: number; right: number } | null>(null)
 
 // Page type state
+const savedContent = ref<PageContent>({ blocks: [], customCss: '' })
 const pageContent = ref<PageContent>({ blocks: [], customCss: '' })
 const savingPage = ref(false)
+const editingPage = ref(false)
 const drawerOpen = ref(false)
 const showInviteDialog = ref(false)
 
@@ -87,7 +89,10 @@ async function loadPost() {
     ])
     post.value = postData
     const c = postData.content as PageContent | null
-    pageContent.value = (c && Array.isArray(c.blocks)) ? c : { blocks: [], customCss: '' }
+    const validated: PageContent = (c && Array.isArray(c.blocks)) ? c : { blocks: [], customCss: '' }
+    savedContent.value = validated
+    pageContent.value = JSON.parse(JSON.stringify(validated))
+    editingPage.value = false
     comments.value = commentData
     userVote.value = voteData
 
@@ -275,12 +280,19 @@ async function savePage() {
       post.value.updated_at = updated.updated_at
       post.value.updated_by = updated.updated_by
     }
+    savedContent.value = JSON.parse(JSON.stringify(pageContent.value))
+    editingPage.value = false
     toastStore.show('Page saved', 'success')
   } catch {
     toastStore.show('Failed to save page', 'error')
   } finally {
     savingPage.value = false
   }
+}
+
+function cancelEdit() {
+  pageContent.value = JSON.parse(JSON.stringify(savedContent.value))
+  editingPage.value = false
 }
 
 function handleCollaboratorAdded(_userId: string) {
@@ -316,44 +328,37 @@ function formatTime(iso: string) {
       <span class="text-text-muted">/</span>
       <span v-if="post" class="truncate text-sm font-semibold text-text-primary">{{ post.title }}</span>
 
-      <!-- Delete post (author only) -->
-      <button
-        v-if="post && authStore.user?.id === post.created_by"
-        @click="handleDeletePost"
-        class="ml-auto flex items-center gap-1 rounded px-2 py-1 text-xs text-text-muted hover:bg-red-500/10 hover:text-red-400"
-        title="Delete post"
-      >
-        <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
-        </svg>
-        Delete
-      </button>
-
-      <!-- Page controls -->
-      <template v-if="isPageType && post">
-        <div class="ml-auto flex items-center gap-2">
-          <button
-            v-if="canEdit"
-            @click="savePage"
-            :disabled="savingPage"
-            class="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent-hover disabled:opacity-50"
-          >
-            {{ savingPage ? 'Saving…' : 'Save page' }}
+      <div class="ml-auto flex items-center gap-2">
+        <!-- Page type controls -->
+        <template v-if="isPageType && post">
+          <template v-if="editingPage && canEdit">
+            <button @click="savePage" :disabled="savingPage" class="rounded bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent-hover disabled:opacity-50">
+              {{ savingPage ? 'Saving…' : 'Save page' }}
+            </button>
+            <button @click="cancelEdit" class="rounded px-3 py-1.5 text-xs text-text-muted hover:text-text-primary">Cancel</button>
+          </template>
+          <button v-else-if="canEdit" @click="editingPage = true" class="rounded bg-bg-tertiary px-3 py-1.5 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary">
+            Edit page
           </button>
           <button
             @click="drawerOpen = !drawerOpen"
-            :class="[
-              'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors',
-              drawerOpen ? 'bg-accent/20 text-accent' : 'bg-bg-secondary text-text-muted hover:bg-bg-hover',
-            ]"
+            :class="['flex items-center gap-1.5 rounded px-2.5 py-1.5 text-xs font-medium transition-colors', drawerOpen ? 'bg-accent/20 text-accent' : 'text-text-muted hover:bg-bg-hover']"
           >
-            <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-            </svg>
+            <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
             {{ comments.length }}
           </button>
-        </div>
-      </template>
+        </template>
+        <!-- Delete post (author, non-edit mode) -->
+        <button
+          v-if="post && authStore.user?.id === post.created_by && (!isPageType || !editingPage)"
+          @click="handleDeletePost"
+          class="flex items-center gap-1 rounded px-2 py-1 text-xs text-text-muted hover:bg-red-500/10 hover:text-red-400"
+          title="Delete post"
+        >
+          <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+          Delete
+        </button>
+      </div>
     </div>
 
     <!-- Loading -->
@@ -365,9 +370,21 @@ function formatTime(iso: string) {
 
       <!-- ── PAGE TYPE ──────────────────────────────────────────────────── -->
       <div v-if="isPageType" class="relative flex flex-1 overflow-hidden">
-        <div :class="['flex-1 overflow-y-auto px-6 py-8 transition-all', drawerOpen ? 'mr-80' : '']">
-          <div class="mx-auto max-w-3xl">
-            <div class="mb-6">
+
+        <!-- Edit mode: full-height block editor -->
+        <div v-if="editingPage" class="flex flex-1 overflow-hidden" :class="drawerOpen ? 'mr-80' : ''">
+          <BlockEditor
+            v-model="pageContent"
+            :source-message="post.source_message"
+            class="flex-1 overflow-hidden"
+          />
+        </div>
+
+        <!-- View mode: meta + rendered page -->
+        <div v-else class="flex-1 overflow-y-auto" :class="drawerOpen ? 'mr-80' : ''">
+          <div class="mx-auto max-w-3xl px-6 py-8">
+            <!-- Post meta -->
+            <div class="mb-8">
               <span class="rounded px-1.5 py-0.5 text-xs font-medium uppercase tracking-wide bg-sky-500/20 text-sky-400">page</span>
               <h1 class="mt-2 text-3xl font-bold text-text-primary">{{ post.title }}</h1>
               <div class="mt-3 flex flex-wrap items-center gap-3 text-sm text-text-muted">
@@ -384,28 +401,14 @@ function formatTime(iso: string) {
                     <UserAvatar v-for="c in post.collaborators" :key="c.user_id" :src="c.user.avatar_url" :alt="c.user.display_name" size="xs" class="ring-2 ring-bg-primary" :title="c.user.display_name" />
                   </div>
                 </div>
-                <button v-if="canInvite" @click="showInviteDialog = true" class="ml-1 flex items-center gap-1 rounded-md bg-bg-secondary px-2 py-0.5 text-xs text-text-muted hover:bg-bg-hover hover:text-text-primary">
+                <button v-if="canInvite" @click="showInviteDialog = true" class="ml-1 flex items-center gap-1 rounded bg-bg-secondary px-2 py-0.5 text-xs text-text-muted hover:bg-bg-hover hover:text-text-primary">
                   <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                   Invite
                 </button>
               </div>
             </div>
-
-            <!-- Source message -->
-            <div v-if="post.source_message" class="mb-6 rounded-lg border border-bg-tertiary bg-bg-secondary px-4 py-3">
-              <p class="mb-1 text-xs font-semibold uppercase tracking-wide text-text-muted">Original message</p>
-              <div class="flex gap-2.5">
-                <UserAvatar :src="post.source_message.profile?.avatar_url" :alt="post.source_message.profile?.display_name" size="sm" class="flex-shrink-0 mt-0.5" />
-                <div class="min-w-0">
-                  <span class="text-sm font-semibold text-text-primary">{{ post.source_message.profile?.display_name }}</span>
-                  <p class="mt-0.5 break-words text-sm text-text-secondary">{{ post.source_message.content }}</p>
-                  <MessageAttachments v-if="post.source_message.attachments?.length" :attachments="post.source_message.attachments" class="mt-2" />
-                </div>
-              </div>
-            </div>
-
-            <BlockEditor v-if="canEdit" v-model="pageContent" class="h-full" />
-            <BlockRenderer v-else :content="pageContent" />
+            <!-- Rendered page content -->
+            <BlockRenderer :content="savedContent" />
           </div>
         </div>
 
