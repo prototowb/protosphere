@@ -400,6 +400,7 @@ const depthColors = ['border-violet-500/40', 'border-sky-500/40', 'border-emeral
         @react="(cid, emoji) => emit('react', cid, emoji)"
         @remove-reaction="(cid, emoji) => emit('removeReaction', cid, emoji)"
         @edit="(cid, content) => emit('edit', cid, content)"
+        @delete="(cid) => emit('delete', cid)"
       />
     </div>
   </div>
