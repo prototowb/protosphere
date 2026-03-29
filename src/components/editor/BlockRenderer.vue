@@ -62,11 +62,12 @@ const scopedCss = computed(() => {
       </div>
 
       <!-- Text -->
-      <div
-        v-else-if="block.type === 'text'"
-        class="prose prose-invert max-w-none text-text-secondary"
-        v-html="sanitise(block.html)"
-      />
+      <div v-else-if="block.type === 'text'">
+        <div class="prose prose-invert max-w-none text-text-secondary" v-html="sanitise(block.html)" />
+        <p v-if="block._author || block._date" class="mt-1 text-xs opacity-40">
+          — {{ [block._author, block._date ? new Date(block._date).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }) : null].filter(Boolean).join(' · ') }}
+        </p>
+      </div>
 
       <!-- Image -->
       <figure v-else-if="block.type === 'image'" :class="block.fullWidth ? 'w-full' : 'mx-auto max-w-2xl'">

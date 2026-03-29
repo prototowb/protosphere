@@ -93,7 +93,9 @@ function escapeHtml(s: string): string {
 
 function importSourceText(text: string) {
   const id = uid()
-  patch([...safeValue.value.blocks, { id, type: 'text', html: `<p>${escapeHtml(text)}</p>` } as TextBlock])
+  const _author = props.sourceMessage?.profile?.display_name || undefined
+  const _date = props.sourceMessage?.created_at || undefined
+  patch([...safeValue.value.blocks, { id, type: 'text', html: `<p>${escapeHtml(text)}</p>`, _author, _date } as TextBlock])
   editingId.value = id
 }
 
@@ -179,8 +181,6 @@ const blockTypes: { type: Block['type']; label: string; icon: string }[] = [
         <!-- Import from source message -->
         <template v-if="sourceMessage">
           <div class="mt-2 border-t border-bg-tertiary pt-2">
-            <p class="mb-1 px-2 text-xs font-semibold uppercase tracking-wide text-text-muted">From message</p>
-            <p class="mb-1.5 px-2 text-xs text-text-muted truncate">{{ sourceMessage.profile?.display_name ?? 'Unknown' }}{{ sourceMessage.created_at ? ' · ' + new Date(sourceMessage.created_at).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }) : '' }}</p>
             <button
               v-if="sourceMessage.content"
               @click="importSourceText(sourceMessage.content!)"
