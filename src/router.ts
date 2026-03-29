@@ -103,6 +103,11 @@ const router = createRouter({
       component: () => import('@/pages/MemberDirectoryPage.vue'),
     },
     {
+      path: '/u/:username',
+      name: 'user-profile',
+      component: () => import('@/pages/UserProfilePage.vue'),
+    },
+    {
       path: '/404',
       name: 'not-found',
       component: () => import('@/pages/NotFoundPage.vue'),

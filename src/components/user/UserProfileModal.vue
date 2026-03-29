@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { backend } from '@/lib/backend'
 import { usePresenceStore } from '@/stores/presence'
 import UserAvatar from '@/components/user/UserAvatar.vue'
@@ -10,6 +11,7 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{ close: [] }>()
 
+const router = useRouter()
 const presenceStore = usePresenceStore()
 const profile = ref<Profile | null>(null)
 const loading = ref(true)
@@ -87,8 +89,12 @@ onMounted(async () => {
             <p v-if="profile.location" class="text-xs text-text-secondary">📍 {{ profile.location }}</p>
           </div>
 
-          <div class="mt-3 border-t border-bg-tertiary pt-3 text-xs text-text-muted">
-            Member since {{ new Date(profile.created_at).toLocaleDateString() }}
+          <div class="mt-3 flex items-center justify-between border-t border-bg-tertiary pt-3">
+            <span class="text-xs text-text-muted">Member since {{ new Date(profile.created_at).toLocaleDateString() }}</span>
+            <button
+              @click="router.push(`/u/${profile.username}`); emit('close')"
+              class="rounded px-2 py-1 text-xs text-accent hover:underline"
+            >View page →</button>
           </div>
         </div>
       </template>

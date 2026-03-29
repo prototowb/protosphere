@@ -31,6 +31,7 @@ export interface Profile {
   display_banner_url: string | null
   account_status: ProfileStatus
   meta_points: number
+  profile_page: PageContent | null
   created_at: string
   updated_at: string
 }

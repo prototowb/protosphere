@@ -77,12 +77,17 @@ async function handleLogoutGlobal() {
     <div class="w-full max-w-2xl rounded-lg bg-bg-secondary p-8">
       <div class="mb-6 flex items-center justify-between">
         <h1 class="text-2xl font-bold">Profile Settings</h1>
-        <button
-          @click="router.push('/channels/@me')"
-          class="text-sm text-text-secondary hover:text-text-primary"
-        >
-          Back to chat
-        </button>
+        <div class="flex items-center gap-3">
+          <button
+            v-if="profile"
+            @click="router.push(`/u/${profile.username}`)"
+            class="text-sm text-accent hover:underline"
+          >My page</button>
+          <button
+            @click="router.push('/channels/@me')"
+            class="text-sm text-text-secondary hover:text-text-primary"
+          >Back to chat</button>
+        </div>
       </div>
 
       <!-- Loading state -->

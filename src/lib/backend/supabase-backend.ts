@@ -1,4 +1,4 @@
-import type { Profile, Server, Channel, ChannelCategory, Member, Message, Attachment, Reaction, Ban, DirectMessageGroup, DirectMessage, Role, UserRole, ChannelRoleOverride, CommunitySettings, AuditLog, Report, Mute, AutomodRule, Poll, PollOption, PollVote, AppEvent, EventRsvp, CommunityInvite, NotificationPreference, DmNotificationPreference, ForumPost, ForumCollaborator, ForumComment, ForumCommentVote, ForumCommentReaction, ForumVote } from '@/lib/types'
+import type { Profile, Server, Channel, ChannelCategory, Member, Message, Attachment, Reaction, Ban, DirectMessageGroup, DirectMessage, Role, UserRole, ChannelRoleOverride, CommunitySettings, AuditLog, Report, Mute, AutomodRule, Poll, PollOption, PollVote, AppEvent, EventRsvp, CommunityInvite, NotificationPreference, DmNotificationPreference, ForumPost, ForumCollaborator, ForumComment, ForumCommentVote, ForumCommentReaction, ForumVote, PageContent } from '@/lib/types'
 import type { Backend } from './types'
 import { supabase } from '@/lib/supabase'
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -101,6 +101,23 @@ export function createSupabaseBackend(): Backend {
         if (uploadError) throw uploadError
         const { data } = client.storage.from('avatars').getPublicUrl(filePath)
         return data.publicUrl
+      },
+
+      async getByUsername(username: string) {
+        const { data, error } = await client.from('profiles').select('*').eq('username', username).single()
+        if (error) throw error
+        return data as Profile
+      },
+
+      async updatePage(userId: string, page: PageContent | null) {
+        const { data, error } = await client
+          .from('profiles')
+          .update({ profile_page: page, updated_at: new Date().toISOString() })
+          .eq('id', userId)
+          .select()
+          .single()
+        if (error) throw error
+        return data as Profile
       },
 
       async listPending() {

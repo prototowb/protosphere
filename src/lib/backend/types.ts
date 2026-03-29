@@ -31,6 +31,8 @@ export interface Backend {
     update(id: string, updates: Partial<Profile>): Promise<Profile>
     uploadAvatar(userId: string, file: File): Promise<string>
     search(query: string, excludeUserId: string): Promise<Profile[]>
+    getByUsername(username: string): Promise<Profile>
+    updatePage(userId: string, page: PageContent | null): Promise<Profile>
     listPending(): Promise<Profile[]>
     approve(userId: string): Promise<void>
     reject(userId: string): Promise<void>

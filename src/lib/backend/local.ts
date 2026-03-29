@@ -1,4 +1,4 @@
-import type { Profile, Server, Channel, ChannelCategory, Member, Message, Attachment, Reaction, Ban, DirectMessageGroup, DirectMessageMember, DirectMessage, Role, UserRole, ChannelRoleOverride, CommunitySettings, AuditLog, Report, Mute, AutomodRule, Poll, PollOption, PollVote, AppEvent, EventRsvp, CommunityInvite, NotificationPreference, DmNotificationPreference, ForumPost, ForumCollaborator, ForumComment, ForumCommentVote, ForumCommentReaction, ForumVote } from '@/lib/types'
+import type { Profile, Server, Channel, ChannelCategory, Member, Message, Attachment, Reaction, Ban, DirectMessageGroup, DirectMessageMember, DirectMessage, Role, UserRole, ChannelRoleOverride, CommunitySettings, AuditLog, Report, Mute, AutomodRule, Poll, PollOption, PollVote, AppEvent, EventRsvp, CommunityInvite, NotificationPreference, DmNotificationPreference, ForumPost, ForumCollaborator, ForumComment, ForumCommentVote, ForumCommentReaction, ForumVote, PageContent } from '@/lib/types'
 import type { AuthSession, Backend } from './types'
 import { serializePermissions, PermissionPresets, Permission } from '@/lib/permissions'
 
@@ -115,6 +115,7 @@ export function createLocalBackend(): Backend {
           display_banner_url: null,
           account_status: 'active',
           meta_points: 0,
+          profile_page: null,
           created_at: now,
           updated_at: now,
         }
@@ -181,6 +182,23 @@ export function createLocalBackend(): Backend {
           reader.onerror = () => reject(new Error('Failed to read file'))
           reader.readAsDataURL(file)
         })
+      },
+
+      async getByUsername(username: string) {
+        const profiles = readJson<Record<string, Profile>>(KEYS.profiles, {})
+        const profile = Object.values(profiles).find((p) => p.username === username)
+        if (!profile) throw new Error('Profile not found')
+        return { ...profile, meta_points: profile.meta_points ?? 0 }
+      },
+
+      async updatePage(userId: string, page: PageContent | null) {
+        const profiles = readJson<Record<string, Profile>>(KEYS.profiles, {})
+        const profile = profiles[userId]
+        if (!profile) throw new Error('Profile not found')
+        const updated = { ...profile, profile_page: page, updated_at: new Date().toISOString() }
+        profiles[userId] = updated
+        writeJson(KEYS.profiles, profiles)
+        return updated
       },
 
       async listPending() {
