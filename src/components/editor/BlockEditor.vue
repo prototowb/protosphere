@@ -6,7 +6,12 @@ import type { Block, PageContent, HeroBlock, TextBlock, ImageBlock, ColumnsBlock
 const props = defineProps<{
   modelValue: PageContent
   readOnly?: boolean
-  sourceMessage?: { content?: string | null; attachments?: Attachment[] | null } | null
+  sourceMessage?: {
+    content?: string | null
+    attachments?: Attachment[] | null
+    profile?: { display_name: string } | null
+    created_at?: string | null
+  } | null
 }>()
 const emit = defineEmits<{ 'update:modelValue': [PageContent] }>()
 
@@ -175,6 +180,9 @@ const blockTypes: { type: Block['type']; label: string; icon: string }[] = [
         <template v-if="sourceMessage">
           <div class="mt-2 border-t border-bg-tertiary pt-2">
             <p class="mb-1 px-2 text-xs font-semibold uppercase tracking-wide text-text-muted">From message</p>
+            <p class="mb-1.5 px-2 text-xs text-text-muted truncate">
+              {{ sourceMessage.profile?.display_name ?? 'Unknown' }}<template v-if="sourceMessage.created_at"> · {{ new Date(sourceMessage.created_at).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }) }}</template>
+            </p>
             <button
               v-if="sourceMessage.content"
               @click="importSourceText(sourceMessage.content!)"
