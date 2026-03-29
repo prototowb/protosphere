@@ -931,13 +931,17 @@ export function createSupabaseBackend(): Backend {
           .from('forum_posts')
           .select('*, created_by_profile:profiles!created_by(*)')
           .eq('space_id', spaceId)
+          .eq('is_deleted', false)
           .order('created_at', { ascending: false })
         if (error) throw error
         return data as (ForumPost & { created_by_profile: Profile })[]
       },
 
       async deletePost(postId) {
-        const { error } = await client.from('forum_posts').delete().eq('id', postId)
+        const { error } = await client
+          .from('forum_posts')
+          .update({ is_deleted: true })
+          .eq('id', postId)
         if (error) throw error
       },
 
@@ -988,7 +992,17 @@ export function createSupabaseBackend(): Backend {
           .select('*, profile:profiles!author_id(*)')
           .single()
         if (error) throw error
-        return data as ForumComment & { profile: Profile }
+        // vote_score starts at 1 due to auto self-vote trigger; RETURNING fires before trigger so override here
+        return { ...data, vote_score: 1 } as ForumComment & { profile: Profile }
+      },
+
+      async deleteComment(commentId, authorId) {
+        const { error } = await client
+          .from('forum_comments')
+          .update({ is_deleted: true })
+          .eq('id', commentId)
+          .eq('author_id', authorId)
+        if (error) throw error
       },
 
       async editComment(commentId, authorId, content) {

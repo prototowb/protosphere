@@ -24,6 +24,7 @@ const emit = defineEmits<{
   react: [commentId: string, emoji: string]
   removeReaction: [commentId: string, emoji: string]
   edit: [commentId: string, content: string]
+  delete: [commentId: string]
 }>()
 
 const depth = computed(() => props.depth ?? 0)
@@ -201,18 +202,28 @@ const depthColors = ['border-violet-500/40', 'border-sky-500/40', 'border-emeral
           <span v-if="comment.edited_at" class="text-xs text-text-muted
           italic">(edited)</span>
           
-          <!-- Edit button (own comments only) -->
-          <button
-            v-if="canPost && comment.author_id === currentUserId && editingCommentId !== comment.id"
-            @click="startEdit(comment)"
-            class="ml-auto text-xs text-text-muted hover:text-text-primary"
-            title="Edit"
-          >
-            <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-            </svg>
-          </button>
+          <!-- Edit / Delete buttons (own comments only, not deleted) -->
+          <template v-if="canPost && comment.author_id === currentUserId && !comment.is_deleted && editingCommentId !== comment.id">
+            <button
+              @click="startEdit(comment)"
+              class="ml-auto text-xs text-text-muted hover:text-text-primary"
+              title="Edit"
+            >
+              <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+              </svg>
+            </button>
+            <button
+              @click="emit('delete', comment.id)"
+              class="text-xs text-text-muted hover:text-red-400"
+              title="Delete"
+            >
+              <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
+              </svg>
+            </button>
+          </template>
         </div>
 
         <!-- Edit mode -->
@@ -255,10 +266,11 @@ const depthColors = ['border-violet-500/40', 'border-sky-500/40', 'border-emeral
         </div>
 
         <!-- Content -->
+        <p v-else-if="comment.is_deleted" class="ml-8 mb-3 text-sm text-text-muted italic">This comment was deleted.</p>
         <p v-else class="ml-8 mb-3 break-words text-sm text-text-secondary leading-relaxed"><RichText :text="comment.content" /></p>
 
-        <!-- Action bar -->
-        <div class="flex items-center gap-3">
+        <!-- Action bar (hidden for deleted comments) -->
+        <div v-if="!comment.is_deleted" class="flex items-center gap-3">
           <!-- Votes -->
           <div class="flex items-center gap-1">
             <button

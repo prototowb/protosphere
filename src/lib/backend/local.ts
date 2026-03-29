@@ -160,7 +160,7 @@ export function createLocalBackend(): Backend {
         const profiles = readJson<Record<string, Profile>>(KEYS.profiles, {})
         const profile = profiles[id]
         if (!profile) throw new Error('Profile not found')
-        return profile
+        return { ...profile, meta_points: profile.meta_points ?? 0 }
       },
 
       async update(id: string, updates: Partial<Profile>) {
@@ -404,7 +404,7 @@ export function createLocalBackend(): Backend {
         for (const m of members) {
           if (m.server_id !== serverId) continue
           const profile = profiles[m.user_id]
-          if (profile) result.push({ ...m, profile })
+          if (profile) result.push({ ...m, profile: { ...profile, meta_points: profile.meta_points ?? 0 } })
         }
         return result
       },
@@ -1170,6 +1170,7 @@ export function createLocalBackend(): Backend {
           body: body ?? null,
           content: null,
           vote_score: 0,
+          is_deleted: false,
           created_by: createdBy,
           marked_by: null,
           updated_by: null,
@@ -1208,14 +1209,23 @@ export function createLocalBackend(): Backend {
         const posts = readJson<ForumPost[]>('protosphere_forum_posts', [])
         const profiles = readJson<Record<string, Profile>>('protosphere_profiles', {})
         return posts
-          .filter((p) => p.space_id === spaceId)
+          .filter((p) => p.space_id === spaceId && !p.is_deleted)
           .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
           .map((p) => ({ ...p, created_by_profile: profiles[p.created_by] ?? null })) as (ForumPost & { created_by_profile: Profile })[]
       },
 
       async deletePost(postId) {
         const posts = readJson<ForumPost[]>('protosphere_forum_posts', [])
-        localStorage.setItem('protosphere_forum_posts', JSON.stringify(posts.filter((p) => p.id !== postId)))
+        const post = posts.find((p) => p.id === postId)
+        if (post && !post.is_deleted) {
+          post.is_deleted = true
+          localStorage.setItem('protosphere_forum_posts', JSON.stringify(posts))
+          const profiles = readJson<Record<string, Profile>>('protosphere_profiles', {})
+          if (profiles[post.created_by]) {
+            profiles[post.created_by]!.meta_points = Math.max(0, (profiles[post.created_by]!.meta_points ?? 0) - 1)
+            writeJson('protosphere_profiles', profiles)
+          }
+        }
       },
 
       async updatePageContent(postId, content, updatedBy) {
@@ -1268,13 +1278,37 @@ export function createLocalBackend(): Backend {
           parent_comment_id: parentCommentId,
           author_id: authorId,
           content,
-          vote_score: 0,
+          vote_score: 1,
+          is_deleted: false,
           created_at: new Date().toISOString(),
           edited_at: null,
         }
         comments.push(comment)
         localStorage.setItem('protosphere_forum_comments', JSON.stringify(comments))
+        // Auto self-vote
+        const votes = readJson<ForumCommentVote[]>('protosphere_forum_comment_votes', [])
+        votes.push({ comment_id: comment.id, user_id: authorId, value: 1 })
+        writeJson('protosphere_forum_comment_votes', votes)
+        // +1 meta_point for the self-vote
+        if (profiles[authorId]) {
+          profiles[authorId]!.meta_points = (profiles[authorId]!.meta_points ?? 0) + 1
+          writeJson('protosphere_profiles', profiles)
+        }
         return { ...comment, profile: profiles[authorId] ?? null } as ForumComment & { profile: Profile }
+      },
+
+      async deleteComment(commentId, authorId) {
+        const comments = readJson<ForumComment[]>('protosphere_forum_comments', [])
+        const comment = comments.find((c) => c.id === commentId && c.author_id === authorId)
+        if (comment && !comment.is_deleted) {
+          comment.is_deleted = true
+          writeJson('protosphere_forum_comments', comments)
+          const profiles = readJson<Record<string, Profile>>('protosphere_profiles', {})
+          if (profiles[authorId]) {
+            profiles[authorId]!.meta_points = Math.max(0, (profiles[authorId]!.meta_points ?? 0) - 1)
+            writeJson('protosphere_profiles', profiles)
+          }
+        }
       },
 
       async editComment(commentId, authorId, content) {
@@ -1300,20 +1334,19 @@ export function createLocalBackend(): Backend {
 
       async vote(postId, userId, value) {
         const votes = readJson<ForumVote[]>('protosphere_forum_votes', [])
+        const posts = readJson<ForumPost[]>('protosphere_forum_posts', [])
+        const profiles = readJson<Record<string, Profile>>('protosphere_profiles', {})
+        const post = posts.find((p) => p.id === postId)
         const existing = votes.find((v) => v.post_id === postId && v.user_id === userId)
-        if (existing) {
-          const delta = value - existing.value
-          existing.value = value
-          const posts = readJson<ForumPost[]>('protosphere_forum_posts', [])
-          const post = posts.find((p) => p.id === postId)
-          if (post) { post.vote_score += delta; localStorage.setItem('protosphere_forum_posts', JSON.stringify(posts)) }
-        } else {
-          votes.push({ post_id: postId, user_id: userId, value })
-          const posts = readJson<ForumPost[]>('protosphere_forum_posts', [])
-          const post = posts.find((p) => p.id === postId)
-          if (post) { post.vote_score += value; localStorage.setItem('protosphere_forum_posts', JSON.stringify(posts)) }
+        const delta = existing ? value - existing.value : value
+        if (existing) { existing.value = value } else { votes.push({ post_id: postId, user_id: userId, value }) }
+        if (post) {
+          post.vote_score += delta
+          writeJson('protosphere_forum_posts', posts)
+          const author = profiles[post.created_by]
+          if (author) { author.meta_points = Math.max(0, (author.meta_points ?? 0) + delta); writeJson('protosphere_profiles', profiles) }
         }
-        localStorage.setItem('protosphere_forum_votes', JSON.stringify(votes))
+        writeJson('protosphere_forum_votes', votes)
         return { post_id: postId, user_id: userId, value } as ForumVote
       },
 
@@ -1322,9 +1355,15 @@ export function createLocalBackend(): Backend {
         const existing = votes.find((v) => v.post_id === postId && v.user_id === userId)
         if (existing) {
           const posts = readJson<ForumPost[]>('protosphere_forum_posts', [])
+          const profiles = readJson<Record<string, Profile>>('protosphere_profiles', {})
           const post = posts.find((p) => p.id === postId)
-          if (post) { post.vote_score -= existing.value; localStorage.setItem('protosphere_forum_posts', JSON.stringify(posts)) }
-          localStorage.setItem('protosphere_forum_votes', JSON.stringify(votes.filter((v) => !(v.post_id === postId && v.user_id === userId))))
+          if (post) {
+            post.vote_score -= existing.value
+            writeJson('protosphere_forum_posts', posts)
+            const author = profiles[post.created_by]
+            if (author) { author.meta_points = Math.max(0, (author.meta_points ?? 0) - existing.value); writeJson('protosphere_profiles', profiles) }
+          }
+          writeJson('protosphere_forum_votes', votes.filter((v) => !(v.post_id === postId && v.user_id === userId)))
         }
       },
 
@@ -1335,15 +1374,21 @@ export function createLocalBackend(): Backend {
 
       async voteComment(commentId, userId, value) {
         const votes = readJson<ForumCommentVote[]>('protosphere_forum_comment_votes', [])
+        const comments = readJson<ForumComment[]>('protosphere_forum_comments', [])
+        const profiles = readJson<Record<string, Profile>>('protosphere_profiles', {})
         const idx = votes.findIndex((v) => v.comment_id === commentId && v.user_id === userId)
         const prev = idx !== -1 ? votes[idx]!.value : 0
+        const delta = value - prev
         const entry: ForumCommentVote = { comment_id: commentId, user_id: userId, value }
-        if (idx !== -1) votes[idx] = entry
-        else votes.push(entry)
-        localStorage.setItem('protosphere_forum_comment_votes', JSON.stringify(votes))
-        const comments = readJson<ForumComment[]>('protosphere_forum_comments', [])
+        if (idx !== -1) votes[idx] = entry; else votes.push(entry)
+        writeJson('protosphere_forum_comment_votes', votes)
         const c = comments.find((x) => x.id === commentId)
-        if (c) { c.vote_score = c.vote_score - prev + value; localStorage.setItem('protosphere_forum_comments', JSON.stringify(comments)) }
+        if (c) {
+          c.vote_score += delta
+          writeJson('protosphere_forum_comments', comments)
+          const author = profiles[c.author_id]
+          if (author) { author.meta_points = Math.max(0, (author.meta_points ?? 0) + delta); writeJson('protosphere_profiles', profiles) }
+        }
         return entry
       },
 
@@ -1352,9 +1397,15 @@ export function createLocalBackend(): Backend {
         const existing = votes.find((v) => v.comment_id === commentId && v.user_id === userId)
         if (existing) {
           const comments = readJson<ForumComment[]>('protosphere_forum_comments', [])
+          const profiles = readJson<Record<string, Profile>>('protosphere_profiles', {})
           const c = comments.find((x) => x.id === commentId)
-          if (c) { c.vote_score -= existing.value; localStorage.setItem('protosphere_forum_comments', JSON.stringify(comments)) }
-          localStorage.setItem('protosphere_forum_comment_votes', JSON.stringify(votes.filter((v) => !(v.comment_id === commentId && v.user_id === userId))))
+          if (c) {
+            c.vote_score -= existing.value
+            writeJson('protosphere_forum_comments', comments)
+            const author = profiles[c.author_id]
+            if (author) { author.meta_points = Math.max(0, (author.meta_points ?? 0) - existing.value); writeJson('protosphere_profiles', profiles) }
+          }
+          writeJson('protosphere_forum_comment_votes', votes.filter((v) => !(v.comment_id === commentId && v.user_id === userId)))
         }
       },
 

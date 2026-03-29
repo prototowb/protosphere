@@ -373,6 +373,7 @@ export interface ForumPost {
   body: string | null
   content: Record<string, unknown> | null
   vote_score: number
+  is_deleted: boolean
   created_by: string
   marked_by: string | null
   updated_by: string | null
@@ -394,6 +395,7 @@ export interface ForumComment {
   author_id: string
   content: string
   vote_score: number
+  is_deleted: boolean
   created_at: string
   edited_at: string | null
 }

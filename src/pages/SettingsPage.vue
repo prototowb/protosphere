@@ -105,7 +105,11 @@ async function handleLogoutGlobal() {
             :status="profile.status"
             size="lg"
           />
-          <div>
+          <div class="flex flex-col gap-2">
+            <span class="flex w-fit items-center gap-1 rounded bg-violet-500/15 px-2 py-1 text-sm font-medium text-violet-400">
+              <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+              {{ profile.meta_points ?? 0 }} meta
+            </span>
             <label
               class="cursor-pointer rounded bg-bg-tertiary px-3 py-1.5 text-sm text-text-primary hover:bg-accent"
             >

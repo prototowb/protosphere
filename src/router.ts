@@ -38,9 +38,9 @@ const router = createRouter({
       alias: '/spaces/:serverId/:channelId',
     },
     {
-      path: '/spaces/:spaceId/forum/:postId',
+      path: '/spaces/:serverId/forum/:postId',
       name: 'forum-post',
-      component: () => import('@/pages/ForumPostPage.vue'),
+      component: () => import('@/pages/ServerPage.vue'),
     },
     {
       path: '/settings',

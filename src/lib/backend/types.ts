@@ -143,6 +143,7 @@ export interface Backend {
     removeCollaborator(postId: string, userId: string): Promise<void>
     addComment(postId: string, authorId: string, content: string, parentCommentId?: string | null): Promise<ForumComment & { profile: Profile }>
     editComment(commentId: string, authorId: string, content: string): Promise<ForumComment & { profile: Profile }>
+    deleteComment(commentId: string, authorId: string): Promise<void>
     listComments(postId: string): Promise<(ForumComment & { profile: Profile })[]>
     vote(postId: string, userId: string, value: 1 | -1): Promise<ForumVote>
     removeVote(postId: string, userId: string): Promise<void>

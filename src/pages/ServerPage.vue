@@ -34,6 +34,7 @@ import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 import PollCard from '@/components/chat/PollCard.vue'
 const ReportDialog = defineAsyncComponent(() => import('@/components/moderation/ReportDialog.vue'))
 const CreateForumPostDialog = defineAsyncComponent(() => import('@/components/forum/CreateForumPostDialog.vue'))
+const ForumPostView = defineAsyncComponent(() => import('@/components/forum/ForumPostView.vue'))
 const CreatePollDialog = defineAsyncComponent(() => import('@/components/chat/CreatePollDialog.vue'))
 const EventsPanel = defineAsyncComponent(() => import('@/components/community/EventsPanel.vue'))
 const PinnedMessagesPanel = defineAsyncComponent(() => import('@/components/chat/PinnedMessagesPanel.vue'))
@@ -171,7 +172,8 @@ const showCreatePoll = ref(false)
 
 // Forum
 const forumPosts = ref<(ForumPost & { created_by_profile: Profile })[]>([])
-const forumSectionOpen = ref(true)
+const activeView = ref<'channel' | 'forum' | 'forum-post'>('channel')
+const activeForumPostId = ref<string | null>(null)
 const showForumPostDialog = ref(false)
 const pendingForumMsg = ref<(Message & { profile: Profile }) | null>(null)
 
@@ -254,8 +256,14 @@ const confirmDialog = ref<{
 
 function loadServer() {
   serverId.value = route.params.serverId as string
-  channelId.value = route.params.channelId as string
+  channelId.value = (route.params.channelId as string) ?? ''
   serversStore.activeServerId = serverId.value
+
+  const postId = route.params.postId as string | undefined
+  if (postId) {
+    activeView.value = 'forum-post'
+    activeForumPostId.value = postId
+  }
 
   if (serverId.value) {
     collapsedCategories.value = loadCollapsedCategories(serverId.value)
@@ -323,9 +331,17 @@ watch(() => route.params.channelId, (id) => {
   }
 })
 
+watch(() => route.params.postId, (postId) => {
+  if (postId) {
+    activeView.value = 'forum-post'
+    activeForumPostId.value = postId as string
+  }
+})
+
 // Load messages and mark as read when active channel changes
 watch(() => channelsStore.activeChannelId, (id) => {
   if (id && id !== serverId.value) {
+    activeView.value = 'channel'
     showPinnedPanel.value = false
     slowmodeRemaining.value = 0
     if (slowmodeTimer) { clearInterval(slowmodeTimer); slowmodeTimer = null }
@@ -1218,9 +1234,26 @@ function onServerHeaderContext(event: MouseEvent) {
 
     <template #sidebar-content>
       <!-- Backdrop to close notification popover -->
-      <div v-if="notifPopoverChannelId" class="fixed inset-0 z-40" @click="notifPopoverChannelId = null" />
+      <div v-if="notifPopoverChannelId" class="fixed inset-0 z-40"
+      @click="notifPopoverChannelId = null" />
 
-      <div class="space-y-0.5">
+      <!-- ── Forum nav item ────────────────────────────────── -->
+      <div class="space-y-0.5 mb-1 border-b border-bg-tertiary border-2 rounded">
+        <button
+          @click="activeView = 'forum'"
+        class="flex w-full items-center gap-1.5 rounded px-2 py-1.5 text-sm
+        transition-colors"
+          :class="activeView === 'forum' ? 'bg-bg-active text-text-primary' : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary'"
+        >
+          <svg class="h-3.5 w-3.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+          </svg>
+          <span>Forum</span>
+          <span class="ml-auto text-[10px] text-text-muted">{{ forumPosts.length }}</span>
+        </button>
+      </div>
+
+      <div class="space-y-0.5 mb-0.5">
         <!-- Uncategorized channels (category_id = null) -->
         <div
           v-for="channel in channelsStore.channels.filter(c => c.category_id === null).sort((a,b) => a.position - b.position)"
@@ -1230,6 +1263,7 @@ function onServerHeaderContext(event: MouseEvent) {
           <router-link
             :to="`/channels/${serverId}/${channel.id}`"
             :draggable="canManageChannels"
+            @click="activeView = 'channel'"
             @contextmenu.prevent="onChannelContext($event, channel)"
             @dragstart.stop="onChannelDragStart(channel.id)"
             @dragover.prevent.stop="onChannelDragOver(channel.id)"
@@ -1240,7 +1274,7 @@ function onServerHeaderContext(event: MouseEvent) {
             :class="[
               channelsStore.activeChannelId === channel.id ? 'bg-bg-hover text-text-primary font-medium' : 'text-text-secondary',
               dragOverChannelId === channel.id ? 'border-t-2 border-accent' : '',
-              canManageChannels ? 'cursor-grab' : '',
+              canManageChannels ? 'cursor-pointer' : '',
             ]"
           >
             <span class="text-text-muted">#</span>
@@ -1334,6 +1368,7 @@ function onServerHeaderContext(event: MouseEvent) {
               <router-link
                 :to="`/channels/${serverId}/${channel.id}`"
                 :draggable="canManageChannels"
+                @click="activeView = 'channel'"
                 @contextmenu.prevent="onChannelContext($event, channel)"
                 @dragstart.stop="onChannelDragStart(channel.id)"
                 @dragover.prevent.stop="onChannelDragOver(channel.id)"
@@ -1344,7 +1379,7 @@ function onServerHeaderContext(event: MouseEvent) {
                 :class="[
                   channelsStore.activeChannelId === channel.id ? 'bg-bg-hover text-text-primary font-medium' : 'text-text-secondary',
                   dragOverChannelId === channel.id ? 'border-t-2 border-accent' : '',
-                  canManageChannels ? 'cursor-grab' : '',
+                  canManageChannels ? 'cursor-pointer' : '',
                 ]"
               >
                 <span class="text-text-muted">#</span>
@@ -1383,46 +1418,11 @@ function onServerHeaderContext(event: MouseEvent) {
           </template>
         </div>
       </div>
-
-      <!-- ── Forum section ─────────────────────────────────── -->
-      <div class="mx-2 mt-2">
-        <button
-          @click="forumSectionOpen = !forumSectionOpen"
-          class="flex w-full items-center gap-1 px-2 py-1 text-xs font-semibold uppercase tracking-wide text-text-muted hover:text-text-primary"
-        >
-          <svg
-            class="h-3 w-3 flex-shrink-0 transition-transform"
-            :class="forumSectionOpen ? 'rotate-90' : ''"
-            viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-          >
-            <polyline points="9 18 15 12 9 6"/>
-          </svg>
-          Forum
-          <span class="ml-auto text-[10px] font-normal">{{ forumPosts.length }}</span>
-        </button>
-        <div v-if="forumSectionOpen" class="mt-0.5 space-y-0.5">
-          <router-link
-            v-for="post in forumPosts"
-            :key="post.id"
-            :to="`/spaces/${serverId}/forum/${post.id}`"
-            class="flex items-center gap-1.5 rounded px-2 py-1 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary"
-          >
-            <span
-              class="flex-shrink-0 text-[9px] font-bold uppercase tracking-wide"
-              :class="post.type === 'thread' ? 'text-violet-400' : 'text-sky-400'"
-            >{{ post.type[0] }}</span>
-            <span class="truncate">{{ post.title }}</span>
-            <span v-if="post.vote_score !== 0" class="ml-auto flex-shrink-0 text-[10px]" :class="post.vote_score > 0 ? 'text-emerald-400' : 'text-red-400'">
-              {{ post.vote_score > 0 ? '+' : '' }}{{ post.vote_score }}
-            </span>
-          </router-link>
-          <p v-if="forumPosts.length === 0" class="px-2 py-1 text-[11px] text-text-muted">No forum posts yet.</p>
-        </div>
-      </div>
     </template>
 
     <template #top-bar>
-      <header class="flex h-12 items-center gap-2 border-b border-bg-tertiary bg-bg-primary px-4">
+      <!-- Channel header -->
+      <header v-if="activeView === 'channel'" class="flex h-12 items-center gap-2 border-b border-bg-tertiary bg-bg-primary px-4">
         <span class="text-text-muted">#</span>
         <span class="font-semibold text-text-primary">{{ activeChannel?.name ?? 'general' }}</span>
         <span v-if="activeChannel?.description" class="ml-1 text-text-muted/50">·</span>
@@ -1478,10 +1478,106 @@ function onServerHeaderContext(event: MouseEvent) {
           </button>
         </div>
       </header>
+
+      <!-- Forum header -->
+      <header v-else-if="activeView === 'forum'" class="flex h-12 items-center gap-2 border-b border-bg-tertiary bg-bg-primary px-4">
+        <svg class="h-4 w-4 flex-shrink-0 text-text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+        </svg>
+        <span class="font-semibold text-text-primary">Forum</span>
+        <span class="text-xs text-text-muted">{{ forumPosts.length }} {{ forumPosts.length === 1 ? 'post' : 'posts' }}</span>
+        <div class="ml-auto">
+          <button
+            v-if="canModerate"
+            @click="pendingForumMsg = null; showForumPostDialog = true"
+            class="flex items-center gap-1.5 rounded bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent-hover"
+          >
+            <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            New post
+          </button>
+        </div>
+      </header>
     </template>
 
+    <!-- Forum index view -->
+    <div v-if="activeView === 'forum'" class="flex-1 overflow-y-auto">
+      <div class="mx-auto max-w-3xl px-6 py-6">
+        <!-- Empty state -->
+        <div v-if="forumPosts.length === 0" class="flex flex-col items-center justify-center py-24 text-center">
+          <div class="mb-4 flex h-14 w-14 items-center justify-center rounded-lg bg-bg-tertiary">
+            <svg class="h-7 w-7 text-text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+            </svg>
+          </div>
+          <h3 class="mb-1 text-base font-semibold text-text-primary">No posts yet</h3>
+          <p class="mb-4 text-sm text-text-muted">Be the first to start a discussion or create a page.</p>
+          <button
+            v-if="canModerate"
+            @click="pendingForumMsg = null; showForumPostDialog = true"
+            class="rounded bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover"
+          >
+            Create first post
+          </button>
+        </div>
+
+        <!-- Post list -->
+        <div v-else class="space-y-2">
+          <router-link
+            v-for="post in forumPosts"
+            :key="post.id"
+            :to="`/spaces/${serverId}/forum/${post.id}`"
+            @click="activeView = 'forum-post'; activeForumPostId = post.id"
+            class="flex items-start gap-3 rounded-lg bg-bg-secondary px-4 py-3 transition-colors hover:bg-bg-hover"
+          >
+          <div class="flex flex-col justify-between">
+            <!-- Type badge -->
+            <span
+              class="mt-0.5 flex-shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider"
+              :class="post.type === 'thread' ? 'bg-violet-500/15 text-violet-400' : 'bg-sky-500/15 text-sky-400'"
+            >{{ post.type }}</span>
+
+            <!-- Vote score -->
+            <div class="mt-0.5 flex-shrink-0 pt-1 text-right">
+              <span
+                class="text-sm font-bold tabular-nums"
+                :class="post.vote_score > 0 ? 'text-emerald-400' : post.vote_score < 0 ? 'text-red-400' : 'text-text-muted'"
+              >{{ post.vote_score > 0 ? '+' : '' }}{{ post.vote_score }}</span>
+            </div>
+          </div>
+
+            <!-- Title + meta -->
+            <div class="min-w-0 flex-1">
+              <p class="truncate font-medium text-text-primary">{{ post.title }}</p>
+              <div class="mt-1 flex items-center gap-1.5 text-xs text-text-muted">
+                <UserAvatar
+                  :src="post.created_by_profile?.avatar_url"
+                  :alt="post.created_by_profile?.display_name"
+                  size="xs"
+                  class="flex-shrink-0"
+                />
+                <span>{{ post.created_by_profile?.display_name ?? 'Unknown' }}</span>
+                <span class="text-text-muted/40">·</span>
+                <span>{{ formatDate(post.created_at) }}</span>
+              </div>
+            </div>
+          </router-link>
+        </div>
+      </div>
+    </div>
+
+    <!-- Forum post view -->
+    <ForumPostView
+      v-else-if="activeView === 'forum-post' && activeForumPostId"
+      :post-id="activeForumPostId"
+      :space-id="serverId"
+      class="flex-1"
+      @back="activeView = 'forum'; backend.forum.listBySpace(serverId).then(posts => { forumPosts = posts }).catch(() => {})"
+    />
+
     <!-- Message list -->
-    <div ref="messageListEl" class="flex flex-1 flex-col overflow-y-auto px-4 py-4">
+    <div v-else-if="activeView === 'channel'" ref="messageListEl" class="flex flex-1 flex-col overflow-y-auto px-4 py-4">
       <!-- Empty state -->
       <div v-if="messages.length === 0" class="flex flex-1 flex-col items-center justify-center py-16 text-center">
         <div class="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-bg-tertiary">
@@ -1684,7 +1780,7 @@ function onServerHeaderContext(event: MouseEvent) {
     </div>
 
     <template #input>
-      <div class="px-4 pb-4">
+      <div v-if="activeView === 'channel'" class="px-4 pb-4">
         <!-- Reply bar -->
         <div
           v-if="replyingTo"
@@ -1919,7 +2015,13 @@ function onServerHeaderContext(event: MouseEvent) {
         </div>
 
         <p class="text-lg font-bold">{{ selectedMember.profile.display_name }}</p>
-        <p class="mb-1 text-sm text-text-muted">@{{ selectedMember.profile.username }}</p>
+        <div class="mb-1 flex items-center gap-2">
+          <p class="text-sm text-text-muted">@{{ selectedMember.profile.username }}</p>
+          <span class="flex items-center gap-0.5 rounded bg-violet-500/15 px-1.5 py-0.5 text-xs font-medium text-violet-400">
+            <svg class="h-3 w-3" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+            {{ selectedMember.profile.meta_points ?? 0 }}
+          </span>
+        </div>
         <span class="inline-block rounded px-2 py-0.5 text-xs font-medium"
           :class="{
             'bg-accent/20 text-accent': selectedMember.role === 'owner',
