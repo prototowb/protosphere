@@ -35,6 +35,7 @@ import PollCard from '@/components/chat/PollCard.vue'
 const ReportDialog = defineAsyncComponent(() => import('@/components/moderation/ReportDialog.vue'))
 const CreateForumPostDialog = defineAsyncComponent(() => import('@/components/forum/CreateForumPostDialog.vue'))
 const ForumPostView = defineAsyncComponent(() => import('@/components/forum/ForumPostView.vue'))
+const ForumCommentsPanel = defineAsyncComponent(() => import('@/components/forum/ForumCommentsPanel.vue'))
 const CreatePollDialog = defineAsyncComponent(() => import('@/components/chat/CreatePollDialog.vue'))
 const EventsPanel = defineAsyncComponent(() => import('@/components/community/EventsPanel.vue'))
 const PinnedMessagesPanel = defineAsyncComponent(() => import('@/components/chat/PinnedMessagesPanel.vue'))
@@ -179,19 +180,19 @@ const pendingForumMsg = ref<(Message & { profile: Profile }) | null>(null)
 
 type FPVRef = {
   post: { title: string; type: string; created_by: string } | null
+  editingTitle: string
   editingPage: boolean
   isPageType: boolean
   canEdit: boolean
   savingPage: boolean
-  drawerOpen: boolean
-  comments: unknown[]
   savePage: () => Promise<void>
   cancelEdit: () => void
   handleDeletePost: () => Promise<void>
   startEditing: () => void
-  toggleDrawer: () => void
 }
 const forumPostViewRef = ref<FPVRef | null>(null)
+const forumCommentsPanelRef = ref<{ count: number } | null>(null)
+const showForumComments = computed(() => activeView.value === 'forum-post' && !!forumPostViewRef.value?.isPageType)
 const defaultChannelId = computed(() =>
   channelsStore.channels.find((c) => c.is_default)?.id ?? channelsStore.channels[0]?.id ?? serverId.value
 )
@@ -1536,7 +1537,7 @@ function onServerHeaderContext(event: MouseEvent) {
           class="flex-shrink-0 text-sm text-text-muted hover:text-text-primary"
         >Forum</button>
         <span class="flex-shrink-0 text-text-muted/50">/</span>
-        <span class="truncate text-sm font-semibold text-text-primary">{{ forumPostViewRef?.post?.title ?? '…' }}</span>
+        <span class="truncate text-sm font-semibold text-text-primary">{{ (forumPostViewRef?.editingPage && forumPostViewRef?.editingTitle) ? forumPostViewRef.editingTitle : (forumPostViewRef?.post?.title ?? '…') }}</span>
 
         <div class="ml-auto flex flex-shrink-0 items-center gap-2">
           <template v-if="forumPostViewRef?.isPageType">
@@ -1548,13 +1549,6 @@ function onServerHeaderContext(event: MouseEvent) {
             </template>
             <button v-else-if="forumPostViewRef?.canEdit" @click="forumPostViewRef?.startEditing()" class="rounded bg-bg-tertiary px-3 py-1.5 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary">
               Edit page
-            </button>
-            <button
-              @click="forumPostViewRef?.toggleDrawer()"
-              :class="['flex items-center gap-1.5 rounded px-2.5 py-1.5 text-xs font-medium transition-colors', forumPostViewRef?.drawerOpen ? 'bg-accent/20 text-accent' : 'text-text-muted hover:bg-bg-hover']"
-            >
-              <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-              {{ forumPostViewRef?.comments?.length ?? 0 }}
             </button>
           </template>
           <button
@@ -1642,6 +1636,7 @@ function onServerHeaderContext(event: MouseEvent) {
       ref="forumPostViewRef"
       :post-id="activeForumPostId"
       :space-id="serverId"
+      :comment-count="showForumComments ? (forumCommentsPanelRef?.count ?? undefined) : undefined"
       class="flex-1"
       @back="activeView = 'forum'; backend.forum.listBySpace(serverId).then(posts => { forumPosts = posts }).catch(() => {})"
     />
@@ -1960,10 +1955,28 @@ function onServerHeaderContext(event: MouseEvent) {
       </div>
     </template>
 
+    <template #members-header>
+      <template v-if="showForumComments">
+        <span class="text-xs font-semibold uppercase text-text-muted">Comments</span>
+        <span class="ml-1.5 text-xs text-text-muted">· {{ forumCommentsPanelRef?.count ?? 0 }}</span>
+      </template>
+      <template v-else>
+        <span class="text-xs font-semibold uppercase text-text-muted">Members</span>
+        <span class="ml-1.5 text-xs text-text-muted">· {{ members.length }}</span>
+      </template>
+    </template>
+
     <template #members>
+      <!-- Forum page comments (replaces member list for page-type posts) -->
+      <ForumCommentsPanel
+        v-if="showForumComments && activeForumPostId"
+        ref="forumCommentsPanelRef"
+        :post-id="activeForumPostId"
+      />
+
       <!-- Search panel -->
       <MessageSearch
-        v-if="searchOpen"
+        v-else-if="searchOpen"
         v-model:query="searchQuery"
         :results="searchResults"
         @close="closeSearch"
@@ -2021,7 +2034,7 @@ function onServerHeaderContext(event: MouseEvent) {
       />
 
       <!-- Default member list -->
-      <div v-else class="p-4">
+      <div v-else class="h-full overflow-y-auto p-4">
         <div v-for="group in memberRoleGroups" :key="group.role" class="mb-3">
           <h3 class="mb-1 text-xs font-semibold uppercase text-text-muted">
             {{ group.label }} — {{ group.members.length }}

@@ -3,6 +3,7 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { backend } from '@/lib/backend'
 import { useAuthStore } from '@/stores/auth'
 import { useToastStore } from '@/stores/toast'
+import { useUiStore } from '@/stores/ui'
 import UserAvatar from '@/components/user/UserAvatar.vue'
 import MessageAttachments from '@/components/messages/MessageAttachments.vue'
 import ForumCommentTree from '@/components/forum/ForumCommentTree.vue'
@@ -17,11 +18,12 @@ import type {
   ForumCommentReaction, Profile, Message, PageContent,
 } from '@/lib/types'
 
-const props = defineProps<{ postId: string; spaceId: string }>()
+const props = defineProps<{ postId: string; spaceId: string; commentCount?: number }>()
 const emit = defineEmits<{ back: [] }>()
 
 const authStore = useAuthStore()
 const toastStore = useToastStore()
+const uiStore = useUiStore()
 
 type FullPost = ForumPost & {
   created_by_profile: Profile
@@ -47,9 +49,9 @@ const emojiDrawerAnchor = ref<{ bottom: number; right: number } | null>(null)
 // Page type state
 const savedContent = ref<PageContent>({ blocks: [], customCss: '' })
 const pageContent = ref<PageContent>({ blocks: [], customCss: '' })
+const editingTitle = ref('')
 const savingPage = ref(false)
 const editingPage = ref(false)
-const drawerOpen = ref(false)
 const showInviteDialog = ref(false)
 
 const isPageType = computed(() => post.value?.type === 'page')
@@ -90,6 +92,14 @@ async function loadPost() {
     post.value = postData
     const c = postData.content as PageContent | null
     const validated: PageContent = (c && Array.isArray(c.blocks)) ? c : { blocks: [], customCss: '' }
+    // Auto-seed pinned source message block when the page has no content yet
+    if (validated.blocks.length === 0 && postData.source_message?.content) {
+      const id = genId()
+      const _author = postData.source_message.profile?.display_name || undefined
+      const _date = postData.source_message.created_at || undefined
+      const html = `<p>${escapeHtml(postData.source_message.content)}</p>`
+      validated.blocks = [{ id, type: 'text' as const, html, _author, _date, _pinned: true as const, _variant: 'quote' as const }]
+    }
     savedContent.value = validated
     pageContent.value = JSON.parse(JSON.stringify(validated))
     editingPage.value = false
@@ -275,10 +285,12 @@ async function savePage() {
   if (!authStore.user?.id) return
   savingPage.value = true
   try {
-    const updated = await backend.forum.updatePageContent(props.postId, pageContent.value, authStore.user.id)
+    const newTitle = editingTitle.value.trim() || (post.value?.title ?? '')
+    const updated = await backend.forum.updatePageContent(props.postId, pageContent.value, authStore.user.id, newTitle)
     if (post.value) {
       post.value.updated_at = updated.updated_at
       post.value.updated_by = updated.updated_by
+      post.value.title = newTitle
     }
     savedContent.value = JSON.parse(JSON.stringify(pageContent.value))
     editingPage.value = false
@@ -292,8 +304,34 @@ async function savePage() {
 
 function cancelEdit() {
   pageContent.value = JSON.parse(JSON.stringify(savedContent.value))
+  editingTitle.value = post.value?.title ?? ''
   editingPage.value = false
 }
+
+function startEditing() {
+  editingTitle.value = post.value?.title ?? ''
+  editingPage.value = true
+  // Auto-seed a pinned message text block when blocks are empty and source message has content
+  if (pageContent.value.blocks.length === 0 && post.value?.source_message?.content) {
+    const id = genId()
+    const _author = post.value.source_message.profile?.display_name || undefined
+    const _date = post.value.source_message.created_at || undefined
+    const html = `<p>${escapeHtml(post.value.source_message.content)}</p>`
+    pageContent.value = {
+      ...pageContent.value,
+      blocks: [{ id, type: 'text' as const, html, _author, _date, _pinned: true as const, _variant: 'quote' as const }],
+    }
+  }
+}
+
+const lockedHeroSubtitle = computed(() => {
+  if (!post.value) return ''
+  const parts = [`by ${post.value.created_by_profile?.display_name ?? 'Unknown'}`, formatTime(post.value.created_at)]
+  if (post.value.collaborators.length) {
+    parts.push(`+${post.value.collaborators.length} collaborator${post.value.collaborators.length > 1 ? 's' : ''}`)
+  }
+  return parts.join(' · ')
+})
 
 function handleCollaboratorAdded(_userId: string) {
   showInviteDialog.value = false
@@ -304,6 +342,12 @@ function handleCollaboratorAdded(_userId: string) {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+function genId() { return Math.random().toString(36).slice(2, 10) }
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
 function formatTime(iso: string) {
   const d = new Date(iso)
   return d.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }) + ' at ' +
@@ -312,17 +356,15 @@ function formatTime(iso: string) {
 
 defineExpose({
   post,
+  editingTitle,
   editingPage,
   isPageType,
   canEdit,
   savingPage,
-  drawerOpen,
-  comments,
   savePage,
   cancelEdit,
   handleDeletePost,
-  startEditing: () => { editingPage.value = true },
-  toggleDrawer: () => { drawerOpen.value = !drawerOpen.value },
+  startEditing,
 })
 </script>
 
@@ -337,42 +379,69 @@ defineExpose({
     <div v-else-if="post" class="flex flex-1 flex-col overflow-hidden">
 
       <!-- ── PAGE TYPE ──────────────────────────────────────────────────── -->
-      <div v-if="isPageType" class="relative flex flex-1 overflow-hidden">
+      <div v-if="isPageType" class="flex flex-1 flex-col overflow-hidden">
 
         <!-- Edit mode: full-height block editor -->
-        <div v-if="editingPage" class="flex flex-1 overflow-hidden" :class="drawerOpen ? 'mr-80' : ''">
+        <div v-if="editingPage" class="flex flex-1 overflow-hidden">
           <BlockEditor
             v-model="pageContent"
+            :title="editingTitle"
             :source-message="post.source_message"
+            :locked-hero="{ title: editingTitle || post.title, subtitle: lockedHeroSubtitle }"
+            @update:title="editingTitle = $event"
             class="flex-1 overflow-hidden"
           />
         </div>
 
         <!-- View mode: meta + rendered page -->
-        <div v-else class="flex-1 overflow-y-auto" :class="drawerOpen ? 'mr-80' : ''">
+        <div v-else class="flex-1 overflow-y-auto">
           <div class="mx-auto max-w-3xl px-6 py-8">
-            <!-- Post meta -->
-            <div class="mb-8">
-              <span class="rounded px-1.5 py-0.5 text-xs font-medium uppercase tracking-wide bg-sky-500/20 text-sky-400">page</span>
-              <h1 class="mt-2 text-3xl font-bold text-text-primary">{{ post.title }}</h1>
-              <div class="mt-3 flex flex-wrap items-center gap-3 text-sm text-text-muted">
+            <!-- Hero header -->
+            <div
+              class="relative flex flex-col rounded-xl p-8 mb-8"
+              :class="savedContent.lockedHeroStyle?.backgroundUrl ? '' : 'bg-gradient-to-br from-sky-500/20 to-bg-tertiary'"
+              :style="savedContent.lockedHeroStyle?.backgroundUrl ? `background-image:url(${savedContent.lockedHeroStyle.backgroundUrl});background-size:cover;background-position:center` : ''"
+            >
+              <div v-if="savedContent.lockedHeroStyle?.backgroundUrl" class="absolute inset-0 rounded-xl bg-black/40" />
+              <!-- Post Meta -->
+              <div class="relative mb-3 flex items-center gap-2">
+                <span class="rounded px-1.5 py-0.5 text-xs font-medium uppercase tracking-wide bg-sky-500/30 text-sky-400">page</span>
+                <button
+                  @click="uiStore.memberSidebarOpen = !uiStore.memberSidebarOpen"
+                  class="flex items-center gap-1 rounded px-1.5 py-0.5 transition-colors"
+                  :class="uiStore.memberSidebarOpen ? 'text-white bg-white/20' : 'text-white/70 hover:text-white hover:bg-white/10'"
+                  title="Toggle comments"
+                >
+                  <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                  <span class="text-sm">{{ props.commentCount ?? comments.length }}</span>
+                </button>
+                <button v-if="canInvite" @click="showInviteDialog = true"
+                class="ml-auto flex items-center gap-1 rounded bg-white/10 px-2
+                py-0.5 text-xs text-white/80 hover:bg-white/20 hover:text-white
+                transition-colors">
+                  <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                  Invite
+                </button>
+              </div>
+              <!-- Title -->
+              <h1 class="relative text-3xl font-bold leading-tight text-white drop-shadow" :class="{ 'text-center': savedContent.lockedHeroStyle?.textAlign === 'center', 'text-right': savedContent.lockedHeroStyle?.textAlign === 'right' }">{{ post.title }}</h1>
+              <!-- Author Meta -->
+              <div class="relative mt-3 flex flex-wrap items-center gap-3 text-sm text-white/70">
                 <div class="flex items-center gap-2">
-                  <UserAvatar :src="post.created_by_profile?.avatar_url" :alt="post.created_by_profile?.display_name" size="sm" />
-                  <span class="font-medium text-text-secondary">{{ post.created_by_profile?.display_name ?? 'Unknown' }}</span>
+                  <UserAvatar :src="post.created_by_profile?.avatar_url"
+                  :alt="post.created_by_profile?.display_name" size="sm" />
+                  <div class="min-w-0 flex-1 flex flex-col">
+                    <span class="font-medium text-white/90">{{ post.created_by_profile?.display_name ?? 'Unknown' }}</span>
+                    <span class="text-xs">{{ formatTime(post.created_at) }}</span>
+                  </div>
+                <span v-if="post.updated_by" class="text-xs self-end">· edited {{ formatTime(post.updated_at) }}</span>
                 </div>
-                <span>·</span>
-                <span>{{ formatTime(post.created_at) }}</span>
-                <span v-if="post.updated_by" class="text-xs">· edited {{ formatTime(post.updated_at) }}</span>
                 <div v-if="post.collaborators.length" class="flex items-center gap-1">
-                  <span class="text-xs text-text-muted">+</span>
+                  <span class="text-xs text-white/50">+</span>
                   <div class="flex -space-x-1.5">
                     <UserAvatar v-for="c in post.collaborators" :key="c.user_id" :src="c.user.avatar_url" :alt="c.user.display_name" size="xs" class="ring-2 ring-bg-primary" :title="c.user.display_name" />
                   </div>
                 </div>
-                <button v-if="canInvite" @click="showInviteDialog = true" class="ml-1 flex items-center gap-1 rounded bg-bg-secondary px-2 py-0.5 text-xs text-text-muted hover:bg-bg-hover hover:text-text-primary">
-                  <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                  Invite
-                </button>
               </div>
             </div>
             <!-- Rendered page content -->
@@ -380,20 +449,6 @@ defineExpose({
           </div>
         </div>
 
-        <!-- Comment drawer -->
-        <aside v-if="drawerOpen" class="absolute right-0 top-0 bottom-0 w-80 overflow-y-auto border-l border-bg-tertiary bg-bg-secondary px-4 py-6">
-          <h3 class="mb-4 text-sm font-semibold text-text-primary">Comments</h3>
-          <div class="mb-4">
-            <div class="rounded-lg bg-bg-primary ring-1 ring-bg-tertiary focus-within:ring-accent overflow-hidden">
-              <textarea placeholder="Write a comment…" class="w-full bg-transparent px-3 py-2.5 text-sm text-text-primary placeholder-text-muted outline-none resize-none" v-model="newComment" rows="3" @keydown.ctrl.enter="submitTopComment" />
-              <div class="flex justify-end border-t border-bg-tertiary px-3 py-1.5">
-                <button @click="submitTopComment" :disabled="!newComment.trim() || posting" class="rounded bg-accent px-3 py-1 text-xs font-medium text-white hover:bg-accent-hover disabled:opacity-50">Comment</button>
-              </div>
-            </div>
-          </div>
-          <ForumCommentTree :comments="comments" :parent-id="null" :depth="0" :can-post="!!authStore.user" :user-votes="commentVoteMap" :reactions="reactionMap" :current-user-id="authStore.user?.id ?? null" @reply="handleReply" @vote="handleCommentVote" @remove-vote="handleRemoveCommentVote" @react="handleReact" @remove-reaction="handleRemoveReaction" @edit="handleEditComment" @delete="handleDeleteComment" />
-          <p v-if="comments.length === 0" class="text-center text-xs text-text-muted py-4">No comments yet.</p>
-        </aside>
       </div>
 
       <!-- ── THREAD TYPE ────────────────────────────────────────────────── -->

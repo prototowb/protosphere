@@ -11,6 +11,7 @@ const props = defineProps<{
   comments: (ForumComment & { profile: Profile })[]
   parentId?: string | null
   depth?: number
+  compact?: boolean
   canPost: boolean
   userVotes: Record<string, 1 | -1>
   reactions: Record<string, ForumCommentReaction[]>
@@ -185,44 +186,27 @@ const depthColors = ['border-violet-500/40', 'border-sky-500/40', 'border-emeral
     <div
       v-for="comment in children"
       :key="comment.id"
-      :class="[depth > 0 ? `ml-8 border-l-2 pl-5 ${depthColors[(depth - 1) % depthColors.length]}` : '']"
+      :class="[depth > 0 ? `${props.compact ? 'ml-3 pl-2' : 'ml-8 pl-5'} border-l-2 ${depthColors[(depth - 1) % depthColors.length]}` : '']"
     >
       <!-- Comment card -->
-      <div class="mb-2 rounded-lg bg-bg-secondary px-4 py-3">
+      <div :class="['mb-1.5 rounded-lg bg-bg-secondary', props.compact ? 'px-2.5 py-2' : 'px-4 py-3']">
         <!-- Author row -->
-        <div class="mb-2 flex items-center gap-2">
-          <UserAvatar
-            :src="comment.profile?.avatar_url"
-            :alt="comment.profile?.display_name"
-            size="xs"
-            class="flex-shrink-0"
-          />
-          <span class="text-sm font-semibold text-text-primary">{{ comment.profile?.display_name ?? 'Unknown' }}</span>
-          <span class="text-xs text-text-muted">{{ formatDate(comment.created_at) }}</span>
-          <span v-if="comment.edited_at" class="text-xs text-text-muted
-          italic">(edited)</span>
-          
+        <div class="mb-1.5 flex gap-1.5 items-center">
+          <UserAvatar :src="comment.profile?.avatar_url" :alt="comment.profile?.display_name" size="xs" class="mt-0.5 flex-shrink-0" />
+          <div class="min-w-0 flex flex-1" :class="[props.compact ? 'flex-col' : '']">
+            <p class="text-sm font-semibold text-text-primary leading-none mb-0.5">{{ comment.profile?.display_name ?? 'Unknown' }}</p>
+            <p class="text-xs text-text-muted leading-none" :class="[props.compact ? 'ml-0' : 'ml-auto']">{{ formatDate(comment.created_at) }}<span v-if="comment.edited_at" class="italic"> · edited</span></p>
+          </div>
           <!-- Edit / Delete buttons (own comments only, not deleted) -->
           <template v-if="canPost && comment.author_id === currentUserId && !comment.is_deleted && editingCommentId !== comment.id">
-            <button
-              @click="startEdit(comment)"
-              class="ml-auto text-xs text-text-muted hover:text-text-primary"
-              title="Edit"
-            >
-              <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-              </svg>
-            </button>
-            <button
-              @click="emit('delete', comment.id)"
-              class="text-xs text-text-muted hover:text-red-400"
-              title="Delete"
-            >
-              <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
-              </svg>
-            </button>
+            <div class="flex flex-shrink-0 items-center gap-1">
+              <button @click="startEdit(comment)" class="text-text-muted hover:text-text-primary" title="Edit">
+                <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+              </button>
+              <button @click="emit('delete', comment.id)" class="text-text-muted hover:text-red-400" title="Delete">
+                <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+              </button>
+            </div>
           </template>
         </div>
 
@@ -266,11 +250,11 @@ const depthColors = ['border-violet-500/40', 'border-sky-500/40', 'border-emeral
         </div>
 
         <!-- Content -->
-        <p v-else-if="comment.is_deleted" class="ml-8 mb-3 text-sm text-text-muted italic">This comment was deleted.</p>
-        <p v-else class="ml-8 mb-3 break-words text-sm text-text-secondary leading-relaxed"><RichText :text="comment.content" /></p>
+        <p v-else-if="comment.is_deleted" :class="[props.compact ? 'ml-5 mb-1.5' : 'ml-8 mb-3', 'text-xs text-text-muted italic']">This comment was deleted.</p>
+        <p v-else :class="[props.compact ? 'mb-1.5' : 'ml-8 mb-3', 'break-words text-sm text-text-secondary leading-relaxed']"><RichText :text="comment.content" /></p>
 
         <!-- Action bar (hidden for deleted comments) -->
-        <div v-if="!comment.is_deleted" class="flex items-center gap-3">
+        <div v-if="!comment.is_deleted" :class="['flex flex-wrap items-center', props.compact ? 'gap-1.5' : 'gap-3']">
           <!-- Votes -->
           <div class="flex items-center gap-1">
             <button
@@ -386,10 +370,11 @@ const depthColors = ['border-violet-500/40', 'border-sky-500/40', 'border-emeral
       </Transition>
 
       <!-- Recursive children -->
-      <ForumCommentTree class="mt-2"
+      <ForumCommentTree class="mt-1.5"
         :comments="comments"
         :parent-id="comment.id"
         :depth="depth + 1"
+        :compact="compact"
         :can-post="canPost"
         :user-votes="userVotes"
         :reactions="reactions"

@@ -252,7 +252,7 @@ watch(() => authStore.user?.id, async (userId) => {
           <slot name="members-header" />
         </div>
       </div>
-      <div class="flex-1 overflow-y-auto">
+      <div class="flex-1 overflow-hidden">
         <slot name="members">
           <div class="p-4">
             <h3 class="mb-2 text-xs font-semibold uppercase text-text-muted">Members</h3>

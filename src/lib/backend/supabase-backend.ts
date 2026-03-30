@@ -962,10 +962,10 @@ export function createSupabaseBackend(): Backend {
         if (error) throw error
       },
 
-      async updatePageContent(postId, content, updatedBy) {
+      async updatePageContent(postId, content, updatedBy, title) {
         const { data, error } = await client
           .from('forum_posts')
-          .update({ content, updated_by: updatedBy })
+          .update({ content, updated_by: updatedBy, ...(title !== undefined ? { title } : {}) })
           .eq('id', postId)
           .select()
           .single()

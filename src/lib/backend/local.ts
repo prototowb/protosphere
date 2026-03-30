@@ -1246,12 +1246,12 @@ export function createLocalBackend(): Backend {
         }
       },
 
-      async updatePageContent(postId, content, updatedBy) {
+      async updatePageContent(postId, content, updatedBy, title) {
         const posts = readJson<ForumPost[]>('protosphere_forum_posts', [])
         const idx = posts.findIndex((p) => p.id === postId)
         if (idx === -1) throw new Error('Forum post not found')
         const post = posts[idx]!
-        const updated = { ...post, content, updated_by: updatedBy, updated_at: new Date().toISOString() }
+        const updated = { ...post, content, updated_by: updatedBy, updated_at: new Date().toISOString(), ...(title !== undefined ? { title } : {}) }
         posts[idx] = updated
         localStorage.setItem('protosphere_forum_posts', JSON.stringify(posts))
         return updated

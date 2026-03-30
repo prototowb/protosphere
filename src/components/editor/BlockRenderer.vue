@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { PageContent, Block } from '@/lib/types'
+import type { PageContent, Block, TextBlock } from '@/lib/types'
 
 const props = defineProps<{ content: PageContent }>()
 
@@ -28,6 +28,15 @@ function sanitise(html: string): string {
     if (/^javascript:/i.test(href.trim())) el.removeAttribute('href')
   })
   return div.innerHTML
+}
+
+const variantWrap: Record<string, string> = {
+  quote:     'border-l-4 border-accent/40 pl-4',
+  highlight: 'rounded-lg border border-accent/20 bg-accent/5 px-4 py-3',
+}
+
+function textWrapClass(b: TextBlock): string {
+  return (b._pinned && b._variant && b._variant !== 'default') ? (variantWrap[b._variant] ?? '') : ''
 }
 
 const scopeId = computed(() => `bpe-${Math.random().toString(36).slice(2, 7)}`)
@@ -62,7 +71,7 @@ const scopedCss = computed(() => {
       </div>
 
       <!-- Text -->
-      <div v-else-if="block.type === 'text'">
+      <div v-else-if="block.type === 'text'" :class="textWrapClass(block)">
         <div class="prose prose-invert max-w-none text-text-secondary" v-html="sanitise(block.html)" />
         <p v-if="block._author || block._date" class="mt-1 text-xs opacity-40">
           — {{ [block._author, block._date ? new Date(block._date).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }) : null].filter(Boolean).join(' · ') }}
@@ -70,8 +79,10 @@ const scopedCss = computed(() => {
       </div>
 
       <!-- Image -->
-      <figure v-else-if="block.type === 'image'" :class="block.fullWidth ? 'w-full' : 'mx-auto max-w-2xl'">
-        <img :src="block.url" :alt="block.caption ?? ''" class="w-full rounded-lg object-cover" />
+      <figure v-else-if="block.type === 'image'">
+        <img :src="block.url" :alt="block.caption ?? ''" class="rounded-lg
+        object-cover"  :class="block.fullWidth ? 'w-full' : 'mx-auto max-w-2xl'"
+        />
         <figcaption v-if="block.caption" class="mt-2 text-center text-sm text-text-muted">{{ block.caption }}</figcaption>
       </figure>
 

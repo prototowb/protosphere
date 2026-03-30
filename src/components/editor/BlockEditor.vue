@@ -6,6 +6,8 @@ import type { Block, PageContent, HeroBlock, TextBlock, ImageBlock, ColumnsBlock
 const props = defineProps<{
   modelValue: PageContent
   readOnly?: boolean
+  title?: string
+  lockedHero?: { title: string; subtitle: string }
   sourceMessage?: {
     content?: string | null
     attachments?: Attachment[] | null
@@ -13,7 +15,7 @@ const props = defineProps<{
     created_at?: string | null
   } | null
 }>()
-const emit = defineEmits<{ 'update:modelValue': [PageContent] }>()
+const emit = defineEmits<{ 'update:modelValue': [PageContent]; 'update:title': [string] }>()
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -23,6 +25,7 @@ function uid() { return Math.random().toString(36).slice(2, 10) }
 const safeValue = computed<PageContent>(() => ({
   blocks: Array.isArray(props.modelValue?.blocks) ? props.modelValue.blocks : [],
   customCss: props.modelValue?.customCss ?? '',
+  lockedHeroStyle: props.modelValue?.lockedHeroStyle,
 }))
 
 function patch(blocks: Block[]) {
@@ -31,12 +34,19 @@ function patch(blocks: Block[]) {
 function patchCss(customCss: string) {
   emit('update:modelValue', { ...safeValue.value, customCss })
 }
+function patchLockedHeroStyle(updates: { backgroundUrl?: string; textAlign?: 'left' | 'center' | 'right' }) {
+  emit('update:modelValue', {
+    ...safeValue.value,
+    lockedHeroStyle: { ...safeValue.value.lockedHeroStyle, ...updates },
+  })
+}
 
 // ── UI state ──────────────────────────────────────────────────────────────────
 
 type Tab = 'edit' | 'preview' | 'css'
 const activeTab = ref<Tab>('edit')
 const editingId = ref<string | null>(null)
+const lockedHeroEditing = ref(false)
 const addMenuOpen = ref(false)
 
 const editingBlock = computed(() =>
@@ -109,6 +119,16 @@ function importAttachment(att: Attachment) {
   editingId.value = id
 }
 
+function isPinned(block: Block): boolean {
+  return block.type === 'text' && !!(block as TextBlock)._pinned
+}
+
+function stripHtml(html: string): string {
+  const div = document.createElement('div')
+  div.innerHTML = html
+  return div.textContent ?? ''
+}
+
 // ── block type meta ───────────────────────────────────────────────────────────
 
 const blockTypes: { type: Block['type']; label: string; icon: string }[] = [
@@ -137,6 +157,18 @@ const blockTypes: { type: Block['type']; label: string; icon: string }[] = [
 
     <!-- Preview tab -->
     <div v-if="activeTab === 'preview'" class="flex-1 overflow-y-auto p-6">
+      <div
+        v-if="lockedHero"
+        class="relative flex min-h-40 flex-col justify-end rounded-xl p-8 mb-6"
+        :class="safeValue.lockedHeroStyle?.backgroundUrl ? '' : 'bg-gradient-to-br from-accent/30 to-bg-tertiary'"
+        :style="safeValue.lockedHeroStyle?.backgroundUrl ? `background-image:url(${safeValue.lockedHeroStyle.backgroundUrl});background-size:cover;background-position:center` : ''"
+      >
+        <div v-if="safeValue.lockedHeroStyle?.backgroundUrl" class="absolute inset-0 rounded-xl bg-black/40" />
+        <div class="relative" :class="{ 'text-center': safeValue.lockedHeroStyle?.textAlign === 'center', 'text-right': safeValue.lockedHeroStyle?.textAlign === 'right' }">
+          <h1 class="text-3xl font-bold leading-tight text-white drop-shadow">{{ lockedHero.title }}</h1>
+          <p v-if="lockedHero.subtitle" class="mt-2 text-lg text-white/80 drop-shadow">{{ lockedHero.subtitle }}</p>
+        </div>
+      </div>
       <BlockRenderer :content="safeValue" />
     </div>
 
@@ -158,10 +190,21 @@ const blockTypes: { type: Block['type']; label: string; icon: string }[] = [
       <!-- Block list (left) -->
       <div class="flex w-64 flex-shrink-0 flex-col gap-1 overflow-y-auto border-r border-bg-tertiary bg-bg-primary p-2">
 
+        <!-- Locked hero (clickable to edit style) -->
+        <div
+          v-if="lockedHero"
+          @click="lockedHeroEditing = !lockedHeroEditing; editingId = null"
+          :class="['flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm transition-colors', lockedHeroEditing ? 'bg-accent/20 text-accent' : 'text-text-muted hover:bg-bg-hover hover:text-text-primary']"
+        >
+          <svg class="h-3.5 w-3.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          <span class="flex-1 truncate">Title</span>
+          <span class="text-xs opacity-60">locked</span>
+        </div>
+
         <div
           v-for="(block, idx) in safeValue.blocks"
           :key="block.id"
-          @click="editingId = editingId === block.id ? null : block.id"
+          @click="editingId = editingId === block.id ? null : block.id; lockedHeroEditing = false"
           :class="['group flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm transition-colors', editingId === block.id ? 'bg-accent/20 text-accent' : 'hover:bg-bg-hover text-text-secondary']"
         >
           <span class="flex-1 truncate capitalize">{{ block.type.replace('-', ' ') }}</span>
@@ -173,7 +216,7 @@ const blockTypes: { type: Block['type']; label: string; icon: string }[] = [
             <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
           </button>
           <!-- Delete -->
-          <button @click.stop="removeBlock(block.id)" class="hidden rounded p-0.5 text-text-muted hover:text-red-400 group-hover:block">
+          <button v-if="!isPinned(block)" @click.stop="removeBlock(block.id)" class="hidden rounded p-0.5 text-text-muted hover:text-red-400 group-hover:block">
             <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </div>
@@ -182,7 +225,7 @@ const blockTypes: { type: Block['type']; label: string; icon: string }[] = [
         <template v-if="sourceMessage">
           <div class="mt-2 border-t border-bg-tertiary pt-2">
             <button
-              v-if="sourceMessage.content"
+              v-if="sourceMessage.content && !safeValue.blocks.some(b => isPinned(b))"
               @click="importSourceText(sourceMessage.content!)"
               class="flex w-full items-center gap-2 rounded px-2 py-1.5 text-sm text-text-secondary hover:bg-bg-hover hover:text-text-primary"
             >
@@ -228,7 +271,41 @@ const blockTypes: { type: Block['type']; label: string; icon: string }[] = [
 
       <!-- Block properties (right) -->
       <div class="flex-1 overflow-y-auto p-4">
-        <p v-if="!editingBlock" class="text-sm text-text-muted">Select a block to edit its properties.</p>
+
+        <!-- ── Locked hero properties ── -->
+        <div v-if="lockedHeroEditing && lockedHero" class="space-y-3">
+          <label class="block text-xs font-semibold uppercase text-text-muted">Title</label>
+          <div class="relative">
+            <input
+              :value="title ?? lockedHero.title"
+              @input="emit('update:title', ($event.target as HTMLInputElement).value.slice(0, 300))"
+              maxlength="300"
+              class="w-full rounded border border-bg-tertiary bg-bg-primary px-3 py-2 text-sm text-text-primary outline-none focus:border-accent pr-12"
+              placeholder="Post title…"
+            />
+            <span class="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-text-muted">{{ (title ?? lockedHero.title).length }}/300</span>
+          </div>
+          <p class="text-xs text-text-muted">Meta (author, date) comes from the post.</p>
+          <label class="block text-xs font-semibold uppercase text-text-muted">Background image URL</label>
+          <input
+            :value="safeValue.lockedHeroStyle?.backgroundUrl ?? ''"
+            @input="patchLockedHeroStyle({ backgroundUrl: ($event.target as HTMLInputElement).value || undefined })"
+            class="w-full rounded border border-bg-tertiary bg-bg-primary px-3 py-2 text-sm text-text-primary outline-none focus:border-accent"
+            placeholder="https://…"
+          />
+          <label class="block text-xs font-semibold uppercase text-text-muted">Text alignment</label>
+          <select
+            :value="safeValue.lockedHeroStyle?.textAlign ?? 'left'"
+            @change="patchLockedHeroStyle({ textAlign: ($event.target as HTMLSelectElement).value as 'left' | 'center' | 'right' })"
+            class="w-full rounded border border-bg-tertiary bg-bg-primary px-3 py-2 text-sm text-text-primary outline-none focus:border-accent"
+          >
+            <option value="left">Left</option>
+            <option value="center">Center</option>
+            <option value="right">Right</option>
+          </select>
+        </div>
+
+        <p v-else-if="!editingBlock" class="text-sm text-text-muted">Select a block to edit its properties.</p>
 
         <template v-else>
 
@@ -249,17 +326,37 @@ const blockTypes: { type: Block['type']; label: string; icon: string }[] = [
           </div>
 
           <!-- ── Text ── -->
-          <div v-else-if="editingBlock.type === 'text'" class="space-y-2">
-            <label class="block text-xs font-semibold uppercase text-text-muted">HTML content</label>
-            <p class="text-xs text-text-muted">Plain HTML — headings, paragraphs, lists, links, bold/italic. No scripts.</p>
-            <textarea
-              :value="(editingBlock as TextBlock).html"
-              @input="updateBlock(editingBlock.id, { html: ($event.target as HTMLTextAreaElement).value })"
-              rows="10"
-              class="w-full resize-y rounded border border-bg-tertiary bg-bg-primary px-3 py-2 font-mono text-sm text-text-primary outline-none focus:border-accent"
-              spellcheck="false"
-            />
-          </div>
+          <template v-else-if="editingBlock.type === 'text'">
+            <!-- Pinned source block: variant selector only, content read-only -->
+            <div v-if="(editingBlock as TextBlock)._pinned" class="space-y-3">
+              <p class="text-xs text-text-muted">Source message — content cannot be edited.</p>
+              <div class="line-clamp-4 rounded border border-bg-tertiary bg-bg-primary px-3 py-2 text-sm text-text-secondary opacity-60 select-none">
+                {{ stripHtml((editingBlock as TextBlock).html) }}
+              </div>
+              <label class="block text-xs font-semibold uppercase text-text-muted">Style variant</label>
+              <select
+                :value="(editingBlock as TextBlock)._variant ?? 'quote'"
+                @change="updateBlock(editingBlock.id, { _variant: ($event.target as HTMLSelectElement).value as TextBlock['_variant'] } as Partial<Block>)"
+                class="w-full rounded border border-bg-tertiary bg-bg-primary px-3 py-2 text-sm text-text-primary outline-none focus:border-accent"
+              >
+                <option value="default">Plain</option>
+                <option value="quote">Quote</option>
+                <option value="highlight">Highlight</option>
+              </select>
+            </div>
+            <!-- Normal text block: HTML editor -->
+            <div v-else class="space-y-2">
+              <label class="block text-xs font-semibold uppercase text-text-muted">HTML content</label>
+              <p class="text-xs text-text-muted">Plain HTML — headings, paragraphs, lists, links, bold/italic. No scripts.</p>
+              <textarea
+                :value="(editingBlock as TextBlock).html"
+                @input="updateBlock(editingBlock.id, { html: ($event.target as HTMLTextAreaElement).value })"
+                rows="10"
+                class="w-full resize-y rounded border border-bg-tertiary bg-bg-primary px-3 py-2 font-mono text-sm text-text-primary outline-none focus:border-accent"
+                spellcheck="false"
+              />
+            </div>
+          </template>
 
           <!-- ── Image ── -->
           <div v-else-if="editingBlock.type === 'image'" class="space-y-3">

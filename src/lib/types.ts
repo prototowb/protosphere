@@ -368,7 +368,7 @@ export interface DmNotificationPreference {
 // ── Block editor ─────────────────────────────────────────────────────────────
 
 export interface HeroBlock    { id: string; type: 'hero';      title: string; subtitle: string; backgroundUrl?: string; textAlign?: 'left' | 'center' | 'right' }
-export interface TextBlock    { id: string; type: 'text';      html: string; _author?: string; _date?: string }
+export interface TextBlock    { id: string; type: 'text';      html: string; _author?: string; _date?: string; _pinned?: true; _variant?: 'default' | 'quote' | 'highlight' }
 export interface ImageBlock   { id: string; type: 'image';     url: string; caption?: string; fullWidth?: boolean }
 export interface ColumnsBlock { id: string; type: 'columns';   cols: 2 | 3; items: string[] }
 export interface CalloutBlock { id: string; type: 'callout';   variant: 'info' | 'warning' | 'success' | 'error'; title?: string; text: string }
@@ -380,6 +380,7 @@ export type Block = HeroBlock | TextBlock | ImageBlock | ColumnsBlock | CalloutB
 export interface PageContent {
   blocks: Block[]
   customCss: string
+  lockedHeroStyle?: { backgroundUrl?: string; textAlign?: 'left' | 'center' | 'right' }
 }
 
 export interface ForumPost {
