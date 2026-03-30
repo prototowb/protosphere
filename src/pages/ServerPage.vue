@@ -177,6 +177,25 @@ const activeForumPostId = ref<string | null>(null)
 const showForumPostDialog = ref(false)
 const pendingForumMsg = ref<(Message & { profile: Profile }) | null>(null)
 
+type FPVRef = {
+  post: { value: { title: string; type: string; created_by: string } | null }
+  editingPage: { value: boolean }
+  isPageType: { value: boolean }
+  canEdit: { value: boolean }
+  savingPage: { value: boolean }
+  drawerOpen: { value: boolean }
+  comments: { value: unknown[] }
+  savePage: () => Promise<void>
+  cancelEdit: () => void
+  handleDeletePost: () => Promise<void>
+  startEditing: () => void
+  toggleDrawer: () => void
+}
+const forumPostViewRef = ref<FPVRef | null>(null)
+const defaultChannelId = computed(() =>
+  channelsStore.channels.find((c) => c.is_default)?.id ?? channelsStore.channels[0]?.id ?? serverId.value
+)
+
 // Announcement space: only MANAGE_MESSAGES holders can post
 const isAnnouncementSpace = computed(() => currentServer.value?.space_type === 'announcement')
 const canPostInChannel = computed(() => !isAnnouncementSpace.value || canModerate.value)
@@ -1481,6 +1500,11 @@ function onServerHeaderContext(event: MouseEvent) {
 
       <!-- Forum header -->
       <header v-else-if="activeView === 'forum'" class="flex h-12 items-center gap-2 border-b border-bg-tertiary bg-bg-primary px-4">
+        <button
+          @click="router.push(`/channels/${serverId}/${defaultChannelId}`)"
+          class="text-sm text-text-muted hover:text-text-primary"
+        >Home</button>
+        <span class="text-text-muted/50">/</span>
         <svg class="h-4 w-4 flex-shrink-0 text-text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
         </svg>
@@ -1496,6 +1520,51 @@ function onServerHeaderContext(event: MouseEvent) {
               <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
             </svg>
             New post
+          </button>
+        </div>
+      </header>
+
+      <!-- Forum post header: breadcrumbs + context actions -->
+      <header v-else-if="activeView === 'forum-post'" class="flex h-12 items-center gap-2 border-b border-bg-tertiary bg-bg-primary px-4 min-w-0">
+        <button
+          @click="router.push(`/channels/${serverId}/${defaultChannelId}`)"
+          class="flex-shrink-0 text-sm text-text-muted hover:text-text-primary"
+        >Home</button>
+        <span class="flex-shrink-0 text-text-muted/50">/</span>
+        <button
+          @click="activeView = 'forum'; backend.forum.listBySpace(serverId).then(posts => { forumPosts = posts }).catch(() => {})"
+          class="flex-shrink-0 text-sm text-text-muted hover:text-text-primary"
+        >Forum</button>
+        <span class="flex-shrink-0 text-text-muted/50">/</span>
+        <span class="truncate text-sm font-semibold text-text-primary">{{ forumPostViewRef?.post?.value?.title ?? '…' }}</span>
+
+        <div class="ml-auto flex flex-shrink-0 items-center gap-2">
+          <template v-if="forumPostViewRef?.isPageType?.value">
+            <template v-if="forumPostViewRef?.editingPage?.value && forumPostViewRef?.canEdit?.value">
+              <button @click="forumPostViewRef?.savePage()" :disabled="forumPostViewRef?.savingPage?.value" class="rounded bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent-hover disabled:opacity-50">
+                {{ forumPostViewRef?.savingPage?.value ? 'Saving…' : 'Save page' }}
+              </button>
+              <button @click="forumPostViewRef?.cancelEdit()" class="rounded px-3 py-1.5 text-xs text-text-muted hover:text-text-primary">Cancel</button>
+            </template>
+            <button v-else-if="forumPostViewRef?.canEdit?.value" @click="forumPostViewRef?.startEditing()" class="rounded bg-bg-tertiary px-3 py-1.5 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary">
+              Edit page
+            </button>
+            <button
+              @click="forumPostViewRef?.toggleDrawer()"
+              :class="['flex items-center gap-1.5 rounded px-2.5 py-1.5 text-xs font-medium transition-colors', forumPostViewRef?.drawerOpen?.value ? 'bg-accent/20 text-accent' : 'text-text-muted hover:bg-bg-hover']"
+            >
+              <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+              {{ forumPostViewRef?.comments?.value?.length ?? 0 }}
+            </button>
+          </template>
+          <button
+            v-if="forumPostViewRef?.post?.value && authStore.user?.id === forumPostViewRef?.post?.value?.created_by && (!forumPostViewRef?.isPageType?.value || !forumPostViewRef?.editingPage?.value)"
+            @click="forumPostViewRef?.handleDeletePost()"
+            class="flex items-center gap-1 rounded px-2 py-1 text-xs text-text-muted hover:bg-red-500/10 hover:text-red-400"
+            title="Delete post"
+          >
+            <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+            Delete
           </button>
         </div>
       </header>
@@ -1570,6 +1639,7 @@ function onServerHeaderContext(event: MouseEvent) {
     <!-- Forum post view -->
     <ForumPostView
       v-else-if="activeView === 'forum-post' && activeForumPostId"
+      ref="forumPostViewRef"
       :post-id="activeForumPostId"
       :space-id="serverId"
       class="flex-1"

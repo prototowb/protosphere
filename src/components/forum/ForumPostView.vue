@@ -309,57 +309,25 @@ function formatTime(iso: string) {
   return d.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }) + ' at ' +
     d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
+
+defineExpose({
+  post,
+  editingPage,
+  isPageType,
+  canEdit,
+  savingPage,
+  drawerOpen,
+  comments,
+  savePage,
+  cancelEdit,
+  handleDeletePost,
+  startEditing: () => { editingPage.value = true },
+  toggleDrawer: () => { drawerOpen.value = !drawerOpen.value },
+})
 </script>
 
 <template>
   <div class="flex h-full flex-col overflow-hidden">
-
-    <!-- Header bar -->
-    <div class="flex h-12 flex-shrink-0 items-center gap-2 border-b border-bg-tertiary bg-bg-primary px-4">
-      <button
-        @click="emit('back')"
-        class="flex items-center gap-1.5 text-sm text-text-muted hover:text-text-primary"
-      >
-        <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <polyline points="15 18 9 12 15 6"/>
-        </svg>
-        Forum
-      </button>
-      <span class="text-text-muted">/</span>
-      <span v-if="post" class="truncate text-sm font-semibold text-text-primary">{{ post.title }}</span>
-
-      <div class="ml-auto flex items-center gap-2">
-        <!-- Page type controls -->
-        <template v-if="isPageType && post">
-          <template v-if="editingPage && canEdit">
-            <button @click="savePage" :disabled="savingPage" class="rounded bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent-hover disabled:opacity-50">
-              {{ savingPage ? 'Saving…' : 'Save page' }}
-            </button>
-            <button @click="cancelEdit" class="rounded px-3 py-1.5 text-xs text-text-muted hover:text-text-primary">Cancel</button>
-          </template>
-          <button v-else-if="canEdit" @click="editingPage = true" class="rounded bg-bg-tertiary px-3 py-1.5 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary">
-            Edit page
-          </button>
-          <button
-            @click="drawerOpen = !drawerOpen"
-            :class="['flex items-center gap-1.5 rounded px-2.5 py-1.5 text-xs font-medium transition-colors', drawerOpen ? 'bg-accent/20 text-accent' : 'text-text-muted hover:bg-bg-hover']"
-          >
-            <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-            {{ comments.length }}
-          </button>
-        </template>
-        <!-- Delete post (author, non-edit mode) -->
-        <button
-          v-if="post && authStore.user?.id === post.created_by && (!isPageType || !editingPage)"
-          @click="handleDeletePost"
-          class="flex items-center gap-1 rounded px-2 py-1 text-xs text-text-muted hover:bg-red-500/10 hover:text-red-400"
-          title="Delete post"
-        >
-          <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
-          Delete
-        </button>
-      </div>
-    </div>
 
     <!-- Loading -->
     <div v-if="loading" class="flex flex-1 items-center justify-center">
