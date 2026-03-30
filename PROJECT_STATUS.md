@@ -5,12 +5,12 @@
 ## Current State
 
 ```yaml
-project_phase: "Active Development — M23 Forum Page Type"
+project_phase: "Active Development — M23 Complete, M24 Next"
 protogear_enabled: true
 framework: "Vue 3 + TypeScript 5.9 + Vite 7 + Tailwind CSS 4 + Pinia + Supabase"
 project_type: "Single-Community Communication Platform"
 initialization_date: "2026-02-20"
-current_milestone: "M23 — Block Editor (Forum Pages + Profile Pages)"
+current_milestone: "M24 — Onboarding Tour"
 local_supabase: true
 ```
 
@@ -72,18 +72,18 @@ Backend adapter auto-detects mode via `VITE_SUPABASE_URL` env var. Local mode us
 
 ---
 
-### M23 — Block Editor (Forum Pages + Profile Pages) 🚧
+### M23 — Block Editor (Forum Pages + Profile Pages) ✅
 
 **Goal:** A hybrid visual block editor with a CSS-override escape hatch. Used for both collaborative forum Page posts and personal user profile pages. Output is sanitized HTML/CSS (no JS). Replaces the TipTap-based PageEditor.
 
-**Editor model:** `{ blocks: Block[], customCss: string }` stored as JSONB. Block types: Hero, Text, Image, Columns, Callout, Divider, Link card. Collaboration is sequential (last-write-wins).
+**Editor model:** `{ blocks: Block[], customCss: string, lockedHeroStyle? }` stored as JSONB. Block types: Hero (locked), Text (pinned variant), Image, Columns, Callout, Divider, Link card. Collaboration is sequential (last-write-wins).
 
 | Ticket | Title | Priority | Status | Description |
 |--------|-------|----------|--------|-------------|
-| PTSPH-192 | Block data model + BlockRenderer | High | 🔲 Todo | `PageContent` + `Block` types; `BlockRenderer.vue` — renders block JSON to sanitized HTML/CSS for display (read-only); DOMPurify sanitization; replace `content JSONB` schema if needed |
-| PTSPH-193 | BlockEditor core + basic blocks | High | 🔲 Todo | `BlockEditor.vue` — block list with add/move/delete; block type picker; inline editing for Hero, Text, Divider, Image (URL input + caption) |
-| PTSPH-194 | Advanced blocks + CSS override panel | Medium | 🔲 Todo | Columns (2/3 col), Callout (info/warning/success), Link card; global "Custom CSS" textarea panel; live preview pane next to editor |
-| PTSPH-195 | Forum page integration | High | 🔲 Todo | Replace `PageEditor.vue` with `BlockEditor.vue` in `ForumPostView.vue`; wire `updatePageContent` to save `{ blocks, customCss }`; read-only `BlockRenderer` for non-collaborators |
+| PTSPH-192 | Block data model + BlockRenderer | High | ✅ Done | `PageContent` + `Block` types in `types.ts`; `BlockRenderer.vue` with variant-aware pinned text block styling; `TextBlock._pinned`, `_variant`, `lockedHeroStyle` on `PageContent` |
+| PTSPH-193 | BlockEditor core + basic blocks | High | ✅ Done | `BlockEditor.vue` — block list with add/move/delete; block type picker; inline editing for Hero (locked), Text, Divider, Image; CSS override panel; preview tab |
+| PTSPH-194 | Advanced blocks + CSS override panel | Medium | ✅ Done | Columns (2/3 col), Callout (info/warning/success), Link card; global "Custom CSS" textarea; live preview pane |
+| PTSPH-195 | Forum page integration | High | ✅ Done | `BlockEditor.vue` in `ForumPostView.vue`; locked hero (non-removable title block, editable title/bg/alignment); pinned source message block (quote variant, auto-seeded); `ForumCommentsPanel.vue` in AppShell right sidebar; comments metric button toggles sidebar; `updatePageContent` accepts optional `title` |
 | PTSPH-196 | User profile pages | High | 🔲 Todo | Migration: `profile_page JSONB` on profiles; `/u/:username` route + `UserProfilePage.vue` (public read-only); `/settings/page` or inline in SettingsPage for editing own page; `profiles.updatePage()` in both backends |
 
 **Migrations:** `043_forum_page_content.sql` (existing — `content JSONB` on forum_posts already done)
@@ -502,6 +502,7 @@ supabase/migrations/
 
 ## Recent Updates
 
+- 2026-03-30: M23 complete (PTSPH-192–195). Block editor fully integrated with forum page posts: locked Hero block (editable title 300 char, background image, text alignment), pinned source message block (quote variant, auto-seeded in view + edit mode), ForumCommentsPanel in AppShell right sidebar (self-contained, compact layout for w-60 space), comments metric button in hero toggles sidebar, hero count sourced from panel for live sync. BlockRenderer supports pinned text block variants. AppShell member slot uses overflow-hidden for sticky-footer panels. PTSPH-196 (user profile pages) carried to next session.
 - 2026-03-27: M21–M24 planned. Message retention (3-day channel TTL, 6-month DM TTL via pg_cron), Forum system (replaces thread system; Meta + Page post types; TipTap block editor; voting; meta points; collaboration invitations), Onboarding tour (post-signup walkthrough explaining TTL rules, UI tour, profile setup). PTSPH-180–200.
 - 2026-03-27: Staging environment set up (`protocode-chat-staging`). CI split: development→staging creds, main→prod creds. OAuth signup fixed (RLS bypass on auth triggers via `SET row_security = off`; missing profiles INSERT policy; PKCE race condition in auth.init). AppShell watches `authStore.user?.id` instead of `onMounted` for OAuth redirect compatibility.
 - 2026-03-09: RLS bug fixes. Migration 023: fix `servers_update` infinite recursion (42P17) — replaced self-referencing policy with direct column + `user_has_permission()`. Migration 024: DM group auto-join trigger (42501) — `AFTER INSERT` trigger adds creator to `direct_message_members` before RETURNING evaluates SELECT policy; `community_settings` singleton unique index `((true))` + duplicate row cleanup (PGRST116). Build workflow restored to `push: branches: [main]`. `supabase-backend.ts` defensive fix: `.limit(1)` on `community.get()`.
