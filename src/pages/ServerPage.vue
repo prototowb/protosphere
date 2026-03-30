@@ -178,13 +178,13 @@ const showForumPostDialog = ref(false)
 const pendingForumMsg = ref<(Message & { profile: Profile }) | null>(null)
 
 type FPVRef = {
-  post: { value: { title: string; type: string; created_by: string } | null }
-  editingPage: { value: boolean }
-  isPageType: { value: boolean }
-  canEdit: { value: boolean }
-  savingPage: { value: boolean }
-  drawerOpen: { value: boolean }
-  comments: { value: unknown[] }
+  post: { title: string; type: string; created_by: string } | null
+  editingPage: boolean
+  isPageType: boolean
+  canEdit: boolean
+  savingPage: boolean
+  drawerOpen: boolean
+  comments: unknown[]
   savePage: () => Promise<void>
   cancelEdit: () => void
   handleDeletePost: () => Promise<void>
@@ -1536,29 +1536,29 @@ function onServerHeaderContext(event: MouseEvent) {
           class="flex-shrink-0 text-sm text-text-muted hover:text-text-primary"
         >Forum</button>
         <span class="flex-shrink-0 text-text-muted/50">/</span>
-        <span class="truncate text-sm font-semibold text-text-primary">{{ forumPostViewRef?.post?.value?.title ?? '…' }}</span>
+        <span class="truncate text-sm font-semibold text-text-primary">{{ forumPostViewRef?.post?.title ?? '…' }}</span>
 
         <div class="ml-auto flex flex-shrink-0 items-center gap-2">
-          <template v-if="forumPostViewRef?.isPageType?.value">
-            <template v-if="forumPostViewRef?.editingPage?.value && forumPostViewRef?.canEdit?.value">
-              <button @click="forumPostViewRef?.savePage()" :disabled="forumPostViewRef?.savingPage?.value" class="rounded bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent-hover disabled:opacity-50">
-                {{ forumPostViewRef?.savingPage?.value ? 'Saving…' : 'Save page' }}
+          <template v-if="forumPostViewRef?.isPageType">
+            <template v-if="forumPostViewRef?.editingPage && forumPostViewRef?.canEdit">
+              <button @click="forumPostViewRef?.savePage()" :disabled="forumPostViewRef?.savingPage" class="rounded bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent-hover disabled:opacity-50">
+                {{ forumPostViewRef?.savingPage ? 'Saving…' : 'Save page' }}
               </button>
               <button @click="forumPostViewRef?.cancelEdit()" class="rounded px-3 py-1.5 text-xs text-text-muted hover:text-text-primary">Cancel</button>
             </template>
-            <button v-else-if="forumPostViewRef?.canEdit?.value" @click="forumPostViewRef?.startEditing()" class="rounded bg-bg-tertiary px-3 py-1.5 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary">
+            <button v-else-if="forumPostViewRef?.canEdit" @click="forumPostViewRef?.startEditing()" class="rounded bg-bg-tertiary px-3 py-1.5 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary">
               Edit page
             </button>
             <button
               @click="forumPostViewRef?.toggleDrawer()"
-              :class="['flex items-center gap-1.5 rounded px-2.5 py-1.5 text-xs font-medium transition-colors', forumPostViewRef?.drawerOpen?.value ? 'bg-accent/20 text-accent' : 'text-text-muted hover:bg-bg-hover']"
+              :class="['flex items-center gap-1.5 rounded px-2.5 py-1.5 text-xs font-medium transition-colors', forumPostViewRef?.drawerOpen ? 'bg-accent/20 text-accent' : 'text-text-muted hover:bg-bg-hover']"
             >
               <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-              {{ forumPostViewRef?.comments?.value?.length ?? 0 }}
+              {{ forumPostViewRef?.comments?.length ?? 0 }}
             </button>
           </template>
           <button
-            v-if="forumPostViewRef?.post?.value && authStore.user?.id === forumPostViewRef?.post?.value?.created_by && (!forumPostViewRef?.isPageType?.value || !forumPostViewRef?.editingPage?.value)"
+            v-if="forumPostViewRef?.post && authStore.user?.id === forumPostViewRef?.post?.created_by && (!forumPostViewRef?.isPageType || !forumPostViewRef?.editingPage)"
             @click="forumPostViewRef?.handleDeletePost()"
             class="flex items-center gap-1 rounded px-2 py-1 text-xs text-text-muted hover:bg-red-500/10 hover:text-red-400"
             title="Delete post"
