@@ -5,6 +5,7 @@ import MessageInput from '@/components/chat/MessageInput.vue'
 import EmojiPickerPopover from '@/components/ui/EmojiPickerPopover.vue'
 import EmojiIcon from '@/components/ui/EmojiIcon.vue'
 import RichText from '@/components/ui/RichText.vue'
+import VoteButtons from '@/components/chat/VoteButtons.vue'
 import { formatDateShort } from '@/lib/formatters'
 import type { ForumComment, ForumCommentReaction, Profile } from '@/lib/types'
 
@@ -249,35 +250,12 @@ const depthColors = ['border-violet-500/40', 'border-sky-500/40', 'border-emeral
 
         <!-- Action bar (hidden for deleted comments) -->
         <div v-if="!comment.is_deleted" :class="['flex flex-wrap items-center', props.compact ? 'gap-1.5' : 'gap-3']">
-          <!-- Votes -->
-          <div class="flex items-center gap-1">
-            <button
-              @click="handleVote(comment.id, 1)"
-              :class="[
-                'flex items-center gap-0.5 rounded px-1 py-0.5 text-xs font-medium transition-colors',
-                userVotes[comment.id] === 1
-                  ? 'bg-emerald-500/20 text-emerald-400'
-                  : 'text-text-muted hover:bg-bg-hover hover:text-emerald-400',
-              ]"
-            >
-              <svg class="h-3 w-3" viewBox="0 0 24 24" fill="currentColor"><path d="M12 4l8 8H4z"/></svg>
-            </button>
-            <span
-              class="min-w-[1.25rem] text-center text-xs font-semibold tabular-nums"
-              :class="comment.vote_score > 0 ? 'text-emerald-400' : comment.vote_score < 0 ? 'text-red-400' : 'text-text-muted'"
-            >{{ comment.vote_score }}</span>
-            <button
-              @click="handleVote(comment.id, -1)"
-              :class="[
-                'flex items-center gap-0.5 rounded px-1 py-0.5 text-sm font-medium transition-colors',
-                userVotes[comment.id] === -1
-                  ? 'bg-red-500/20 text-red-400'
-                  : 'text-text-muted hover:bg-bg-hover hover:text-red-400',
-              ]"
-            >
-              <svg class="h-3 w-3" viewBox="0 0 24 24" fill="currentColor"><path d="M12 20l-8-8h16z"/></svg>
-            </button>
-          </div>
+          <VoteButtons
+            :score="comment.vote_score"
+            :user-vote="userVotes[comment.id] ?? null"
+            size="sm"
+            @vote="(v: 1 | -1) => handleVote(comment.id, v)"
+          />
 
           <!-- Reaction strip -->
           <div class="flex flex-wrap items-center gap-1">
