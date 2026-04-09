@@ -5,6 +5,7 @@ import { useMessages } from '@/composables/useMessages'
 import { useRealtime } from '@/composables/useRealtime'
 import { useAuthStore } from '@/stores/auth'
 import UserAvatar from '@/components/user/UserAvatar.vue'
+import { formatTime } from '@/lib/formatters'
 import type { Channel, Profile, Message } from '@/lib/types'
 
 const props = defineProps<{ thread: Channel; canPost: boolean }>()
@@ -43,9 +44,6 @@ async function submit() {
   }
 }
 
-function formatTime(iso: string) {
-  return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-}
 </script>
 
 <template>

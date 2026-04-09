@@ -3,11 +3,18 @@ import { ref, watch, onMounted, onUnmounted, nextTick, computed, defineAsyncComp
 import { useRoute, useRouter } from 'vue-router'
 import AppShell from '@/components/layout/AppShell.vue'
 import UserAvatar from '@/components/user/UserAvatar.vue'
-import EmojiPicker from '@/components/chat/EmojiPicker.vue'
-import MessageInput from '@/components/chat/MessageInput.vue'
+import EmojiPickerPopover from '@/components/ui/EmojiPickerPopover.vue'
+import ChannelListItem from '@/components/channel/ChannelListItem.vue'
+import ChannelHeader from '@/components/channel/ChannelHeader.vue'
+import ForumHeaderComp from '@/components/forum/ForumHeader.vue'
+import ForumPostHeader from '@/components/forum/ForumPostHeader.vue'
+import MessageBubble from '@/components/chat/MessageBubble.vue'
+import MessageInputArea from '@/components/chat/MessageInputArea.vue'
+import MemberList from '@/components/chat/MemberList.vue'
+import MemberProfilePanel from '@/components/user/MemberProfilePanel.vue'
+import CreateChannelDialog from '@/components/channel/CreateChannelDialog.vue'
+import EditChannelDialog from '@/components/channel/EditChannelDialog.vue'
 import MessageSearch from '@/components/chat/MessageSearch.vue'
-import MessageAttachments from '@/components/messages/MessageAttachments.vue'
-import EmojiIcon from '@/components/ui/EmojiIcon.vue'
 import { useServersStore } from '@/stores/servers'
 import { useChannelsStore } from '@/stores/channels'
 import { useMessagesStore } from '@/stores/messages'
@@ -49,6 +56,7 @@ import { Permission } from '@/lib/permissions'
 import { checkAutomod } from '@/lib/automod'
 import { expandShortcodes } from '@/lib/emojiNames'
 import { backend, isLocalMode } from '@/lib/backend'
+import { formatDate } from '@/lib/formatters'
 import { useRealtime } from '@/composables/useRealtime'
 import { usePresenceStore } from '@/stores/presence'
 import type { Message, Profile, Member, MemberRole, Channel, ChannelCategory, AutomodRule, RsvpStatus, UserStatus, NotificationLevel, Attachment, ForumPost, ForumPostType } from '@/lib/types'
@@ -112,8 +120,6 @@ async function setChannelNotifLevel(channelId: string, level: NotificationLevel)
 }
 
 const showCreateChannel = ref(false)
-const newChannelName = ref('')
-const newChannelCategoryId = ref<string | null>(null)
 const showCreateCategory = ref(false)
 const newCategoryName = ref('')
 
@@ -208,31 +214,11 @@ const serverId = ref('')
 const channelId = ref('')
 
 const messageInput = ref('')
-const messageInputEl = ref<InstanceType<typeof MessageInput> | null>(null)
 const sending = ref(false)
 const messageListEl = ref<HTMLElement | null>(null)
-const fileInputEl = ref<HTMLInputElement | null>(null)
 const pendingAttachments = ref<Attachment[]>([])
 const uploadingFiles = ref(false)
 
-// Full emoji drawer (input bar)
-const emojiDrawerOpen = ref(false)
-const emojiDrawerAnchor = ref<{ bottom: number; right: number } | null>(null)
-
-function openEmojiDrawer(event: MouseEvent) {
-  if (emojiDrawerOpen.value) {
-    emojiDrawerOpen.value = false
-    return
-  }
-  const btn = event.currentTarget as HTMLElement
-  const rect = btn.getBoundingClientRect()
-  emojiDrawerAnchor.value = { bottom: window.innerHeight - rect.top + 8, right: window.innerWidth - rect.right }
-  emojiDrawerOpen.value = true
-}
-
-function insertEmoji(emoji: string) {
-  messageInputEl.value?.insertEmoji(emoji)
-}
 
 const editingId = ref<string | null>(null)
 const editingContent = ref('')
@@ -573,7 +559,6 @@ async function uploadAttachments(files: File[] | FileList) {
     toastStore.show('Failed to upload file', 'error')
   } finally {
     uploadingFiles.value = false
-    if (fileInputEl.value) fileInputEl.value.value = ''
   }
 }
 
@@ -621,24 +606,6 @@ function handleDeleteMessage(messageId: string) {
   }
 }
 
-function formatTime(iso: string) {
-  return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-}
-
-function isExpiringSoon(expiresAt: string | null | undefined): boolean {
-  if (!expiresAt) return false
-  return new Date(expiresAt).getTime() - Date.now() < 12 * 60 * 60 * 1000
-}
-
-function formatDate(iso: string) {
-  const d = new Date(iso)
-  const today = new Date()
-  const yesterday = new Date(today)
-  yesterday.setDate(today.getDate() - 1)
-  if (d.toDateString() === today.toDateString()) return 'Today'
-  if (d.toDateString() === yesterday.toDateString()) return 'Yesterday'
-  return d.toLocaleDateString([], { month: 'long', day: 'numeric', year: 'numeric' })
-}
 
 // Group messages: collapse consecutive messages from same author within 5 minutes
 type GroupedMessage = (Message & { profile: Profile }) & { showHeader: boolean; dateSeparator: string | null }
@@ -658,13 +625,6 @@ const groupedMessages = computed((): GroupedMessage[] => {
   })
 })
 
-async function handleCreateChannel() {
-  if (!newChannelName.value.trim() || !serverId.value) return
-  await createChannel(serverId.value, newChannelName.value.trim(), undefined, newChannelCategoryId.value)
-  newChannelName.value = ''
-  newChannelCategoryId.value = null
-  showCreateChannel.value = false
-}
 
 async function handleCreateCategory() {
   if (!newCategoryName.value.trim() || !serverId.value) return
@@ -683,16 +643,6 @@ function openEditChannel(channelId: string) {
   showEditChannel.value = true
 }
 
-async function handleEditChannel() {
-  if (!editChannelId.value || !editChannelName.value.trim()) return
-  await updateChannel(editChannelId.value, {
-    name: editChannelName.value.trim(),
-    description: editChannelDescription.value.trim(),
-    slowmode_seconds: editChannelSlowmode.value,
-  })
-  showEditChannel.value = false
-  toastStore.show('Channel updated', 'success')
-}
 
 function handleDeleteChannel(chId: string) {
   const ch = channelsStore.channels.find((c) => c.id === chId)
@@ -1275,61 +1225,28 @@ function onServerHeaderContext(event: MouseEvent) {
 
       <div class="space-y-0.5 mb-0.5">
         <!-- Uncategorized channels (category_id = null) -->
-        <div
+        <ChannelListItem
           v-for="channel in channelsStore.channels.filter(c => c.category_id === null).sort((a,b) => a.position - b.position)"
           :key="channel.id"
-          class="group relative"
-        >
-          <router-link
-            :to="`/channels/${serverId}/${channel.id}`"
-            :draggable="canManageChannels"
-            @click="activeView = 'channel'"
-            @contextmenu.prevent="onChannelContext($event, channel)"
-            @dragstart.stop="onChannelDragStart(channel.id)"
-            @dragover.prevent.stop="onChannelDragOver(channel.id)"
-            @dragleave.stop="onChannelDragLeave"
-            @drop.prevent.stop="onChannelDrop(channel.id)"
-            @dragend.stop="onChannelDragEnd"
-            class="flex w-full items-center gap-1.5 rounded px-2 py-1.5 text-sm hover:bg-bg-hover"
-            :class="[
-              channelsStore.activeChannelId === channel.id ? 'bg-bg-hover text-text-primary font-medium' : 'text-text-secondary',
-              dragOverChannelId === channel.id ? 'border-t-2 border-accent' : '',
-              canManageChannels ? 'cursor-pointer' : '',
-            ]"
-          >
-            <span class="text-text-muted">#</span>
-            <span class="truncate flex-1">{{ channel.name }}</span>
-            <span class="ml-auto flex items-center gap-1">
-              <span v-if="unreadChannelIds.has(channel.id)" class="h-2 w-2 flex-shrink-0 rounded-full bg-white" />
-              <button
-                :class="getCached(channel.id) !== 'all' ? 'flex' : 'hidden group-hover:flex'"
-                class="flex-shrink-0 items-center rounded p-0.5 text-text-muted hover:text-text-primary"
-                @click.prevent.stop="openNotifPopover(channel.id)"
-                title="Notification settings"
-              >
-                <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>
-                </svg>
-              </button>
-            </span>
-          </router-link>
-          <!-- Notification popover -->
-          <div
-            v-if="notifPopoverChannelId === channel.id"
-            class="absolute right-0 top-full z-50 mt-1 min-w-32 rounded-lg bg-bg-primary p-1 shadow-lg ring-1 ring-bg-tertiary"
-            @click.stop
-          >
-            <button
-              v-for="opt in NOTIF_OPTIONS"
-              :key="opt.value"
-              @click="setChannelNotifLevel(channel.id, opt.value)"
-              class="flex w-full items-center gap-2 rounded px-3 py-1.5 text-xs hover:bg-bg-hover"
-              :class="getCached(channel.id) === opt.value ? 'text-accent' : 'text-text-secondary'"
-            >
-              {{ opt.label }}
-            </button>
-          </div>
-        </div>
+          :channel="channel"
+          :server-id="serverId"
+          :is-active="channelsStore.activeChannelId === channel.id"
+          :has-unread="unreadChannelIds.has(channel.id)"
+          :can-drag="canManageChannels"
+          :notification-level="getCached(channel.id)"
+          :show-notif-popover="notifPopoverChannelId === channel.id"
+          :drag-over-target="dragOverChannelId === channel.id"
+          :notif-options="NOTIF_OPTIONS"
+          @click="activeView = 'channel'"
+          @contextmenu="onChannelContext($event, channel)"
+          @dragstart="onChannelDragStart(channel.id)"
+          @dragover="onChannelDragOver(channel.id)"
+          @dragleave="onChannelDragLeave"
+          @drop="onChannelDrop(channel.id)"
+          @dragend="onChannelDragEnd"
+          @open-notif-popover="openNotifPopover(channel.id)"
+          @set-notif-level="setChannelNotifLevel(channel.id, $event)"
+        />
 
         <!-- Categories -->
         <div v-for="cat in categoriesStore.categories" :key="cat.id" class="mt-2">
@@ -1380,188 +1297,74 @@ function onServerHeaderContext(event: MouseEvent) {
           </div>
           <!-- Channels in this category -->
           <template v-if="!collapsedCategories.has(cat.id)">
-            <div
+            <ChannelListItem
               v-for="channel in channelsStore.channels.filter(c => c.category_id === cat.id).sort((a,b) => a.position - b.position)"
               :key="channel.id"
-              class="group relative"
-            >
-              <router-link
-                :to="`/channels/${serverId}/${channel.id}`"
-                :draggable="canManageChannels"
-                @click="activeView = 'channel'"
-                @contextmenu.prevent="onChannelContext($event, channel)"
-                @dragstart.stop="onChannelDragStart(channel.id)"
-                @dragover.prevent.stop="onChannelDragOver(channel.id)"
-                @dragleave.stop="onChannelDragLeave"
-                @drop.prevent.stop="onChannelDrop(channel.id)"
-                @dragend.stop="onChannelDragEnd"
-                class="flex w-full items-center gap-1.5 rounded px-2 py-1.5 text-sm hover:bg-bg-hover"
-                :class="[
-                  channelsStore.activeChannelId === channel.id ? 'bg-bg-hover text-text-primary font-medium' : 'text-text-secondary',
-                  dragOverChannelId === channel.id ? 'border-t-2 border-accent' : '',
-                  canManageChannels ? 'cursor-pointer' : '',
-                ]"
-              >
-                <span class="text-text-muted">#</span>
-                <span class="truncate flex-1">{{ channel.name }}</span>
-                <span class="ml-auto flex items-center gap-1">
-                  <span v-if="unreadChannelIds.has(channel.id)" class="h-2 w-2 flex-shrink-0 rounded-full bg-white" />
-                  <button
-                    :class="getCached(channel.id) !== 'all' ? 'flex' : 'hidden group-hover:flex'"
-                    class="flex-shrink-0 items-center rounded p-0.5 text-text-muted hover:text-text-primary"
-                    @click.prevent.stop="openNotifPopover(channel.id)"
-                    title="Notification settings"
-                  >
-                    <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>
-                    </svg>
-                  </button>
-                </span>
-              </router-link>
-              <!-- Notification popover -->
-              <div
-                v-if="notifPopoverChannelId === channel.id"
-                class="absolute right-0 top-full z-50 mt-1 min-w-32 rounded-lg bg-bg-primary p-1 shadow-lg ring-1 ring-bg-tertiary"
-                @click.stop
-              >
-                <button
-                  v-for="opt in NOTIF_OPTIONS"
-                  :key="opt.value"
-                  @click="setChannelNotifLevel(channel.id, opt.value)"
-                  class="flex w-full items-center gap-2 rounded px-3 py-1.5 text-xs hover:bg-bg-hover"
-                  :class="getCached(channel.id) === opt.value ? 'text-accent' : 'text-text-secondary'"
-                >
-                  {{ opt.label }}
-                </button>
-              </div>
-            </div>
+              :channel="channel"
+              :server-id="serverId"
+              :is-active="channelsStore.activeChannelId === channel.id"
+              :has-unread="unreadChannelIds.has(channel.id)"
+              :can-drag="canManageChannels"
+              :notification-level="getCached(channel.id)"
+              :show-notif-popover="notifPopoverChannelId === channel.id"
+              :drag-over-target="dragOverChannelId === channel.id"
+              :notif-options="NOTIF_OPTIONS"
+              @click="activeView = 'channel'"
+              @contextmenu="onChannelContext($event, channel)"
+              @dragstart="onChannelDragStart(channel.id)"
+              @dragover="onChannelDragOver(channel.id)"
+              @dragleave="onChannelDragLeave"
+              @drop="onChannelDrop(channel.id)"
+              @dragend="onChannelDragEnd"
+              @open-notif-popover="openNotifPopover(channel.id)"
+              @set-notif-level="setChannelNotifLevel(channel.id, $event)"
+            />
           </template>
         </div>
       </div>
     </template>
 
     <template #top-bar>
-      <!-- Channel header -->
-      <header v-if="activeView === 'channel'" class="flex h-12 items-center gap-2 border-b border-bg-tertiary bg-bg-primary px-4">
-        <span class="text-text-muted">#</span>
-        <span class="font-semibold text-text-primary">{{ activeChannel?.name ?? 'general' }}</span>
-        <span v-if="activeChannel?.description" class="ml-1 text-text-muted/50">·</span>
-        <span
-          v-if="activeChannel?.description"
-          class="truncate text-sm text-text-muted"
-          :title="activeChannel.description"
-        >
-          {{ activeChannel.description }}
-        </span>
-        <div class="ml-auto flex items-center gap-1">
-          <button
-            @click="searchOpen ? closeSearch() : openSearch()"
-            :class="searchOpen ? 'text-text-primary bg-bg-hover' : 'text-text-muted hover:text-text-primary hover:bg-bg-hover'"
-            class="rounded p-1.5"
-            title="Search Messages"
-          >
-            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-            </svg>
-          </button>
-          <button
-            @click="togglePinnedPanel"
-            :class="showPinnedPanel ? 'text-text-primary bg-bg-hover' : 'text-text-muted hover:text-text-primary hover:bg-bg-hover'"
-            class="rounded p-1.5"
-            title="Pinned Messages"
-          >
-            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2l-2-2z"/>
-            </svg>
-          </button>
-          <!-- Polls panel toggle -->
-          <button
-            @click="showPollsPanel = !showPollsPanel; if (showPollsPanel) { showPinnedPanel = false; showEventsPanel = false }"
-            :class="showPollsPanel ? 'text-text-primary bg-bg-hover' : 'text-text-muted hover:text-text-primary hover:bg-bg-hover'"
-            class="rounded p-1.5"
-            title="Polls"
-          >
-            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>
-            </svg>
-          </button>
-          <!-- Events panel toggle -->
-          <button
-            @click="showEventsPanel = !showEventsPanel; if (showEventsPanel) { showPinnedPanel = false; showPollsPanel = false }"
-            :class="showEventsPanel ? 'text-text-primary bg-bg-hover' : 'text-text-muted hover:text-text-primary hover:bg-bg-hover'"
-            class="rounded p-1.5"
-            title="Events"
-          >
-            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
-            </svg>
-          </button>
-        </div>
-      </header>
+      <ChannelHeader
+        v-if="activeView === 'channel'"
+        :channel-name="activeChannel?.name ?? 'general'"
+        :channel-description="activeChannel?.description"
+        :search-open="searchOpen"
+        :show-pinned-panel="showPinnedPanel"
+        :show-polls-panel="showPollsPanel"
+        :show-events-panel="showEventsPanel"
+        @toggle-search="searchOpen ? closeSearch() : openSearch()"
+        @toggle-pinned="togglePinnedPanel"
+        @toggle-polls="showPollsPanel = !showPollsPanel; if (showPollsPanel) { showPinnedPanel = false; showEventsPanel = false }"
+        @toggle-events="showEventsPanel = !showEventsPanel; if (showEventsPanel) { showPinnedPanel = false; showPollsPanel = false }"
+      />
 
-      <!-- Forum header -->
-      <header v-else-if="activeView === 'forum'" class="flex h-12 items-center gap-2 border-b border-bg-tertiary bg-bg-primary px-4">
-        <button
-          @click="router.push(`/channels/${serverId}/${defaultChannelId}`)"
-          class="text-sm text-text-muted hover:text-text-primary"
-        >Home</button>
-        <span class="text-text-muted/50">/</span>
-        <svg class="h-4 w-4 flex-shrink-0 text-text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
-        </svg>
-        <span class="font-semibold text-text-primary">Forum</span>
-        <span class="text-xs text-text-muted">{{ forumPosts.length }} {{ forumPosts.length === 1 ? 'post' : 'posts' }}</span>
-        <div class="ml-auto">
-          <button
-            v-if="canModerate"
-            @click="pendingForumMsg = null; showForumPostDialog = true"
-            class="flex items-center gap-1.5 rounded bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent-hover"
-          >
-            <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-            </svg>
-            New post
-          </button>
-        </div>
-      </header>
+      <ForumHeaderComp
+        v-else-if="activeView === 'forum'"
+        :server-id="serverId"
+        :default-channel-id="defaultChannelId"
+        :post-count="forumPosts.length"
+        :can-moderate="canModerate"
+        @back="router.push(`/channels/${serverId}/${defaultChannelId}`)"
+        @new-post="pendingForumMsg = null; showForumPostDialog = true"
+      />
 
-      <!-- Forum post header: breadcrumbs + context actions -->
-      <header v-else-if="activeView === 'forum-post'" class="flex h-12 items-center gap-2 border-b border-bg-tertiary bg-bg-primary px-4 min-w-0">
-        <button
-          @click="router.push(`/channels/${serverId}/${defaultChannelId}`)"
-          class="flex-shrink-0 text-sm text-text-muted hover:text-text-primary"
-        >Home</button>
-        <span class="flex-shrink-0 text-text-muted/50">/</span>
-        <button
-          @click="activeView = 'forum'; backend.forum.listBySpace(serverId).then(posts => { forumPosts = posts }).catch(() => {})"
-          class="flex-shrink-0 text-sm text-text-muted hover:text-text-primary"
-        >Forum</button>
-        <span class="flex-shrink-0 text-text-muted/50">/</span>
-        <span class="truncate text-sm font-semibold text-text-primary">{{ (forumPostViewRef?.editingPage && forumPostViewRef?.editingTitle) ? forumPostViewRef.editingTitle : (forumPostViewRef?.post?.title ?? '…') }}</span>
-
-        <div class="ml-auto flex flex-shrink-0 items-center gap-2">
-          <template v-if="forumPostViewRef?.isPageType">
-            <template v-if="forumPostViewRef?.editingPage && forumPostViewRef?.canEdit">
-              <button @click="forumPostViewRef?.savePage()" :disabled="forumPostViewRef?.savingPage" class="rounded bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent-hover disabled:opacity-50">
-                {{ forumPostViewRef?.savingPage ? 'Saving…' : 'Save page' }}
-              </button>
-              <button @click="forumPostViewRef?.cancelEdit()" class="rounded px-3 py-1.5 text-xs text-text-muted hover:text-text-primary">Cancel</button>
-            </template>
-            <button v-else-if="forumPostViewRef?.canEdit" @click="forumPostViewRef?.startEditing()" class="rounded bg-bg-tertiary px-3 py-1.5 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary">
-              Edit page
-            </button>
-          </template>
-          <button
-            v-if="forumPostViewRef?.post && authStore.user?.id === forumPostViewRef?.post?.created_by && (!forumPostViewRef?.isPageType || !forumPostViewRef?.editingPage)"
-            @click="forumPostViewRef?.handleDeletePost()"
-            class="flex items-center gap-1 rounded px-2 py-1 text-xs text-text-muted hover:bg-red-500/10 hover:text-red-400"
-            title="Delete post"
-          >
-            <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
-            Delete
-          </button>
-        </div>
-      </header>
+      <ForumPostHeader
+        v-else-if="activeView === 'forum-post'"
+        :post-title="forumPostViewRef?.post?.title ?? null"
+        :editing-title="forumPostViewRef?.editingTitle ?? ''"
+        :is-page-type="forumPostViewRef?.isPageType ?? false"
+        :editing-page="forumPostViewRef?.editingPage ?? false"
+        :can-edit="forumPostViewRef?.canEdit ?? false"
+        :saving-page="forumPostViewRef?.savingPage ?? false"
+        :is-author="!!forumPostViewRef?.post && authStore.user?.id === forumPostViewRef?.post?.created_by"
+        @go-home="router.push(`/channels/${serverId}/${defaultChannelId}`)"
+        @go-forum="activeView = 'forum'; backend.forum.listBySpace(serverId).then(posts => { forumPosts = posts }).catch(() => {})"
+        @save="forumPostViewRef?.savePage()"
+        @cancel="forumPostViewRef?.cancelEdit()"
+        @start-edit="forumPostViewRef?.startEditing()"
+        @delete="forumPostViewRef?.handleDeletePost()"
+      />
     </template>
 
     <!-- Forum index view -->
@@ -1668,291 +1471,59 @@ function onServerHeaderContext(event: MouseEvent) {
             {{ loadingOlder ? 'Loading…' : 'Load earlier messages' }}
           </button>
         </div>
-        <template v-for="msg in groupedMessages" :key="msg.id">
-          <!-- Date separator -->
-          <div v-if="msg.dateSeparator" class="my-4 flex items-center gap-3">
-            <div class="h-px flex-1 bg-bg-tertiary" />
-            <span class="text-xs text-text-muted">{{ msg.dateSeparator }}</span>
-            <div class="h-px flex-1 bg-bg-tertiary" />
-          </div>
-
-          <!-- Message row -->
-          <div
-            :data-message-id="msg.id"
-            class="group relative flex gap-3 rounded px-2 py-0.5 transition-colors hover:bg-bg-secondary"
-            :class="msg.showHeader ? 'mt-3' : ''"
-            @contextmenu.prevent="onMessageContext($event, msg)"
-          >
-            <!-- Avatar (only on first in group) -->
-            <div class="w-10 flex-shrink-0">
-              <UserAvatar
-                v-if="msg.showHeader"
-                :src="msg.profile.avatar_url"
-                :alt="msg.profile.display_name"
-                size="sm"
-              />
-            </div>
-
-            <div class="min-w-0 flex-1">
-              <!-- Reply quote -->
-              <div
-                v-if="msg.reply_to_id"
-                class="mb-1 flex cursor-default items-center gap-1.5 text-xs text-text-muted"
-              >
-                <svg class="h-3 w-3 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                  <polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/>
-                </svg>
-                <span class="font-medium text-text-secondary">{{ getMessageById(msg.reply_to_id)?.profile.display_name ?? 'Unknown' }}</span>
-                <span class="truncate">{{ getMessageById(msg.reply_to_id)?.content ?? '[deleted]' }}</span>
-              </div>
-
-              <!-- Header (only on first in group) -->
-              <div v-if="msg.showHeader" class="mb-0.5 flex items-baseline gap-2">
-                <span class="font-semibold text-text-primary">{{ msg.profile.display_name }}</span>
-                <span class="text-xs text-text-muted">{{ formatTime(msg.created_at) }}</span>
-                <span
-                  v-if="isExpiringSoon(msg.expires_at)"
-                  class="h-1.5 w-1.5 rounded-full bg-amber-400"
-                  title="This message expires soon"
-                />
-              </div>
-
-              <!-- Edit mode -->
-              <div v-if="editingId === msg.id" class="flex gap-2">
-                <input
-                  v-model="editingContent"
-                  @keydown.enter.prevent="submitEdit"
-                  @keydown.escape="cancelEdit"
-                  class="flex-1 rounded border border-accent bg-bg-primary px-2 py-1 text-sm text-text-primary outline-none"
-                  autofocus
-                />
-                <button @click="submitEdit" class="rounded bg-accent px-2 py-1 text-xs text-white">Save</button>
-                <button @click="cancelEdit" class="rounded px-2 py-1 text-xs text-text-muted hover:text-text-primary">Cancel</button>
-              </div>
-
-              <!-- Content -->
-              <p
-                v-else
-                class="break-words text-sm text-text-primary leading-relaxed"
-                v-html="renderMessage(msg.content, myUsername) + (msg.edited_at ? ' <span class=\'text-xs text-text-muted\'>(edited)</span>' : '')"
-              />
-
-              <!-- Attachments -->
-              <MessageAttachments v-if="msg.attachments?.length" :attachments="msg.attachments" />
-
-              <!-- Reaction pills -->
-              <div
-                v-if="getReactionGroups(msg.id).length > 0"
-                class="mt-1 flex flex-wrap gap-1"
-              >
-                <button
-                  v-for="group in getReactionGroups(msg.id)"
-                  :key="group.emoji"
-                  @click="handleToggleReaction(msg.id, group.emoji)"
-                  class="flex items-center gap-1 rounded border px-2 py-0.5 text-xs transition-colors"
-                  :class="group.iMine
-                    ? 'border-accent bg-accent/20 text-accent'
-                    : 'border-bg-tertiary bg-bg-secondary text-text-secondary hover:border-accent/50'"
-                >
-                  <EmojiIcon :emoji="group.emoji" size="1em" />
-                  <span>{{ group.count }}</span>
-                </button>
-              </div>
-
-              <!-- Forum post link -->
-              <router-link
-                v-if="msg.forum_post_id"
-                :to="`/spaces/${serverId}/forum/${msg.forum_post_id}`"
-                class="mt-1 inline-flex items-center gap-1.5 text-xs text-violet-400 hover:underline"
-              >
-                <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-                </svg>
-                Forum post
-              </router-link>
-            </div>
-
-            <!-- Hover actions -->
-            <div
-              v-if="editingId !== msg.id"
-              class="absolute right-2 top-0 hidden -translate-y-1/2 items-center gap-1 rounded border border-bg-tertiary bg-bg-primary p-0.5 shadow group-hover:flex"
-            >
-              <!-- Emoji picker trigger -->
-              <button
-                @click.stop="openEmojiPicker(msg.id, $event)"
-                class="rounded p-1 text-text-muted hover:bg-bg-hover hover:text-text-primary"
-                title="Add Reaction"
-              >
-                <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/>
-                </svg>
-              </button>
-              <button
-                @click="startReply(msg)"
-                class="rounded p-1 text-text-muted hover:bg-bg-hover hover:text-text-primary"
-                title="Reply"
-              >
-                <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/>
-                </svg>
-              </button>
-              <!-- Pin/unpin (moderator+) -->
-              <button
-                v-if="canModerate"
-                @click="msg.is_pinned ? handleUnpinMessage(msg.id) : handlePinMessage(msg.id)"
-                class="rounded p-1 text-text-muted hover:bg-bg-hover hover:text-text-primary"
-                :title="msg.is_pinned ? 'Unpin' : 'Pin'"
-              >
-                <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor" :class="msg.is_pinned ? 'text-accent' : ''">
-                  <path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2l-2-2z"/>
-                </svg>
-              </button>
-              <button
-                v-if="msg.author_id === authStore.user?.id"
-                @click="startEdit(msg)"
-                class="rounded p-1 text-text-muted hover:bg-bg-hover hover:text-text-primary"
-                title="Edit"
-              >
-                <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                </svg>
-              </button>
-              <button
-                v-if="msg.author_id === authStore.user?.id || canModerate"
-                @click="handleDeleteMessage(msg.id)"
-                class="rounded p-1 text-text-muted hover:bg-danger/10 hover:text-danger"
-                title="Delete"
-              >
-                <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/>
-                  <path d="M9 6V4h6v2"/>
-                </svg>
-              </button>
-            </div>
-
-            <!-- Timestamp on hover (for collapsed messages) -->
-            <span
-              v-if="!msg.showHeader && editingId !== msg.id"
-              class="absolute left-2 hidden text-xs text-text-muted group-hover:block"
-              style="top: 50%; transform: translateY(-50%)"
-            >
-              {{ formatTime(msg.created_at) }}
-            </span>
-          </div>
-        </template>
+        <MessageBubble
+          v-for="msg in groupedMessages"
+          :key="msg.id"
+          :message="msg"
+          :content-html="renderMessage(msg.content, myUsername) + (msg.edited_at ? ' <span class=\'text-xs text-text-muted\'>(edited)</span>' : '')"
+          :reply-author-name="msg.reply_to_id ? (getMessageById(msg.reply_to_id)?.profile.display_name ?? 'Unknown') : null"
+          :reply-content="msg.reply_to_id ? (getMessageById(msg.reply_to_id)?.content ?? '[deleted]') : null"
+          :reaction-groups="getReactionGroups(msg.id)"
+          :is-editing="editingId === msg.id"
+          :edit-content="editingContent"
+          :is-author="msg.author_id === authStore.user?.id"
+          :can-moderate="canModerate"
+          :show-reaction-button="true"
+          :show-pin-button="true"
+          :server-id="serverId"
+          @update:edit-content="editingContent = $event"
+          @reply="startReply(msg)"
+          @start-edit="startEdit(msg)"
+          @delete="handleDeleteMessage(msg.id)"
+          @cancel-edit="cancelEdit"
+          @submit-edit="submitEdit"
+          @pin="handlePinMessage(msg.id)"
+          @unpin="handleUnpinMessage(msg.id)"
+          @toggle-reaction="handleToggleReaction(msg.id, $event)"
+          @open-reaction-picker="openEmojiPicker(msg.id, $event)"
+          @contextmenu="onMessageContext($event, msg)"
+        />
       </div>
     </div>
 
     <template #input>
-      <div v-if="activeView === 'channel'" class="px-4 pb-4">
-        <!-- Reply bar -->
-        <div
-          v-if="replyingTo"
-          class="mb-1 flex items-center gap-2 rounded-t-lg bg-bg-secondary px-4 py-2 text-xs text-text-muted"
-        >
-          <svg class="h-3 w-3 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-            <polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/>
-          </svg>
-          <span>Replying to <span class="font-medium text-text-primary">{{ replyingTo.profile.display_name }}</span></span>
-          <span class="flex-1 truncate text-text-muted">{{ replyingTo.content }}</span>
-          <button @click="replyingTo = null" class="ml-auto flex-shrink-0 hover:text-text-primary">✕</button>
-        </div>
-        <!-- Typing indicator -->
-        <div v-if="displayTypingUsers.length > 0" class="px-1 pb-1 text-xs text-text-muted">
-          <span class="font-medium text-text-secondary">{{ displayTypingUsers.join(', ') }}</span>
-          {{ displayTypingUsers.length === 1 ? 'is' : 'are' }} typing
-          <span class="animate-pulse">...</span>
-        </div>
-        <!-- Pending attachments preview -->
-        <div v-if="pendingAttachments.length > 0" class="mx-2 mb-1 flex flex-wrap gap-2 rounded-lg bg-bg-tertiary px-3 py-2" :class="replyingTo ? '' : ''">
-          <div
-            v-for="(att, idx) in pendingAttachments"
-            :key="idx"
-            class="flex items-center gap-1.5 rounded border border-bg-tertiary bg-bg-secondary px-2 py-1 text-xs"
-          >
-            <span class="max-w-[10rem] truncate text-text-secondary">{{ att.filename }}</span>
-            <button type="button" @click="removePendingAttachment(idx)" class="text-text-muted hover:text-danger">
-              <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-              </svg>
-            </button>
-          </div>
-          <span v-if="uploadingFiles" class="text-xs text-text-muted animate-pulse">Uploading…</span>
-        </div>
-
-        <form @submit.prevent="handleSendMessage" class="flex items-center gap-2 rounded-lg bg-bg-tertiary px-4 py-3" :class="replyingTo ? 'rounded-t-none' : ''">
-          <!-- Hidden file input -->
-          <input
-            ref="fileInputEl"
-            type="file"
-            accept="*/*"
-            multiple
-            class="hidden"
-            @change="uploadAttachments(($event.target as HTMLInputElement).files!)"
-          />
-          <!-- Attachment button -->
-          <button
-            v-if="canPostInChannel"
-            type="button"
-            @click="fileInputEl?.click()"
-            :class="uploadingFiles ? 'text-accent animate-pulse' : 'text-text-muted hover:text-text-primary'"
-            class="flex-shrink-0 rounded p-1 transition-colors"
-            title="Attach File"
-          >
-            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
-              <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
-            </svg>
-          </button>
-          <!-- Poll button -->
-          <button
-            v-if="canPostInChannel"
-            type="button"
-            @click="showCreatePoll = true"
-            :class="showCreatePoll ? 'text-accent' : 'text-text-muted hover:text-text-primary'"
-            class="flex-shrink-0 rounded p-1 transition-colors"
-            title="Create Poll"
-          >
-            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
-              <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>
-            </svg>
-          </button>
-          <MessageInput
-            ref="messageInputEl"
-            v-model="messageInput"
-            :disabled="!activeChannel || slowmodeRemaining > 0 || !canPostInChannel"
-            :placeholder="!canPostInChannel ? 'This is an announcement channel — only moderators can post' : slowmodeRemaining > 0 ? `Slowmode active — wait ${slowmodeRemaining}s` : `Message #${activeChannel?.name ?? 'general'}`"
-            @submit="handleSendMessage"
-            @input="handleInput"
-            @files="uploadAttachments"
-          />
-          <!-- Emoji drawer button -->
-          <button
-            type="button"
-            @click="openEmojiDrawer($event)"
-            :class="emojiDrawerOpen ? 'text-accent' : 'text-text-muted hover:text-text-primary'"
-            class="flex-shrink-0 rounded p-1 transition-colors"
-            title="Emoji"
-          >
-            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
-              <circle cx="12" cy="12" r="10"/>
-              <path d="M8 14s1.5 2 4 2 4-2 4-2"/>
-              <line x1="9" y1="9" x2="9.01" y2="9" stroke-linecap="round" stroke-width="2.5"/>
-              <line x1="15" y1="9" x2="15.01" y2="9" stroke-linecap="round" stroke-width="2.5"/>
-            </svg>
-          </button>
-          <button
-            type="submit"
-            :disabled="(!messageInput.trim() && pendingAttachments.length === 0) || sending || uploadingFiles || !activeChannel || slowmodeRemaining > 0"
-            class="min-w-8 rounded p-1 text-text-muted transition-colors hover:text-text-primary disabled:opacity-30"
-          >
-            <span v-if="slowmodeRemaining > 0" class="text-xs font-medium tabular-nums text-text-muted">{{ slowmodeRemaining }}s</span>
-            <svg v-else class="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
-            </svg>
-          </button>
-        </form>
-      </div>
+      <MessageInputArea
+        v-if="activeView === 'channel'"
+        v-model="messageInput"
+        :reply-display-name="replyingTo?.profile.display_name ?? null"
+        :reply-content="replyingTo?.content ?? null"
+        :typing-users="displayTypingUsers"
+        :pending-attachments="pendingAttachments"
+        :uploading-files="uploadingFiles"
+        :disabled="!activeChannel"
+        :placeholder="!canPostInChannel ? 'This is an announcement channel — only moderators can post' : slowmodeRemaining > 0 ? `Slowmode active — wait ${slowmodeRemaining}s` : `Message #${activeChannel?.name ?? 'general'}`"
+        :can-post="canPostInChannel"
+        :show-attach-button="true"
+        :show-poll-button="true"
+        :slowmode-remaining="slowmodeRemaining"
+        :sending="sending"
+        @submit="handleSendMessage"
+        @input="handleInput"
+        @cancel-reply="replyingTo = null"
+        @attach-files="uploadAttachments"
+        @remove-pending-attachment="removePendingAttachment"
+        @create-poll="showCreatePoll = true"
+      />
     </template>
 
     <template #members-header>
@@ -2034,34 +1605,14 @@ function onServerHeaderContext(event: MouseEvent) {
       />
 
       <!-- Default member list -->
-      <div v-else class="h-full overflow-y-auto p-4">
-        <div v-for="group in memberRoleGroups" :key="group.role" class="mb-3">
-          <h3 class="mb-1 text-xs font-semibold uppercase text-text-muted">
-            {{ group.label }} — {{ group.members.length }}
-          </h3>
-          <div class="space-y-0.5">
-            <button
-              v-for="member in group.members"
-              :key="member.user_id"
-              @click="selectedMember = member"
-              @contextmenu.prevent="onMemberContext($event, member)"
-              class="flex w-full items-center gap-2 rounded px-2 py-1.5 hover:bg-bg-hover text-left"
-              :class="selectedMember?.user_id === member.user_id ? 'bg-bg-hover' : ''"
-            >
-              <UserAvatar
-                :src="member.profile.avatar_url"
-                :alt="member.profile.display_name"
-                :status="getEffectiveStatus(member)"
-                size="sm"
-              />
-              <div class="min-w-0 flex-1">
-                <p class="truncate text-sm font-medium">{{ member.profile.display_name }}</p>
-                <p v-if="member.profile.status_text" class="truncate text-xs text-text-muted">{{ member.profile.status_text }}</p>
-              </div>
-            </button>
-          </div>
-        </div>
-      </div>
+      <MemberList
+        v-else
+        :role-groups="memberRoleGroups"
+        :selected-user-id="selectedMember?.user_id ?? null"
+        :get-effective-status="getEffectiveStatus"
+        @select-member="selectedMember = $event"
+        @contextmenu="(e: MouseEvent, m: any) => onMemberContext(e, m)"
+      />
     </template>
   </AppShell>
 
@@ -2073,142 +1624,29 @@ function onServerHeaderContext(event: MouseEvent) {
   />
 
   <!-- Member profile modal -->
-  <div
+  <MemberProfilePanel
     v-if="selectedMember"
-    class="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
-    @click.self="selectedMember = null"
-  >
-    <div class="w-full max-w-sm rounded-lg bg-bg-secondary shadow-xl overflow-hidden">
-      <!-- Header band -->
-      <div class="h-16 bg-accent/30" />
-      <!-- Avatar overlapping the band -->
-      <div class="relative px-5 pb-5">
-        <div class="-mt-8 mb-3 flex items-end justify-between">
-          <UserAvatar
-            :src="selectedMember.profile.avatar_url"
-            :alt="selectedMember.profile.display_name"
-            :status="getEffectiveStatus(selectedMember)"
-            size="lg"
-          />
-          <button @click="selectedMember = null" class="mb-1 rounded p-1 text-text-muted hover:text-text-primary">
-            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-            </svg>
-          </button>
-        </div>
-
-        <p class="text-lg font-bold">{{ selectedMember.profile.display_name }}</p>
-        <div class="mb-1 flex items-center gap-2">
-          <p class="text-sm text-text-muted">@{{ selectedMember.profile.username }}</p>
-          <span class="flex items-center gap-0.5 rounded bg-violet-500/15 px-1.5 py-0.5 text-xs font-medium text-violet-400">
-            <svg class="h-3 w-3" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-            {{ selectedMember.profile.meta_points ?? 0 }}
-          </span>
-        </div>
-        <span class="inline-block rounded px-2 py-0.5 text-xs font-medium"
-          :class="{
-            'bg-accent/20 text-accent': selectedMember.role === 'owner',
-            'bg-success/20 text-success': selectedMember.role === 'admin',
-            'bg-presence-idle/20 text-presence-idle': selectedMember.role === 'moderator',
-            'bg-bg-tertiary text-text-muted': selectedMember.role === 'member',
-          }"
-        >{{ selectedMember.role }}</span>
-
-        <div v-if="selectedMember.profile.bio" class="mt-3 border-t border-bg-tertiary pt-3">
-          <p class="text-xs font-semibold uppercase text-text-muted">About Me</p>
-          <p class="mt-1 text-sm text-text-secondary">{{ selectedMember.profile.bio }}</p>
-        </div>
-
-        <div v-if="selectedMember.profile.pronouns || selectedMember.profile.website || selectedMember.profile.location" class="mt-2 space-y-1">
-          <p v-if="selectedMember.profile.pronouns" class="text-xs text-text-muted">{{ selectedMember.profile.pronouns }}</p>
-          <a v-if="selectedMember.profile.website" :href="selectedMember.profile.website" target="_blank" rel="noopener noreferrer" class="block text-xs text-accent hover:underline truncate">🔗 {{ selectedMember.profile.website }}</a>
-          <p v-if="selectedMember.profile.location" class="text-xs text-text-secondary">📍 {{ selectedMember.profile.location }}</p>
-        </div>
-
-        <div v-if="selectedMember.profile.status_text" class="mt-2">
-          <p class="text-xs text-text-muted">{{ selectedMember.profile.status_text }}</p>
-        </div>
-
-        <!-- Send Message button (non-self) -->
-        <button
-          v-if="selectedMember.user_id !== authStore.user?.id"
-          @click="async () => { const gid = await openDM(selectedMember!.user_id); selectedMember = null; router.push(`/channels/@me/${gid}`) }"
-          class="mt-3 w-full rounded bg-accent px-3 py-2 text-sm font-medium text-white hover:bg-accent-hover"
-        >
-          Send Message
-        </button>
-
-        <!-- Role management (owner/admin only, not for self) -->
-        <div v-if="canChangeRole(selectedMember)" class="mt-4 border-t border-bg-tertiary pt-4">
-          <label class="mb-1 block text-xs font-semibold uppercase text-text-muted">Role</label>
-          <select
-            :value="selectedMember.role"
-            @change="handleRoleChange(selectedMember!.user_id, ($event.target as HTMLSelectElement).value as MemberRole)"
-            class="w-full rounded border border-bg-tertiary bg-bg-primary px-3 py-1.5 text-sm text-text-primary outline-none focus:border-accent"
-          >
-            <option value="member">Member</option>
-            <option value="moderator">Moderator</option>
-            <option value="admin">Admin</option>
-            <option v-if="isOwner" value="owner">Owner</option>
-          </select>
-        </div>
-
-        <!-- Kick / Ban buttons (moderators+, not for self) -->
-        <div v-if="(canKick || canBan) && selectedMember.user_id !== authStore.user?.id" class="mt-3 flex gap-2">
-          <button
-            @click="handleKick(selectedMember!.user_id)"
-            class="flex-1 rounded bg-bg-tertiary px-3 py-2 text-sm font-medium text-text-secondary hover:bg-bg-hover"
-          >
-            Kick
-          </button>
-          <button
-            @click="handleBan(selectedMember!.user_id)"
-            class="flex-1 rounded bg-danger/10 px-3 py-2 text-sm font-medium text-danger hover:bg-danger/20"
-          >
-            Ban
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
+    :member="selectedMember"
+    :status="getEffectiveStatus(selectedMember)"
+    :is-self="selectedMember.user_id === authStore.user?.id"
+    :can-change-role="canChangeRole(selectedMember)"
+    :can-kick="canKick"
+    :can-ban="canBan"
+    :is-owner="isOwner"
+    @close="selectedMember = null"
+    @send-message="async () => { const gid = await openDM(selectedMember!.user_id); selectedMember = null; router.push(`/channels/@me/${gid}`) }"
+    @change-role="handleRoleChange(selectedMember!.user_id, $event)"
+    @kick="handleKick(selectedMember!.user_id)"
+    @ban="handleBan(selectedMember!.user_id)"
+  />
 
   <!-- Create Channel Dialog -->
-  <div v-if="showCreateChannel" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60" @click.self="showCreateChannel = false">
-    <div class="w-full max-w-md rounded-lg bg-bg-secondary p-6">
-      <h2 class="mb-4 text-xl font-bold">Create Channel</h2>
-      <form @submit.prevent="handleCreateChannel" class="space-y-4">
-        <div>
-          <label for="channel-name" class="mb-1 block text-sm text-text-secondary">Channel Name</label>
-          <input
-            id="channel-name"
-            v-model="newChannelName"
-            type="text"
-            required
-            maxlength="50"
-            class="w-full rounded border border-bg-tertiary bg-bg-primary px-3 py-2 text-text-primary outline-none focus:border-accent"
-            placeholder="new-channel"
-          />
-        </div>
-        <div v-if="categoriesStore.categories.length > 0">
-          <label for="channel-category" class="mb-1 block text-sm text-text-secondary">Category (optional)</label>
-          <select
-            id="channel-category"
-            v-model="newChannelCategoryId"
-            class="w-full rounded border border-bg-tertiary bg-bg-primary px-3 py-2 text-text-primary outline-none focus:border-accent"
-          >
-            <option :value="null">No category</option>
-            <option v-for="cat in categoriesStore.categories" :key="cat.id" :value="cat.id">
-              {{ cat.name }}
-            </option>
-          </select>
-        </div>
-        <div class="flex justify-end gap-2">
-          <button type="button" @click="showCreateChannel = false" class="rounded px-4 py-2 text-sm text-text-secondary hover:text-text-primary">Cancel</button>
-          <button type="submit" :disabled="!newChannelName.trim()" class="rounded bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50">Create</button>
-        </div>
-      </form>
-    </div>
-  </div>
+  <CreateChannelDialog
+    v-if="showCreateChannel"
+    :categories="categoriesStore.categories"
+    @create="(name, catId) => { createChannel(serverId, name, undefined, catId); showCreateChannel = false }"
+    @close="showCreateChannel = false"
+  />
 
   <!-- Create Category Dialog -->
   <div v-if="showCreateCategory" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60" @click.self="showCreateCategory = false">
@@ -2236,50 +1674,14 @@ function onServerHeaderContext(event: MouseEvent) {
   </div>
 
   <!-- Edit Channel Dialog -->
-  <div v-if="showEditChannel" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60" @click.self="showEditChannel = false">
-    <div class="w-full max-w-md rounded-lg bg-bg-secondary p-6">
-      <h2 class="mb-4 text-xl font-bold">Edit Channel</h2>
-      <form @submit.prevent="handleEditChannel" class="space-y-4">
-        <div>
-          <label for="edit-channel-name" class="mb-1 block text-sm text-text-secondary">Channel Name</label>
-          <input
-            id="edit-channel-name"
-            v-model="editChannelName"
-            type="text"
-            required
-            maxlength="50"
-            class="w-full rounded border border-bg-tertiary bg-bg-primary px-3 py-2 text-text-primary outline-none focus:border-accent"
-          />
-        </div>
-        <div>
-          <label for="edit-channel-desc" class="mb-1 block text-sm text-text-secondary">Description</label>
-          <input
-            id="edit-channel-desc"
-            v-model="editChannelDescription"
-            type="text"
-            maxlength="200"
-            class="w-full rounded border border-bg-tertiary bg-bg-primary px-3 py-2 text-text-primary outline-none focus:border-accent"
-            placeholder="What's this channel about?"
-          />
-        </div>
-        <div>
-          <label for="edit-channel-slowmode" class="mb-1 block text-sm text-text-secondary">Slowmode (seconds, 0 = off)</label>
-          <input
-            id="edit-channel-slowmode"
-            v-model.number="editChannelSlowmode"
-            type="number"
-            min="0"
-            max="3600"
-            class="w-full rounded border border-bg-tertiary bg-bg-primary px-3 py-2 text-text-primary outline-none focus:border-accent"
-          />
-        </div>
-        <div class="flex justify-end gap-2">
-          <button type="button" @click="showEditChannel = false" class="rounded px-4 py-2 text-sm text-text-secondary hover:text-text-primary">Cancel</button>
-          <button type="submit" :disabled="!editChannelName.trim()" class="rounded bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50">Save</button>
-        </div>
-      </form>
-    </div>
-  </div>
+  <EditChannelDialog
+    v-if="showEditChannel"
+    :name="editChannelName"
+    :description="editChannelDescription"
+    :slowmode-seconds="editChannelSlowmode"
+    @save="async (data) => { if (editChannelId) { await updateChannel(editChannelId, { name: data.name, description: data.description, slowmode_seconds: data.slowmodeSeconds }); showEditChannel = false; toastStore.show('Channel updated', 'success') } }"
+    @close="showEditChannel = false"
+  />
 
   <!-- Invite Dialog -->
   <div v-if="showInvite" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60" @click.self="showInvite = false">
@@ -2307,39 +1709,12 @@ function onServerHeaderContext(event: MouseEvent) {
     </div>
   </div>
 
-  <!-- Full emoji drawer (input bar) -->
-  <Teleport to="body">
-    <div
-      v-if="emojiDrawerOpen"
-      class="fixed z-[9997]"
-      :style="{ bottom: emojiDrawerAnchor ? emojiDrawerAnchor.bottom + 'px' : '80px', right: emojiDrawerAnchor ? emojiDrawerAnchor.right + 'px' : '16px' }"
-      @click.stop
-    >
-      <EmojiPicker @select="insertEmoji" />
-    </div>
-    <div
-      v-if="emojiDrawerOpen"
-      class="fixed inset-0 z-[9996]"
-      @click="emojiDrawerOpen = false"
-    />
-  </Teleport>
-
-  <!-- Reaction emoji picker (full picker, teleported to body) -->
-  <Teleport to="body">
-    <div
-      v-if="emojiPickerForMsg && pickerAnchorRect"
-      class="fixed z-[9999]"
-      :style="{ top: pickerAnchorRect.top + 'px', right: pickerAnchorRect.right + 'px' }"
-      @click.stop
-    >
-      <EmojiPicker @select="handleToggleReaction(emojiPickerForMsg!, $event)" />
-    </div>
-    <div
-      v-if="emojiPickerForMsg"
-      class="fixed inset-0 z-[9998]"
-      @click="emojiPickerForMsg = null; pickerAnchorRect = null"
-    />
-  </Teleport>
+  <EmojiPickerPopover
+    :open="!!emojiPickerForMsg && !!pickerAnchorRect"
+    :anchor="pickerAnchorRect"
+    @select="handleToggleReaction(emojiPickerForMsg!, $event)"
+    @close="emojiPickerForMsg = null; pickerAnchorRect = null"
+  />
 
   <!-- Report dialog -->
   <ReportDialog

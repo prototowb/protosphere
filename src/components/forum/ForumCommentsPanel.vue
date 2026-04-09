@@ -5,7 +5,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useToastStore } from '@/stores/toast'
 import ForumCommentTree from '@/components/forum/ForumCommentTree.vue'
 import MessageInput from '@/components/chat/MessageInput.vue'
-import EmojiPicker from '@/components/chat/EmojiPicker.vue'
+import EmojiPickerPopover from '@/components/ui/EmojiPickerPopover.vue'
 import type { ForumComment, ForumCommentReaction, Profile } from '@/lib/types'
 
 const props = defineProps<{ postId: string }>()
@@ -240,15 +240,10 @@ defineExpose({ count: computed(() => comments.value.length) })
 
   </div>
 
-  <Teleport to="body">
-    <div
-      v-if="emojiDrawerOpen && emojiDrawerAnchor"
-      class="fixed z-[9997]"
-      :style="{ bottom: emojiDrawerAnchor.bottom + 'px', right: emojiDrawerAnchor.right + 'px' }"
-      @click.stop
-    >
-      <EmojiPicker @select="insertEmoji" />
-    </div>
-    <div v-if="emojiDrawerOpen" class="fixed inset-0 z-[9996]" @click="emojiDrawerOpen = false" />
-  </Teleport>
+  <EmojiPickerPopover
+    :open="emojiDrawerOpen"
+    :anchor="emojiDrawerAnchor"
+    @select="insertEmoji"
+    @close="emojiDrawerOpen = false"
+  />
 </template>

@@ -1,18 +1,20 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 import { backend } from '@/lib/backend'
+import { formatDateTime, escapeHtml } from '@/lib/formatters'
 import { useAuthStore } from '@/stores/auth'
 import { useToastStore } from '@/stores/toast'
 import { useUiStore } from '@/stores/ui'
 import UserAvatar from '@/components/user/UserAvatar.vue'
-import MessageAttachments from '@/components/messages/MessageAttachments.vue'
 import ForumCommentTree from '@/components/forum/ForumCommentTree.vue'
+import PostHero from '@/components/forum/PostHero.vue'
+import ThreadPostCard from '@/components/forum/ThreadPostCard.vue'
+import VoteButtons from '@/components/chat/VoteButtons.vue'
 import BlockEditor from '@/components/editor/BlockEditor.vue'
 import BlockRenderer from '@/components/editor/BlockRenderer.vue'
-import RichText from '@/components/ui/RichText.vue'
 import InviteCollaboratorDialog from '@/components/forum/InviteCollaboratorDialog.vue'
 import MessageInput from '@/components/chat/MessageInput.vue'
-import EmojiPicker from '@/components/chat/EmojiPicker.vue'
+import EmojiPickerPopover from '@/components/ui/EmojiPickerPopover.vue'
 import type {
   ForumPost, ForumVote, ForumComment, ForumCollaborator,
   ForumCommentReaction, Profile, Message, PageContent,
@@ -326,7 +328,7 @@ function startEditing() {
 
 const lockedHeroSubtitle = computed(() => {
   if (!post.value) return ''
-  const parts = [`by ${post.value.created_by_profile?.display_name ?? 'Unknown'}`, formatTime(post.value.created_at)]
+  const parts = [`by ${post.value.created_by_profile?.display_name ?? 'Unknown'}`, formatDateTime(post.value.created_at)]
   if (post.value.collaborators.length) {
     parts.push(`+${post.value.collaborators.length} collaborator${post.value.collaborators.length > 1 ? 's' : ''}`)
   }
@@ -344,15 +346,6 @@ function handleCollaboratorAdded(_userId: string) {
 
 function genId() { return Math.random().toString(36).slice(2, 10) }
 
-function escapeHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-}
-
-function formatTime(iso: string) {
-  const d = new Date(iso)
-  return d.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }) + ' at ' +
-    d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-}
 
 defineExpose({
   post,
@@ -396,54 +389,21 @@ defineExpose({
         <!-- View mode: meta + rendered page -->
         <div v-else class="flex-1 overflow-y-auto">
           <div class="mx-auto max-w-3xl px-6 py-8">
-            <!-- Hero header -->
-            <div
-              class="relative flex flex-col rounded-xl p-8 mb-8"
-              :class="savedContent.lockedHeroStyle?.backgroundUrl ? '' : 'bg-gradient-to-br from-sky-500/20 to-bg-tertiary'"
-              :style="savedContent.lockedHeroStyle?.backgroundUrl ? `background-image:url(${savedContent.lockedHeroStyle.backgroundUrl});background-size:cover;background-position:center` : ''"
-            >
-              <div v-if="savedContent.lockedHeroStyle?.backgroundUrl" class="absolute inset-0 rounded-xl bg-black/40" />
-              <!-- Post Meta -->
-              <div class="relative mb-3 flex items-center gap-2">
-                <span class="rounded px-1.5 py-0.5 text-xs font-medium uppercase tracking-wide bg-sky-500/30 text-sky-400">page</span>
-                <button
-                  @click="uiStore.memberSidebarOpen = !uiStore.memberSidebarOpen"
-                  class="flex items-center gap-1 rounded px-1.5 py-0.5 transition-colors"
-                  :class="uiStore.memberSidebarOpen ? 'text-white bg-white/20' : 'text-white/70 hover:text-white hover:bg-white/10'"
-                  title="Toggle comments"
-                >
-                  <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-                  <span class="text-sm">{{ props.commentCount ?? comments.length }}</span>
-                </button>
-                <button v-if="canInvite" @click="showInviteDialog = true"
-                class="ml-auto flex items-center gap-1 rounded bg-white/10 px-2
-                py-0.5 text-xs text-white/80 hover:bg-white/20 hover:text-white
-                transition-colors">
-                  <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                  Invite
-                </button>
-              </div>
-              <!-- Title -->
-              <h1 class="relative text-3xl font-bold leading-tight text-white drop-shadow" :class="{ 'text-center': savedContent.lockedHeroStyle?.textAlign === 'center', 'text-right': savedContent.lockedHeroStyle?.textAlign === 'right' }">{{ post.title }}</h1>
-              <!-- Author Meta -->
-              <div class="relative mt-3 flex flex-wrap items-center gap-3 text-sm text-white/70">
-                <div class="flex items-center gap-2">
-                  <UserAvatar :src="post.created_by_profile?.avatar_url"
-                  :alt="post.created_by_profile?.display_name" size="sm" />
-                  <div class="min-w-0 flex-1 flex flex-col">
-                    <span class="font-medium text-white/90">{{ post.created_by_profile?.display_name ?? 'Unknown' }}</span>
-                    <span class="text-xs">{{ formatTime(post.created_at) }}</span>
-                  </div>
-                <span v-if="post.updated_by" class="text-xs self-end">· edited {{ formatTime(post.updated_at) }}</span>
-                </div>
-                <div v-if="post.collaborators.length" class="flex items-center gap-1">
-                  <span class="text-xs text-white/50">+</span>
-                  <div class="flex -space-x-1.5">
-                    <UserAvatar v-for="c in post.collaborators" :key="c.user_id" :src="c.user.avatar_url" :alt="c.user.display_name" size="xs" class="ring-2 ring-bg-primary" :title="c.user.display_name" />
-                  </div>
-                </div>
-              </div>
-            </div>
+            <PostHero
+              :title="post.title"
+              :created-at="post.created_at"
+              :updated-at="post.updated_at"
+              :updated-by="post.updated_by"
+              :author-name="post.created_by_profile?.display_name ?? 'Unknown'"
+              :author-avatar-url="post.created_by_profile?.avatar_url ?? null"
+              :collaborators="post.collaborators"
+              :hero-style="savedContent.lockedHeroStyle"
+              :comment-count="props.commentCount ?? comments.length"
+              :can-invite="canInvite"
+              :member-sidebar-open="uiStore.memberSidebarOpen"
+              @toggle-comments="uiStore.memberSidebarOpen = !uiStore.memberSidebarOpen"
+              @invite="showInviteDialog = true"
+            />
             <!-- Rendered page content -->
             <BlockRenderer :content="savedContent" />
           </div>
@@ -468,53 +428,26 @@ defineExpose({
                 <span>{{ post.created_by_profile?.meta_points }} meta</span>
               </span>
               <span>·</span>
-              <span>{{ formatTime(post.created_at) }}</span>
+              <span>{{ formatDateTime(post.created_at) }}</span>
             </div>
           </div>
 
-          <!-- Source message + OP body block -->
-          <div class="mb-3 rounded-lg border border-bg-tertiary bg-bg-secondary overflow-hidden">
-            <!-- Source message -->
-            <div v-if="post.source_message" class="px-4 pt-4 pb-3">
-              <p class="mb-1.5 text-xs font-semibold uppercase tracking-wide text-text-muted">Original message</p>
-              <div class="flex gap-2.5">
-                <UserAvatar :src="post.source_message.profile?.avatar_url" :alt="post.source_message.profile?.display_name" size="sm" class="flex-shrink-0 mt-0.5" />
-                <div class="min-w-0">
-                  <span class="text-sm font-semibold text-text-primary">{{ post.source_message.profile?.display_name }}</span>
-                  <p class="mt-0.5 break-words text-sm text-text-secondary">{{ post.source_message.content }}</p>
-                  <MessageAttachments v-if="post.source_message.attachments?.length" :attachments="post.source_message.attachments" class="mt-2" />
-                </div>
-              </div>
-            </div>
-
-            <!-- Reply indicator + OP body -->
-            <div v-if="post.body" class="relative px-4 pb-4" :class="post.source_message ? 'pt-0' : 'pt-4'">
-              <!-- Vertical reply line -->
-              <div v-if="post.source_message" class="absolute left-8 top-0 bottom-4 w-0.5 bg-bg-tertiary" />
-              <div v-if="post.source_message" class="absolute left-8 top-0 h-4 w-4 rounded-bl-lg border-b border-l border-bg-tertiary bg-transparent" style="margin-left: 0" />
-
-              <div class="flex gap-2.5" :class="post.source_message ? 'ml-6 mt-3' : ''">
-                <UserAvatar :src="post.created_by_profile?.avatar_url" :alt="post.created_by_profile?.display_name" size="sm" class="flex-shrink-0 mt-0.5" />
-                <div class="min-w-0 flex-1 rounded-lg bg-bg-primary px-3 py-2.5">
-                  <span class="text-sm font-semibold text-text-primary">{{ post.created_by_profile?.display_name ?? 'Unknown' }}</span>
-                  <p class="mt-0.5 break-words text-sm text-text-secondary leading-relaxed"><RichText :text="post.body" /></p>
-                </div>
-              </div>
-            </div>
-          </div>
+          <ThreadPostCard
+            :source-message="post.source_message"
+            :body="post.body"
+            :author-name="post.created_by_profile?.display_name ?? 'Unknown'"
+            :author-avatar-url="post.created_by_profile?.avatar_url ?? null"
+          />
 
           <!-- Vote bar -->
           <div class="mb-3 px-2 flex items-baseline gap-3">
-            <button @click="handleVote(1)" class="flex items-center gap-1 rounded-md px-1.5 py-1.5 text-sm font-medium transition-colors" :class="userVote?.value === 1 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-bg-secondary text-text-muted hover:bg-bg-hover hover:text-emerald-400'">
-              <svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M12 4l8 8H4z"/></svg>
-            </button>
-            <span class="flex items-baseline gap-1.5">
-              <span class="font-bold" :class="post.vote_score > 0 ? 'text-emerald-400' : post.vote_score < 0 ? 'text-red-400' : 'text-text-muted'">{{ post.vote_score }}</span>
-              <span class="text-sm font-semibold text-violet-400">meta</span>
-            </span>
-            <button @click="handleVote(-1)" class="flex items-center gap-1 rounded-md px-1.5 py-1.5 text-sm font-medium transition-colors" :class="userVote?.value === -1 ? 'bg-red-500/20 text-red-400' : 'bg-bg-secondary text-text-muted hover:bg-bg-hover hover:text-red-400'">
-              <svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M12 20l-8-8h16z"/></svg>
-            </button>
+            <VoteButtons
+              :score="post.vote_score"
+              :user-vote="userVote?.value ?? null"
+              size="md"
+              show-label
+              @vote="handleVote"
+            />
             <span class="text-sm text-text-muted">{{ comments.length }} comment{{ comments.length !== 1 ? 's' : '' }}</span>
           </div>
 
@@ -591,20 +524,11 @@ defineExpose({
       @close="showInviteDialog = false"
     />
 
-    <Teleport to="body">
-      <div
-        v-if="emojiDrawerOpen && emojiDrawerAnchor"
-        class="fixed z-[9997]"
-        :style="{ bottom: emojiDrawerAnchor.bottom + 'px', right: emojiDrawerAnchor.right + 'px' }"
-        @click.stop
-      >
-        <EmojiPicker @select="insertCommentEmoji" />
-      </div>
-      <div
-        v-if="emojiDrawerOpen"
-        class="fixed inset-0 z-[9996]"
-        @click="emojiDrawerOpen = false"
-      />
-    </Teleport>
+    <EmojiPickerPopover
+      :open="emojiDrawerOpen"
+      :anchor="emojiDrawerAnchor"
+      @select="insertCommentEmoji"
+      @close="emojiDrawerOpen = false"
+    />
   </div>
 </template>

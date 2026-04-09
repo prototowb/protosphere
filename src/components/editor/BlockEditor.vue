@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import BlockRenderer from './BlockRenderer.vue'
+import { escapeHtml } from '@/lib/formatters'
 import type { Block, PageContent, HeroBlock, TextBlock, ImageBlock, ColumnsBlock, CalloutBlock, LinkCardBlock, Attachment } from '@/lib/types'
 
 const props = defineProps<{
@@ -97,9 +98,6 @@ function updateColumnItem(block: ColumnsBlock, idx: number, html: string) {
 
 // ── source message imports ────────────────────────────────────────────────────
 
-function escapeHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-}
 
 function importSourceText(text: string) {
   const id = uid()

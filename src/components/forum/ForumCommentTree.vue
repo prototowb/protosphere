@@ -2,9 +2,11 @@
 import { ref, computed } from 'vue'
 import UserAvatar from '@/components/user/UserAvatar.vue'
 import MessageInput from '@/components/chat/MessageInput.vue'
-import EmojiPicker from '@/components/chat/EmojiPicker.vue'
+import EmojiPickerPopover from '@/components/ui/EmojiPickerPopover.vue'
 import EmojiIcon from '@/components/ui/EmojiIcon.vue'
 import RichText from '@/components/ui/RichText.vue'
+import VoteButtons from '@/components/chat/VoteButtons.vue'
+import { formatDateShort } from '@/lib/formatters'
 import type { ForumComment, ForumCommentReaction, Profile } from '@/lib/types'
 
 const props = defineProps<{
@@ -62,13 +64,6 @@ const replyEmojiAnchor = ref<{ bottom: number; right: number } | null>(null)
 const editEmojiOpen = ref(false)
 const editEmojiAnchor = ref<{ bottom: number; right: number } | null>(null)
 
-function formatDate(iso: string) {
-  const d = new Date(iso)
-  const today = new Date()
-  if (d.toDateString() === today.toDateString())
-    return `Today at ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
-  return d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' at ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-}
 
 function submitReply(parentCommentId: string | null) {
   const content = replyContent.value.trim()
@@ -195,7 +190,7 @@ const depthColors = ['border-violet-500/40', 'border-sky-500/40', 'border-emeral
           <UserAvatar :src="comment.profile?.avatar_url" :alt="comment.profile?.display_name" size="xs" class="mt-0.5 flex-shrink-0" />
           <div class="min-w-0 flex flex-1" :class="[props.compact ? 'flex-col' : '']">
             <p class="text-sm font-semibold text-text-primary leading-none mb-0.5">{{ comment.profile?.display_name ?? 'Unknown' }}</p>
-            <p class="text-xs text-text-muted leading-none" :class="[props.compact ? 'ml-0' : 'ml-auto']">{{ formatDate(comment.created_at) }}<span v-if="comment.edited_at" class="italic"> · edited</span></p>
+            <p class="text-xs text-text-muted leading-none" :class="[props.compact ? 'ml-0' : 'ml-auto']">{{ formatDateShort(comment.created_at) }}<span v-if="comment.edited_at" class="italic"> · edited</span></p>
           </div>
           <!-- Edit / Delete buttons (own comments only, not deleted) -->
           <template v-if="canPost && comment.author_id === currentUserId && !comment.is_deleted && editingCommentId !== comment.id">
@@ -255,35 +250,12 @@ const depthColors = ['border-violet-500/40', 'border-sky-500/40', 'border-emeral
 
         <!-- Action bar (hidden for deleted comments) -->
         <div v-if="!comment.is_deleted" :class="['flex flex-wrap items-center', props.compact ? 'gap-1.5' : 'gap-3']">
-          <!-- Votes -->
-          <div class="flex items-center gap-1">
-            <button
-              @click="handleVote(comment.id, 1)"
-              :class="[
-                'flex items-center gap-0.5 rounded px-1 py-0.5 text-xs font-medium transition-colors',
-                userVotes[comment.id] === 1
-                  ? 'bg-emerald-500/20 text-emerald-400'
-                  : 'text-text-muted hover:bg-bg-hover hover:text-emerald-400',
-              ]"
-            >
-              <svg class="h-3 w-3" viewBox="0 0 24 24" fill="currentColor"><path d="M12 4l8 8H4z"/></svg>
-            </button>
-            <span
-              class="min-w-[1.25rem] text-center text-xs font-semibold tabular-nums"
-              :class="comment.vote_score > 0 ? 'text-emerald-400' : comment.vote_score < 0 ? 'text-red-400' : 'text-text-muted'"
-            >{{ comment.vote_score }}</span>
-            <button
-              @click="handleVote(comment.id, -1)"
-              :class="[
-                'flex items-center gap-0.5 rounded px-1 py-0.5 text-sm font-medium transition-colors',
-                userVotes[comment.id] === -1
-                  ? 'bg-red-500/20 text-red-400'
-                  : 'text-text-muted hover:bg-bg-hover hover:text-red-400',
-              ]"
-            >
-              <svg class="h-3 w-3" viewBox="0 0 24 24" fill="currentColor"><path d="M12 20l-8-8h16z"/></svg>
-            </button>
-          </div>
+          <VoteButtons
+            :score="comment.vote_score"
+            :user-vote="userVotes[comment.id] ?? null"
+            size="sm"
+            @vote="(v: 1 | -1) => handleVote(comment.id, v)"
+          />
 
           <!-- Reaction strip -->
           <div class="flex flex-wrap items-center gap-1">
@@ -390,48 +362,22 @@ const depthColors = ['border-violet-500/40', 'border-sky-500/40', 'border-emeral
     </div>
   </div>
 
-  <!-- Reaction emoji picker (full picker, teleported) -->
-  <Teleport to="body">
-    <div
-      v-if="showReactionPicker && reactionPickerAnchor"
-      class="fixed z-[9999]"
-      :style="{ top: reactionPickerAnchor.top + 'px', right: reactionPickerAnchor.right + 'px' }"
-      @click.stop
-    >
-      <EmojiPicker @select="handleReaction(showReactionPicker!, $event)" />
-    </div>
-    <div
-      v-if="showReactionPicker"
-      class="fixed inset-0 z-[9998]"
-      @click="showReactionPicker = null; reactionPickerAnchor = null"
-    />
-    <!-- Edit emoji drawer -->
-    <div
-      v-if="editEmojiOpen && editEmojiAnchor"
-      class="fixed z-[9997]"
-      :style="{ bottom: editEmojiAnchor.bottom + 'px', right: editEmojiAnchor.right + 'px' }"
-      @click.stop
-    >
-      <EmojiPicker @select="insertEditEmoji($event)" />
-    </div>
-    <div
-      v-if="editEmojiOpen"
-      class="fixed inset-0 z-[9996]"
-      @click="editEmojiOpen = false"
-    />
-    <!-- Reply emoji drawer -->
-    <div
-      v-if="replyEmojiOpen && replyEmojiAnchor"
-      class="fixed z-[9997]"
-      :style="{ bottom: replyEmojiAnchor.bottom + 'px', right: replyEmojiAnchor.right + 'px' }"
-      @click.stop
-    >
-      <EmojiPicker @select="insertReplyEmoji($event)" />
-    </div>
-    <div
-      v-if="replyEmojiOpen"
-      class="fixed inset-0 z-[9996]"
-      @click="replyEmojiOpen = false"
-    />
-  </Teleport>
+  <EmojiPickerPopover
+    :open="!!showReactionPicker && !!reactionPickerAnchor"
+    :anchor="reactionPickerAnchor"
+    @select="handleReaction(showReactionPicker!, $event)"
+    @close="showReactionPicker = null; reactionPickerAnchor = null"
+  />
+  <EmojiPickerPopover
+    :open="editEmojiOpen"
+    :anchor="editEmojiAnchor"
+    @select="insertEditEmoji($event)"
+    @close="editEmojiOpen = false"
+  />
+  <EmojiPickerPopover
+    :open="replyEmojiOpen"
+    :anchor="replyEmojiAnchor"
+    @select="insertReplyEmoji($event)"
+    @close="replyEmojiOpen = false"
+  />
 </template>

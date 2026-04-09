@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import UserAvatar from '@/components/user/UserAvatar.vue'
 import { renderMessage } from '@/lib/mentions'
+import { formatTime } from '@/lib/formatters'
 import type { Message, Profile } from '@/lib/types'
 
 defineProps<{
@@ -14,9 +15,6 @@ const emit = defineEmits<{
   unpin: [messageId: string]
 }>()
 
-function formatTime(iso: string) {
-  return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-}
 </script>
 
 <template>

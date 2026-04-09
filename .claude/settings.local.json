@@ -14,7 +14,8 @@
       "Bash(npx vite:*)",
       "Bash(gh run:*)",
       "Bash(/c/Users/tobia/scoop/shims/supabase db:*)",
-      "Bash(/c/Users/tobia/scoop/shims/supabase migration:*)"
+      "Bash(/c/Users/tobia/scoop/shims/supabase migration:*)",
+      "Bash(xargs grep:*)"
     ]
   }
 }

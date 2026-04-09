@@ -3,7 +3,8 @@ import { ref, watch, onMounted, onUnmounted, nextTick, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppShell from '@/components/layout/AppShell.vue'
 import UserAvatar from '@/components/user/UserAvatar.vue'
-import EmojiPicker from '@/components/chat/EmojiPicker.vue'
+import MessageBubble from '@/components/chat/MessageBubble.vue'
+import MessageInputArea from '@/components/chat/MessageInputArea.vue'
 import MessageSearch from '@/components/chat/MessageSearch.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useDmsStore } from '@/stores/dms'
@@ -19,6 +20,7 @@ import { useMessageSearch } from '@/composables/useMessageSearch'
 import { useProfile } from '@/composables/useProfile'
 import { useDmNotificationPreferences } from '@/composables/useDmNotificationPreferences'
 import { isLocalMode } from '@/lib/backend'
+import { formatDate } from '@/lib/formatters'
 import { expandShortcodes } from '@/lib/emojiNames'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 import type { DirectMessage, Profile } from '@/lib/types'
@@ -42,40 +44,8 @@ const { query: dmSearchQuery, results: dmSearchResults, isOpen: dmSearchOpen, op
 const { isMuted, loadMute, setMute } = useDmNotificationPreferences()
 
 const messageInput = ref('')
-const messageInputEl = ref<HTMLInputElement | null>(null)
 const sending = ref(false)
 const messageListEl = ref<HTMLElement | null>(null)
-
-// Emoji drawer
-const emojiDrawerOpen = ref(false)
-const emojiDrawerAnchor = ref<{ bottom: number; right: number } | null>(null)
-
-function openEmojiDrawer(event: MouseEvent) {
-  if (emojiDrawerOpen.value) {
-    emojiDrawerOpen.value = false
-    return
-  }
-  const btn = event.currentTarget as HTMLElement
-  const rect = btn.getBoundingClientRect()
-  emojiDrawerAnchor.value = { bottom: window.innerHeight - rect.top + 8, right: window.innerWidth - rect.right }
-  emojiDrawerOpen.value = true
-}
-
-function insertEmoji(emoji: string) {
-  const input = messageInputEl.value
-  if (!input) {
-    messageInput.value += emoji
-    return
-  }
-  const start = input.selectionStart ?? messageInput.value.length
-  const end = input.selectionEnd ?? messageInput.value.length
-  messageInput.value = messageInput.value.slice(0, start) + emoji + messageInput.value.slice(end)
-  nextTick(() => {
-    input.focus()
-    const pos = start + [...emoji].length
-    input.setSelectionRange(pos, pos)
-  })
-}
 
 const editingId = ref<string | null>(null)
 const editingContent = ref('')
@@ -85,7 +55,6 @@ const replyingTo = ref<(DirectMessage & { profile: Profile }) | null>(null)
 
 function startReply(msg: DirectMessage & { profile: Profile }) {
   replyingTo.value = msg
-  nextTick(() => messageInputEl.value?.focus())
 }
 
 function cancelReply() {
@@ -246,24 +215,6 @@ async function handleOpenDM(userId: string) {
   router.push(`/channels/@me/${groupId}`)
 }
 
-function formatTime(iso: string) {
-  return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-}
-
-function isExpiringSoon(expiresAt: string | null | undefined): boolean {
-  if (!expiresAt) return false
-  return new Date(expiresAt).getTime() - Date.now() < 12 * 60 * 60 * 1000
-}
-
-function formatDate(iso: string) {
-  const d = new Date(iso)
-  const today = new Date()
-  const yesterday = new Date(today)
-  yesterday.setDate(today.getDate() - 1)
-  if (d.toDateString() === today.toDateString()) return 'Today'
-  if (d.toDateString() === yesterday.toDateString()) return 'Yesterday'
-  return d.toLocaleDateString([], { month: 'long', day: 'numeric', year: 'numeric' })
-}
 
 type GroupedDM = (DirectMessage & { profile: Profile }) & {
   showHeader: boolean
@@ -457,175 +408,43 @@ function onDmConversationContext(event: MouseEvent, groupId: string) {
 
       <!-- Messages -->
       <div v-else class="flex flex-col gap-0.5">
-        <template v-for="msg in groupedMessages" :key="msg.id">
-          <div v-if="msg.dateSeparator" class="my-4 flex items-center gap-3">
-            <div class="h-px flex-1 bg-bg-tertiary" />
-            <span class="text-xs text-text-muted">{{ msg.dateSeparator }}</span>
-            <div class="h-px flex-1 bg-bg-tertiary" />
-          </div>
-
-          <div
-            :data-message-id="msg.id"
-            class="group relative flex gap-3 rounded px-2 py-0.5 transition-colors hover:bg-bg-secondary"
-            :class="msg.showHeader ? 'mt-3' : ''"
-            @contextmenu.prevent="onDmMessageContext($event, msg)"
-          >
-            <div class="w-10 flex-shrink-0">
-              <UserAvatar
-                v-if="msg.showHeader"
-                :src="msg.profile.avatar_url"
-                :alt="msg.profile.display_name"
-                size="sm"
-              />
-            </div>
-
-            <div class="min-w-0 flex-1">
-              <!-- Reply preview -->
-              <div
-                v-if="msg.reply_to_id && getDmMessageById(msg.reply_to_id)"
-                class="mb-1 flex items-center gap-1.5 text-xs text-text-muted"
-              >
-                <svg class="h-3 w-3 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/>
-                </svg>
-                <span class="font-medium text-text-secondary">{{ getDmMessageById(msg.reply_to_id)?.profile.display_name ?? 'Unknown' }}</span>
-                <span class="truncate">{{ getDmMessageById(msg.reply_to_id)?.content }}</span>
-              </div>
-
-              <div v-if="msg.showHeader" class="mb-0.5 flex items-baseline gap-2">
-                <span class="font-semibold text-text-primary">{{ msg.profile.display_name }}</span>
-                <span class="text-xs text-text-muted">{{ formatTime(msg.created_at) }}</span>
-                <span
-                  v-if="isExpiringSoon(msg.expires_at)"
-                  class="h-1.5 w-1.5 rounded-full bg-amber-400"
-                  title="This message expires soon"
-                />
-              </div>
-
-              <div v-if="editingId === msg.id" class="flex gap-2">
-                <input
-                  v-model="editingContent"
-                  @keydown.enter.prevent="submitEdit"
-                  @keydown.escape="cancelEdit"
-                  class="flex-1 rounded border border-accent bg-bg-primary px-2 py-1 text-sm text-text-primary outline-none"
-                  autofocus
-                />
-                <button @click="submitEdit" class="rounded bg-accent px-2 py-1 text-xs text-white">Save</button>
-                <button @click="cancelEdit" class="rounded px-2 py-1 text-xs text-text-muted hover:text-text-primary">Cancel</button>
-              </div>
-
-              <p
-                v-else
-                class="break-words text-sm text-text-primary leading-relaxed"
-                v-html="renderMessage(msg.content, null) + (msg.edited_at ? ' <span class=\'text-xs text-text-muted\'>(edited)</span>' : '')"
-              />
-            </div>
-
-            <div
-              v-if="editingId !== msg.id"
-              class="absolute right-2 top-0 hidden -translate-y-1/2 items-center gap-1 rounded border border-bg-tertiary bg-bg-primary p-0.5 shadow group-hover:flex"
-            >
-              <button
-                @click="startReply(msg)"
-                class="rounded p-1 text-text-muted hover:bg-bg-hover hover:text-text-primary"
-                title="Reply"
-              >
-                <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/>
-                </svg>
-              </button>
-              <button
-                v-if="msg.author_id === authStore.user?.id"
-                @click="startEdit(msg)"
-                class="rounded p-1 text-text-muted hover:bg-bg-hover hover:text-text-primary"
-                title="Edit"
-              >
-                <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                </svg>
-              </button>
-              <button
-                v-if="msg.author_id === authStore.user?.id"
-                @click="handleDelete(msg.id)"
-                class="rounded p-1 text-text-muted hover:bg-danger/10 hover:text-danger"
-                title="Delete"
-              >
-                <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/>
-                  <path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
-                </svg>
-              </button>
-            </div>
-
-            <span
-              v-if="!msg.showHeader && editingId !== msg.id"
-              class="absolute left-2 hidden text-xs text-text-muted group-hover:block"
-              style="top: 50%; transform: translateY(-50%)"
-            >
-              {{ formatTime(msg.created_at) }}
-            </span>
-          </div>
-        </template>
+        <MessageBubble
+          v-for="msg in groupedMessages"
+          :key="msg.id"
+          :message="msg"
+          :content-html="renderMessage(msg.content, null) + (msg.edited_at ? ' <span class=\'text-xs text-text-muted\'>(edited)</span>' : '')"
+          :reply-author-name="msg.reply_to_id && getDmMessageById(msg.reply_to_id) ? (getDmMessageById(msg.reply_to_id)!.profile.display_name ?? 'Unknown') : null"
+          :reply-content="msg.reply_to_id && getDmMessageById(msg.reply_to_id) ? getDmMessageById(msg.reply_to_id)!.content : null"
+          :is-editing="editingId === msg.id"
+          :edit-content="editingContent"
+          :is-author="msg.author_id === authStore.user?.id"
+          :show-reaction-button="false"
+          :show-pin-button="false"
+          @update:edit-content="editingContent = $event"
+          @reply="startReply(msg)"
+          @start-edit="startEdit(msg)"
+          @delete="handleDelete(msg.id)"
+          @cancel-edit="cancelEdit"
+          @submit-edit="submitEdit"
+          @contextmenu="onDmMessageContext($event, msg)"
+        />
       </div>
     </div>
 
     <template v-if="dmGroupId" #input>
-      <div class="px-4 pb-4">
-        <!-- Reply bar -->
-        <div v-if="replyingTo" class="mb-1 flex items-center gap-2 rounded bg-bg-secondary px-3 py-2 text-sm text-text-secondary">
-          <svg class="h-4 w-4 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/>
-          </svg>
-          <span>Replying to <span class="font-medium text-text-primary">{{ replyingTo.profile.display_name }}</span></span>
-          <button @click="cancelReply" class="ml-auto text-text-muted hover:text-text-primary">
-            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-            </svg>
-          </button>
-        </div>
-        <!-- Typing indicator -->
-        <div v-if="displayTypingUsers.length > 0" class="px-1 pb-1 text-xs text-text-muted">
-          <span class="font-medium text-text-secondary">{{ displayTypingUsers.join(', ') }}</span>
-          {{ displayTypingUsers.length === 1 ? 'is' : 'are' }} typing
-          <span class="animate-pulse">...</span>
-        </div>
-        <form @submit.prevent="handleSend" class="flex items-center gap-2 rounded-lg bg-bg-tertiary px-4 py-3">
-          <input
-            ref="messageInputEl"
-            v-model="messageInput"
-            type="text"
-            :placeholder="`Message ${activeGroup?.otherUser.display_name ?? ''}`"
-            class="flex-1 bg-transparent text-text-primary placeholder-text-muted outline-none"
-            @input="handleInput"
-            @keydown.enter.prevent="handleSend"
-          />
-          <!-- Emoji drawer button -->
-          <button
-            type="button"
-            @click="openEmojiDrawer($event)"
-            :class="emojiDrawerOpen ? 'text-accent' : 'text-text-muted hover:text-text-primary'"
-            class="flex-shrink-0 rounded p-1 transition-colors"
-            title="Emoji"
-          >
-            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
-              <circle cx="12" cy="12" r="10"/>
-              <path d="M8 14s1.5 2 4 2 4-2 4-2"/>
-              <line x1="9" y1="9" x2="9.01" y2="9" stroke-linecap="round" stroke-width="2.5"/>
-              <line x1="15" y1="9" x2="15.01" y2="9" stroke-linecap="round" stroke-width="2.5"/>
-            </svg>
-          </button>
-          <button
-            type="submit"
-            :disabled="!messageInput.trim() || sending"
-            class="rounded p-1 text-text-muted transition-colors hover:text-text-primary disabled:opacity-30"
-          >
-            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
-            </svg>
-          </button>
-        </form>
-      </div>
+      <MessageInputArea
+        v-model="messageInput"
+        :reply-display-name="replyingTo?.profile.display_name ?? null"
+        :reply-content="replyingTo?.content ?? null"
+        :typing-users="displayTypingUsers"
+        :placeholder="`Message ${activeGroup?.otherUser.display_name ?? ''}`"
+        :show-attach-button="false"
+        :show-poll-button="false"
+        :sending="sending"
+        @submit="handleSend"
+        @input="handleInput"
+        @cancel-reply="cancelReply"
+      />
     </template>
 
     <template #members>
@@ -701,23 +520,6 @@ function onDmConversationContext(event: MouseEvent, groupId: string) {
       </div>
     </div>
   </div>
-
-  <!-- Emoji drawer -->
-  <Teleport to="body">
-    <div
-      v-if="emojiDrawerOpen"
-      class="fixed z-[9997]"
-      :style="{ bottom: emojiDrawerAnchor ? emojiDrawerAnchor.bottom + 'px' : '80px', right: emojiDrawerAnchor ? emojiDrawerAnchor.right + 'px' : '16px' }"
-      @click.stop
-    >
-      <EmojiPicker @select="insertEmoji" />
-    </div>
-    <div
-      v-if="emojiDrawerOpen"
-      class="fixed inset-0 z-[9996]"
-      @click="emojiDrawerOpen = false"
-    />
-  </Teleport>
 
   <!-- Confirm dialog -->
   <ConfirmDialog
