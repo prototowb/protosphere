@@ -61,6 +61,7 @@ export interface Backend {
   }
   members: {
     list(serverId: string): Promise<(Member & { profile: Profile })[]>
+    getMyRoles(userId: string): Promise<{ server_id: string; role: string }[]>
     join(serverId: string, userId: string): Promise<Member>
     leave(serverId: string, userId: string): Promise<void>
     updateRole(serverId: string, userId: string, role: Member['role']): Promise<Member>

@@ -427,6 +427,13 @@ export function createLocalBackend(): Backend {
         return result
       },
 
+      async getMyRoles(userId: string) {
+        const members = readJson<Member[]>(KEYS.members, [])
+        return members
+          .filter((m) => m.user_id === userId)
+          .map((m) => ({ server_id: m.server_id, role: m.role }))
+      },
+
       async join(serverId: string, userId: string) {
         const bans = readJson<Ban[]>(KEYS.bans, [])
         if (bans.some((b) => b.server_id === serverId && b.user_id === userId)) {

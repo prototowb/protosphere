@@ -52,9 +52,18 @@ function getSpaceInitial(name: string) {
   return name.split(/\s+/).map((w) => w[0]).join('').substring(0, 2).toUpperCase()
 }
 
-// Whether the current user owns any space (used as proxy for community admin access)
+// Whether the current user owns any space (used for owner-only actions like Community Settings)
 const isAnyOwner = computed(() =>
   serversStore.servers.some((s) => s.owner_id === authStore.user?.id),
+)
+
+// Owners and admins can manage spaces and access the Dashboard
+const isAnyAdminOrOwner = computed(() =>
+  serversStore.servers.some((s) => {
+    if (s.owner_id === authStore.user?.id) return true
+    const role = serversStore.myRoles[s.id]
+    return role === 'admin' || role === 'owner'
+  }),
 )
 
 // Create / Join dialogs
@@ -231,9 +240,9 @@ function copyInviteCode() {
         <span>Approvals</span>
       </router-link>
 
-      <!-- Dashboard (owners only) -->
+      <!-- Dashboard (owners and admins) -->
       <router-link
-        v-if="isAnyOwner"
+        v-if="isAnyAdminOrOwner"
         to="/admin"
         @click="mobileMenuOpen = false"
         class="flex items-center gap-2.5 rounded-md px-3 py-2.5 text-sm transition-colors"
@@ -273,15 +282,16 @@ function copyInviteCode() {
 
       <div class="my-1 h-px bg-bg-tertiary" />
 
-      <!-- Add Space -->
+      <!-- Add Space (owners and admins) -->
       <button
+        v-if="isAnyAdminOrOwner"
         @click="showAddMenu = !showAddMenu"
         class="flex items-center gap-2.5 rounded-md px-3 py-2.5 text-sm text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
       >
         <span class="flex h-4 w-4 flex-shrink-0 items-center justify-center text-base leading-none">+</span>
         <span>Add a Space</span>
       </button>
-      <div v-if="showAddMenu" class="flex flex-col gap-0.5 pl-2">
+      <div v-if="showAddMenu && isAnyAdminOrOwner" class="flex flex-col gap-0.5 pl-2">
         <button @click="showCreateSpace = true; showAddMenu = false; mobileMenuOpen = false" class="flex items-center gap-2 rounded px-3 py-2 text-sm text-text-primary hover:bg-bg-hover">
           Create Space
         </button>
@@ -414,8 +424,8 @@ function copyInviteCode() {
     <!-- Right actions -->
     <div class="flex flex-shrink-0 items-center gap-1 border-l border-bg-tertiary px-2">
 
-      <!-- Add Space -->
-      <div class="relative">
+      <!-- Add Space (owners and admins) -->
+      <div v-if="isAnyAdminOrOwner" class="relative">
         <button
           @click="showAddMenu = !showAddMenu"
           class="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm text-text-muted hover:bg-bg-hover hover:text-text-primary transition-colors"
