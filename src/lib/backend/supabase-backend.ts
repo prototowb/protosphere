@@ -303,6 +303,15 @@ export function createSupabaseBackend(): Backend {
         return data as (Member & { profile: Profile })[]
       },
 
+      async getMyRoles(userId: string) {
+        const { data, error } = await client
+          .from('members')
+          .select('server_id, role')
+          .eq('user_id', userId)
+        if (error) throw error
+        return (data ?? []) as { server_id: string; role: string }[]
+      },
+
       async join(serverId: string, userId: string) {
         // Insert without .select() to avoid RETURNING * triggering the SELECT
         // RLS policy before is_server_member() sees the new row.
@@ -798,13 +807,14 @@ export function createSupabaseBackend(): Backend {
           .from('community_settings')
           .select('*')
           .limit(1)
-          .single()
+          .maybeSingle()
         if (error) throw error
+        if (!data) throw new Error('Community settings not initialized — run db reset')
         return data as CommunitySettings
       },
 
       async update(updates) {
-        const { data: existing } = await client.from('community_settings').select('id').limit(1).single()
+        const { data: existing } = await client.from('community_settings').select('id').limit(1).maybeSingle()
         if (!existing) throw new Error('Community settings not found')
         const { data, error } = await client
           .from('community_settings')
