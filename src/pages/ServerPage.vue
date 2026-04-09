@@ -11,6 +11,9 @@ import ForumPostHeader from '@/components/forum/ForumPostHeader.vue'
 import MessageBubble from '@/components/chat/MessageBubble.vue'
 import MessageInputArea from '@/components/chat/MessageInputArea.vue'
 import MemberList from '@/components/chat/MemberList.vue'
+import MemberProfilePanel from '@/components/user/MemberProfilePanel.vue'
+import CreateChannelDialog from '@/components/channel/CreateChannelDialog.vue'
+import EditChannelDialog from '@/components/channel/EditChannelDialog.vue'
 import MessageSearch from '@/components/chat/MessageSearch.vue'
 import { useServersStore } from '@/stores/servers'
 import { useChannelsStore } from '@/stores/channels'
@@ -117,8 +120,6 @@ async function setChannelNotifLevel(channelId: string, level: NotificationLevel)
 }
 
 const showCreateChannel = ref(false)
-const newChannelName = ref('')
-const newChannelCategoryId = ref<string | null>(null)
 const showCreateCategory = ref(false)
 const newCategoryName = ref('')
 
@@ -624,13 +625,6 @@ const groupedMessages = computed((): GroupedMessage[] => {
   })
 })
 
-async function handleCreateChannel() {
-  if (!newChannelName.value.trim() || !serverId.value) return
-  await createChannel(serverId.value, newChannelName.value.trim(), undefined, newChannelCategoryId.value)
-  newChannelName.value = ''
-  newChannelCategoryId.value = null
-  showCreateChannel.value = false
-}
 
 async function handleCreateCategory() {
   if (!newCategoryName.value.trim() || !serverId.value) return
@@ -649,16 +643,6 @@ function openEditChannel(channelId: string) {
   showEditChannel.value = true
 }
 
-async function handleEditChannel() {
-  if (!editChannelId.value || !editChannelName.value.trim()) return
-  await updateChannel(editChannelId.value, {
-    name: editChannelName.value.trim(),
-    description: editChannelDescription.value.trim(),
-    slowmode_seconds: editChannelSlowmode.value,
-  })
-  showEditChannel.value = false
-  toastStore.show('Channel updated', 'success')
-}
 
 function handleDeleteChannel(chId: string) {
   const ch = channelsStore.channels.find((c) => c.id === chId)
@@ -1640,142 +1624,29 @@ function onServerHeaderContext(event: MouseEvent) {
   />
 
   <!-- Member profile modal -->
-  <div
+  <MemberProfilePanel
     v-if="selectedMember"
-    class="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
-    @click.self="selectedMember = null"
-  >
-    <div class="w-full max-w-sm rounded-lg bg-bg-secondary shadow-xl overflow-hidden">
-      <!-- Header band -->
-      <div class="h-16 bg-accent/30" />
-      <!-- Avatar overlapping the band -->
-      <div class="relative px-5 pb-5">
-        <div class="-mt-8 mb-3 flex items-end justify-between">
-          <UserAvatar
-            :src="selectedMember.profile.avatar_url"
-            :alt="selectedMember.profile.display_name"
-            :status="getEffectiveStatus(selectedMember)"
-            size="lg"
-          />
-          <button @click="selectedMember = null" class="mb-1 rounded p-1 text-text-muted hover:text-text-primary">
-            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-            </svg>
-          </button>
-        </div>
-
-        <p class="text-lg font-bold">{{ selectedMember.profile.display_name }}</p>
-        <div class="mb-1 flex items-center gap-2">
-          <p class="text-sm text-text-muted">@{{ selectedMember.profile.username }}</p>
-          <span class="flex items-center gap-0.5 rounded bg-violet-500/15 px-1.5 py-0.5 text-xs font-medium text-violet-400">
-            <svg class="h-3 w-3" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-            {{ selectedMember.profile.meta_points ?? 0 }}
-          </span>
-        </div>
-        <span class="inline-block rounded px-2 py-0.5 text-xs font-medium"
-          :class="{
-            'bg-accent/20 text-accent': selectedMember.role === 'owner',
-            'bg-success/20 text-success': selectedMember.role === 'admin',
-            'bg-presence-idle/20 text-presence-idle': selectedMember.role === 'moderator',
-            'bg-bg-tertiary text-text-muted': selectedMember.role === 'member',
-          }"
-        >{{ selectedMember.role }}</span>
-
-        <div v-if="selectedMember.profile.bio" class="mt-3 border-t border-bg-tertiary pt-3">
-          <p class="text-xs font-semibold uppercase text-text-muted">About Me</p>
-          <p class="mt-1 text-sm text-text-secondary">{{ selectedMember.profile.bio }}</p>
-        </div>
-
-        <div v-if="selectedMember.profile.pronouns || selectedMember.profile.website || selectedMember.profile.location" class="mt-2 space-y-1">
-          <p v-if="selectedMember.profile.pronouns" class="text-xs text-text-muted">{{ selectedMember.profile.pronouns }}</p>
-          <a v-if="selectedMember.profile.website" :href="selectedMember.profile.website" target="_blank" rel="noopener noreferrer" class="block text-xs text-accent hover:underline truncate">🔗 {{ selectedMember.profile.website }}</a>
-          <p v-if="selectedMember.profile.location" class="text-xs text-text-secondary">📍 {{ selectedMember.profile.location }}</p>
-        </div>
-
-        <div v-if="selectedMember.profile.status_text" class="mt-2">
-          <p class="text-xs text-text-muted">{{ selectedMember.profile.status_text }}</p>
-        </div>
-
-        <!-- Send Message button (non-self) -->
-        <button
-          v-if="selectedMember.user_id !== authStore.user?.id"
-          @click="async () => { const gid = await openDM(selectedMember!.user_id); selectedMember = null; router.push(`/channels/@me/${gid}`) }"
-          class="mt-3 w-full rounded bg-accent px-3 py-2 text-sm font-medium text-white hover:bg-accent-hover"
-        >
-          Send Message
-        </button>
-
-        <!-- Role management (owner/admin only, not for self) -->
-        <div v-if="canChangeRole(selectedMember)" class="mt-4 border-t border-bg-tertiary pt-4">
-          <label class="mb-1 block text-xs font-semibold uppercase text-text-muted">Role</label>
-          <select
-            :value="selectedMember.role"
-            @change="handleRoleChange(selectedMember!.user_id, ($event.target as HTMLSelectElement).value as MemberRole)"
-            class="w-full rounded border border-bg-tertiary bg-bg-primary px-3 py-1.5 text-sm text-text-primary outline-none focus:border-accent"
-          >
-            <option value="member">Member</option>
-            <option value="moderator">Moderator</option>
-            <option value="admin">Admin</option>
-            <option v-if="isOwner" value="owner">Owner</option>
-          </select>
-        </div>
-
-        <!-- Kick / Ban buttons (moderators+, not for self) -->
-        <div v-if="(canKick || canBan) && selectedMember.user_id !== authStore.user?.id" class="mt-3 flex gap-2">
-          <button
-            @click="handleKick(selectedMember!.user_id)"
-            class="flex-1 rounded bg-bg-tertiary px-3 py-2 text-sm font-medium text-text-secondary hover:bg-bg-hover"
-          >
-            Kick
-          </button>
-          <button
-            @click="handleBan(selectedMember!.user_id)"
-            class="flex-1 rounded bg-danger/10 px-3 py-2 text-sm font-medium text-danger hover:bg-danger/20"
-          >
-            Ban
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
+    :member="selectedMember"
+    :status="getEffectiveStatus(selectedMember)"
+    :is-self="selectedMember.user_id === authStore.user?.id"
+    :can-change-role="canChangeRole(selectedMember)"
+    :can-kick="canKick"
+    :can-ban="canBan"
+    :is-owner="isOwner"
+    @close="selectedMember = null"
+    @send-message="async () => { const gid = await openDM(selectedMember!.user_id); selectedMember = null; router.push(`/channels/@me/${gid}`) }"
+    @change-role="handleRoleChange(selectedMember!.user_id, $event)"
+    @kick="handleKick(selectedMember!.user_id)"
+    @ban="handleBan(selectedMember!.user_id)"
+  />
 
   <!-- Create Channel Dialog -->
-  <div v-if="showCreateChannel" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60" @click.self="showCreateChannel = false">
-    <div class="w-full max-w-md rounded-lg bg-bg-secondary p-6">
-      <h2 class="mb-4 text-xl font-bold">Create Channel</h2>
-      <form @submit.prevent="handleCreateChannel" class="space-y-4">
-        <div>
-          <label for="channel-name" class="mb-1 block text-sm text-text-secondary">Channel Name</label>
-          <input
-            id="channel-name"
-            v-model="newChannelName"
-            type="text"
-            required
-            maxlength="50"
-            class="w-full rounded border border-bg-tertiary bg-bg-primary px-3 py-2 text-text-primary outline-none focus:border-accent"
-            placeholder="new-channel"
-          />
-        </div>
-        <div v-if="categoriesStore.categories.length > 0">
-          <label for="channel-category" class="mb-1 block text-sm text-text-secondary">Category (optional)</label>
-          <select
-            id="channel-category"
-            v-model="newChannelCategoryId"
-            class="w-full rounded border border-bg-tertiary bg-bg-primary px-3 py-2 text-text-primary outline-none focus:border-accent"
-          >
-            <option :value="null">No category</option>
-            <option v-for="cat in categoriesStore.categories" :key="cat.id" :value="cat.id">
-              {{ cat.name }}
-            </option>
-          </select>
-        </div>
-        <div class="flex justify-end gap-2">
-          <button type="button" @click="showCreateChannel = false" class="rounded px-4 py-2 text-sm text-text-secondary hover:text-text-primary">Cancel</button>
-          <button type="submit" :disabled="!newChannelName.trim()" class="rounded bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50">Create</button>
-        </div>
-      </form>
-    </div>
-  </div>
+  <CreateChannelDialog
+    v-if="showCreateChannel"
+    :categories="categoriesStore.categories"
+    @create="(name, catId) => { createChannel(serverId, name, undefined, catId); showCreateChannel = false }"
+    @close="showCreateChannel = false"
+  />
 
   <!-- Create Category Dialog -->
   <div v-if="showCreateCategory" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60" @click.self="showCreateCategory = false">
@@ -1803,50 +1674,14 @@ function onServerHeaderContext(event: MouseEvent) {
   </div>
 
   <!-- Edit Channel Dialog -->
-  <div v-if="showEditChannel" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60" @click.self="showEditChannel = false">
-    <div class="w-full max-w-md rounded-lg bg-bg-secondary p-6">
-      <h2 class="mb-4 text-xl font-bold">Edit Channel</h2>
-      <form @submit.prevent="handleEditChannel" class="space-y-4">
-        <div>
-          <label for="edit-channel-name" class="mb-1 block text-sm text-text-secondary">Channel Name</label>
-          <input
-            id="edit-channel-name"
-            v-model="editChannelName"
-            type="text"
-            required
-            maxlength="50"
-            class="w-full rounded border border-bg-tertiary bg-bg-primary px-3 py-2 text-text-primary outline-none focus:border-accent"
-          />
-        </div>
-        <div>
-          <label for="edit-channel-desc" class="mb-1 block text-sm text-text-secondary">Description</label>
-          <input
-            id="edit-channel-desc"
-            v-model="editChannelDescription"
-            type="text"
-            maxlength="200"
-            class="w-full rounded border border-bg-tertiary bg-bg-primary px-3 py-2 text-text-primary outline-none focus:border-accent"
-            placeholder="What's this channel about?"
-          />
-        </div>
-        <div>
-          <label for="edit-channel-slowmode" class="mb-1 block text-sm text-text-secondary">Slowmode (seconds, 0 = off)</label>
-          <input
-            id="edit-channel-slowmode"
-            v-model.number="editChannelSlowmode"
-            type="number"
-            min="0"
-            max="3600"
-            class="w-full rounded border border-bg-tertiary bg-bg-primary px-3 py-2 text-text-primary outline-none focus:border-accent"
-          />
-        </div>
-        <div class="flex justify-end gap-2">
-          <button type="button" @click="showEditChannel = false" class="rounded px-4 py-2 text-sm text-text-secondary hover:text-text-primary">Cancel</button>
-          <button type="submit" :disabled="!editChannelName.trim()" class="rounded bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50">Save</button>
-        </div>
-      </form>
-    </div>
-  </div>
+  <EditChannelDialog
+    v-if="showEditChannel"
+    :name="editChannelName"
+    :description="editChannelDescription"
+    :slowmode-seconds="editChannelSlowmode"
+    @save="async (data) => { if (editChannelId) { await updateChannel(editChannelId, { name: data.name, description: data.description, slowmode_seconds: data.slowmodeSeconds }); showEditChannel = false; toastStore.show('Channel updated', 'success') } }"
+    @close="showEditChannel = false"
+  />
 
   <!-- Invite Dialog -->
   <div v-if="showInvite" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60" @click.self="showInvite = false">
