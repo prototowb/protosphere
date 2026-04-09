@@ -221,7 +221,7 @@ watch(() => authStore.user?.id, async (userId) => {
         </header>
       </slot>
 
-      <div class="flex-1 overflow-y-auto">
+      <div class="relative flex flex-1 min-h-0 flex-col overflow-hidden">
         <slot>
           <div class="flex h-full items-center justify-center p-4">
             <p class="text-text-muted">Select a conversation to start chatting</p>

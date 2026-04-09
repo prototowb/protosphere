@@ -23,12 +23,15 @@ import { isLocalMode } from '@/lib/backend'
 import { formatDate } from '@/lib/formatters'
 import { expandShortcodes } from '@/lib/emojiNames'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
+import DmConversationPane from '@/components/dm/DmConversationPane.vue'
+import { useDmTabsStore } from '@/stores/dmTabs'
 import type { DirectMessage, Profile } from '@/lib/types'
 
 const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
 const store = useDmsStore()
+const dmTabsStore = useDmTabsStore()
 const toastStore = useToastStore()
 const contextMenuStore = useContextMenuStore()
 const { fetchGroups, openDM, fetchMessages, sendMessage, editMessage, deleteMessage, searchUsers } = useDMs()
@@ -98,6 +101,7 @@ onUnmounted(() => {
 watch(dmGroupId, (id) => {
   if (id) {
     store.activeDmGroupId = id
+    dmTabsStore.openTab(id)
     loadMessages(id)
     markDmRead(id)
     if (authStore.user?.id) loadMute(authStore.user.id, id).catch(() => {})
@@ -105,6 +109,31 @@ watch(dmGroupId, (id) => {
     store.activeDmGroupId = null
   }
 })
+
+// ── Drag-and-drop split view ──────────────────────────────────────────────
+const isDragTarget = ref(false)
+
+function onDragOver(event: DragEvent) {
+  if (!event.dataTransfer?.types.includes('application/x-dm-group-id')) return
+  event.preventDefault()
+  isDragTarget.value = true
+}
+
+function onDragLeave(event: DragEvent) {
+  // Only clear if leaving the container itself (not a child)
+  if (!(event.currentTarget as HTMLElement).contains(event.relatedTarget as Node | null)) {
+    isDragTarget.value = false
+  }
+}
+
+function onDrop(event: DragEvent) {
+  event.preventDefault()
+  isDragTarget.value = false
+  const groupId = event.dataTransfer?.getData('application/x-dm-group-id')
+  if (!groupId) return
+  if (groupId === dmGroupId.value) return
+  dmTabsStore.setSplit(groupId)
+}
 
 function loadMessages(id: string) {
   store.activeDmGroupId = id
@@ -372,8 +401,51 @@ function onDmConversationContext(event: MouseEvent, groupId: string) {
       </header>
     </template>
 
+    <!-- Split view: two conversation panes side by side -->
+    <div
+      v-if="dmTabsStore.splitGroupId"
+      class="flex h-full overflow-hidden"
+      @dragover="onDragOver"
+      @dragleave="onDragLeave"
+      @drop="onDrop"
+    >
+      <DmConversationPane
+        v-if="dmGroupId"
+        :group-id="dmGroupId"
+        class="flex-1 min-w-0"
+      />
+      <div v-else class="flex flex-1 items-center justify-center text-text-muted text-sm">
+        Select a conversation
+      </div>
+      <div class="w-px flex-shrink-0 bg-bg-tertiary" />
+      <DmConversationPane
+        :group-id="dmTabsStore.splitGroupId"
+        :secondary="true"
+        class="flex-1 min-w-0"
+      />
+    </div>
+
+    <!-- Normal view (no split) -->
+    <template v-else>
+
+    <!-- Drop zone overlay (drag target) -->
+    <div
+      v-if="isDragTarget"
+      class="absolute inset-0 z-10 flex items-center justify-center bg-accent/10 pointer-events-none"
+    >
+      <div class="rounded-lg border-2 border-dashed border-accent/60 px-6 py-3 bg-bg-secondary shadow">
+        <p class="text-sm font-medium text-accent">Drop to open side-by-side</p>
+      </div>
+    </div>
+
     <!-- Message list or welcome screen -->
-    <div v-if="!dmGroupId" class="flex h-full flex-col items-center justify-center p-8 text-center">
+    <div
+      v-if="!dmGroupId"
+      class="flex h-full flex-col items-center justify-center p-8 text-center"
+      @dragover="onDragOver"
+      @dragleave="onDragLeave"
+      @drop="onDrop"
+    >
       <div class="mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-accent/20">
         <svg class="h-10 w-10 text-accent" viewBox="0 0 24 24" fill="currentColor">
           <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/>
@@ -391,7 +463,14 @@ function onDmConversationContext(event: MouseEvent, groupId: string) {
       </button>
     </div>
 
-    <div v-else ref="messageListEl" class="flex flex-1 flex-col overflow-y-auto px-4 py-4">
+    <div
+      v-else
+      ref="messageListEl"
+      class="flex flex-1 flex-col overflow-y-auto px-4 py-4"
+      @dragover="onDragOver"
+      @dragleave="onDragLeave"
+      @drop="onDrop"
+    >
       <!-- Empty state -->
       <div v-if="messages.length === 0" class="flex flex-1 flex-col items-center justify-center py-16 text-center">
         <UserAvatar
@@ -431,7 +510,9 @@ function onDmConversationContext(event: MouseEvent, groupId: string) {
       </div>
     </div>
 
-    <template v-if="dmGroupId" #input>
+    </template><!-- end normal view (no split) -->
+
+    <template v-if="dmGroupId && !dmTabsStore.splitGroupId" #input>
       <MessageInputArea
         v-model="messageInput"
         :reply-display-name="replyingTo?.profile.display_name ?? null"
