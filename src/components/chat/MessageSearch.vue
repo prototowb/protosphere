@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import UserAvatar from '@/components/user/UserAvatar.vue'
+import { formatTime, escapeHtml } from '@/lib/formatters'
 import type { Profile } from '@/lib/types'
 
 interface SearchableMessage {
@@ -28,13 +29,6 @@ function highlightMatch(text: string, q: string): string {
   return escaped.replace(regex, '<mark class="bg-accent/30 text-text-primary rounded px-0.5">$1</mark>')
 }
 
-function escapeHtml(t: string): string {
-  return t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-}
-
-function formatTime(iso: string) {
-  return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-}
 </script>
 
 <template>

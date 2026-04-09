@@ -3,7 +3,8 @@ import { ref, watch, onMounted, onUnmounted, nextTick, computed, defineAsyncComp
 import { useRoute, useRouter } from 'vue-router'
 import AppShell from '@/components/layout/AppShell.vue'
 import UserAvatar from '@/components/user/UserAvatar.vue'
-import EmojiPicker from '@/components/chat/EmojiPicker.vue'
+import EmojiPickerPopover from '@/components/ui/EmojiPickerPopover.vue'
+import ReplyBar from '@/components/chat/ReplyBar.vue'
 import MessageInput from '@/components/chat/MessageInput.vue'
 import MessageSearch from '@/components/chat/MessageSearch.vue'
 import MessageAttachments from '@/components/messages/MessageAttachments.vue'
@@ -49,6 +50,7 @@ import { Permission } from '@/lib/permissions'
 import { checkAutomod } from '@/lib/automod'
 import { expandShortcodes } from '@/lib/emojiNames'
 import { backend, isLocalMode } from '@/lib/backend'
+import { formatTime, formatDate, isExpiringSoon } from '@/lib/formatters'
 import { useRealtime } from '@/composables/useRealtime'
 import { usePresenceStore } from '@/stores/presence'
 import type { Message, Profile, Member, MemberRole, Channel, ChannelCategory, AutomodRule, RsvpStatus, UserStatus, NotificationLevel, Attachment, ForumPost, ForumPostType } from '@/lib/types'
@@ -621,24 +623,6 @@ function handleDeleteMessage(messageId: string) {
   }
 }
 
-function formatTime(iso: string) {
-  return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-}
-
-function isExpiringSoon(expiresAt: string | null | undefined): boolean {
-  if (!expiresAt) return false
-  return new Date(expiresAt).getTime() - Date.now() < 12 * 60 * 60 * 1000
-}
-
-function formatDate(iso: string) {
-  const d = new Date(iso)
-  const today = new Date()
-  const yesterday = new Date(today)
-  yesterday.setDate(today.getDate() - 1)
-  if (d.toDateString() === today.toDateString()) return 'Today'
-  if (d.toDateString() === yesterday.toDateString()) return 'Yesterday'
-  return d.toLocaleDateString([], { month: 'long', day: 'numeric', year: 'numeric' })
-}
 
 // Group messages: collapse consecutive messages from same author within 5 minutes
 type GroupedMessage = (Message & { profile: Profile }) & { showHeader: boolean; dateSeparator: string | null }
@@ -1846,18 +1830,12 @@ function onServerHeaderContext(event: MouseEvent) {
 
     <template #input>
       <div v-if="activeView === 'channel'" class="px-4 pb-4">
-        <!-- Reply bar -->
-        <div
+        <ReplyBar
           v-if="replyingTo"
-          class="mb-1 flex items-center gap-2 rounded-t-lg bg-bg-secondary px-4 py-2 text-xs text-text-muted"
-        >
-          <svg class="h-3 w-3 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-            <polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/>
-          </svg>
-          <span>Replying to <span class="font-medium text-text-primary">{{ replyingTo.profile.display_name }}</span></span>
-          <span class="flex-1 truncate text-text-muted">{{ replyingTo.content }}</span>
-          <button @click="replyingTo = null" class="ml-auto flex-shrink-0 hover:text-text-primary">✕</button>
-        </div>
+          :display-name="replyingTo.profile.display_name"
+          :content-preview="replyingTo.content"
+          @cancel="replyingTo = null"
+        />
         <!-- Typing indicator -->
         <div v-if="displayTypingUsers.length > 0" class="px-1 pb-1 text-xs text-text-muted">
           <span class="font-medium text-text-secondary">{{ displayTypingUsers.join(', ') }}</span>
@@ -2307,39 +2285,19 @@ function onServerHeaderContext(event: MouseEvent) {
     </div>
   </div>
 
-  <!-- Full emoji drawer (input bar) -->
-  <Teleport to="body">
-    <div
-      v-if="emojiDrawerOpen"
-      class="fixed z-[9997]"
-      :style="{ bottom: emojiDrawerAnchor ? emojiDrawerAnchor.bottom + 'px' : '80px', right: emojiDrawerAnchor ? emojiDrawerAnchor.right + 'px' : '16px' }"
-      @click.stop
-    >
-      <EmojiPicker @select="insertEmoji" />
-    </div>
-    <div
-      v-if="emojiDrawerOpen"
-      class="fixed inset-0 z-[9996]"
-      @click="emojiDrawerOpen = false"
-    />
-  </Teleport>
+  <EmojiPickerPopover
+    :open="emojiDrawerOpen"
+    :anchor="emojiDrawerAnchor ?? { bottom: 80, right: 16 }"
+    @select="insertEmoji"
+    @close="emojiDrawerOpen = false"
+  />
 
-  <!-- Reaction emoji picker (full picker, teleported to body) -->
-  <Teleport to="body">
-    <div
-      v-if="emojiPickerForMsg && pickerAnchorRect"
-      class="fixed z-[9999]"
-      :style="{ top: pickerAnchorRect.top + 'px', right: pickerAnchorRect.right + 'px' }"
-      @click.stop
-    >
-      <EmojiPicker @select="handleToggleReaction(emojiPickerForMsg!, $event)" />
-    </div>
-    <div
-      v-if="emojiPickerForMsg"
-      class="fixed inset-0 z-[9998]"
-      @click="emojiPickerForMsg = null; pickerAnchorRect = null"
-    />
-  </Teleport>
+  <EmojiPickerPopover
+    :open="!!emojiPickerForMsg && !!pickerAnchorRect"
+    :anchor="pickerAnchorRect"
+    @select="handleToggleReaction(emojiPickerForMsg!, $event)"
+    @close="emojiPickerForMsg = null; pickerAnchorRect = null"
+  />
 
   <!-- Report dialog -->
   <ReportDialog

@@ -3,7 +3,8 @@ import { ref, watch, onMounted, onUnmounted, nextTick, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppShell from '@/components/layout/AppShell.vue'
 import UserAvatar from '@/components/user/UserAvatar.vue'
-import EmojiPicker from '@/components/chat/EmojiPicker.vue'
+import EmojiPickerPopover from '@/components/ui/EmojiPickerPopover.vue'
+import ReplyBar from '@/components/chat/ReplyBar.vue'
 import MessageSearch from '@/components/chat/MessageSearch.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useDmsStore } from '@/stores/dms'
@@ -19,6 +20,7 @@ import { useMessageSearch } from '@/composables/useMessageSearch'
 import { useProfile } from '@/composables/useProfile'
 import { useDmNotificationPreferences } from '@/composables/useDmNotificationPreferences'
 import { isLocalMode } from '@/lib/backend'
+import { formatTime, formatDate, isExpiringSoon } from '@/lib/formatters'
 import { expandShortcodes } from '@/lib/emojiNames'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 import type { DirectMessage, Profile } from '@/lib/types'
@@ -246,24 +248,6 @@ async function handleOpenDM(userId: string) {
   router.push(`/channels/@me/${groupId}`)
 }
 
-function formatTime(iso: string) {
-  return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-}
-
-function isExpiringSoon(expiresAt: string | null | undefined): boolean {
-  if (!expiresAt) return false
-  return new Date(expiresAt).getTime() - Date.now() < 12 * 60 * 60 * 1000
-}
-
-function formatDate(iso: string) {
-  const d = new Date(iso)
-  const today = new Date()
-  const yesterday = new Date(today)
-  yesterday.setDate(today.getDate() - 1)
-  if (d.toDateString() === today.toDateString()) return 'Today'
-  if (d.toDateString() === yesterday.toDateString()) return 'Yesterday'
-  return d.toLocaleDateString([], { month: 'long', day: 'numeric', year: 'numeric' })
-}
 
 type GroupedDM = (DirectMessage & { profile: Profile }) & {
   showHeader: boolean
@@ -572,18 +556,12 @@ function onDmConversationContext(event: MouseEvent, groupId: string) {
 
     <template v-if="dmGroupId" #input>
       <div class="px-4 pb-4">
-        <!-- Reply bar -->
-        <div v-if="replyingTo" class="mb-1 flex items-center gap-2 rounded bg-bg-secondary px-3 py-2 text-sm text-text-secondary">
-          <svg class="h-4 w-4 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/>
-          </svg>
-          <span>Replying to <span class="font-medium text-text-primary">{{ replyingTo.profile.display_name }}</span></span>
-          <button @click="cancelReply" class="ml-auto text-text-muted hover:text-text-primary">
-            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-            </svg>
-          </button>
-        </div>
+        <ReplyBar
+          v-if="replyingTo"
+          :display-name="replyingTo.profile.display_name"
+          :content-preview="replyingTo.content"
+          @cancel="cancelReply"
+        />
         <!-- Typing indicator -->
         <div v-if="displayTypingUsers.length > 0" class="px-1 pb-1 text-xs text-text-muted">
           <span class="font-medium text-text-secondary">{{ displayTypingUsers.join(', ') }}</span>
@@ -702,22 +680,12 @@ function onDmConversationContext(event: MouseEvent, groupId: string) {
     </div>
   </div>
 
-  <!-- Emoji drawer -->
-  <Teleport to="body">
-    <div
-      v-if="emojiDrawerOpen"
-      class="fixed z-[9997]"
-      :style="{ bottom: emojiDrawerAnchor ? emojiDrawerAnchor.bottom + 'px' : '80px', right: emojiDrawerAnchor ? emojiDrawerAnchor.right + 'px' : '16px' }"
-      @click.stop
-    >
-      <EmojiPicker @select="insertEmoji" />
-    </div>
-    <div
-      v-if="emojiDrawerOpen"
-      class="fixed inset-0 z-[9996]"
-      @click="emojiDrawerOpen = false"
-    />
-  </Teleport>
+  <EmojiPickerPopover
+    :open="emojiDrawerOpen"
+    :anchor="emojiDrawerAnchor ?? { bottom: 80, right: 16 }"
+    @select="insertEmoji"
+    @close="emojiDrawerOpen = false"
+  />
 
   <!-- Confirm dialog -->
   <ConfirmDialog

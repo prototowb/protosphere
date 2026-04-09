@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 import { backend } from '@/lib/backend'
+import { formatDateTime, escapeHtml } from '@/lib/formatters'
 import { useAuthStore } from '@/stores/auth'
 import { useToastStore } from '@/stores/toast'
 import { useUiStore } from '@/stores/ui'
@@ -12,7 +13,7 @@ import BlockRenderer from '@/components/editor/BlockRenderer.vue'
 import RichText from '@/components/ui/RichText.vue'
 import InviteCollaboratorDialog from '@/components/forum/InviteCollaboratorDialog.vue'
 import MessageInput from '@/components/chat/MessageInput.vue'
-import EmojiPicker from '@/components/chat/EmojiPicker.vue'
+import EmojiPickerPopover from '@/components/ui/EmojiPickerPopover.vue'
 import type {
   ForumPost, ForumVote, ForumComment, ForumCollaborator,
   ForumCommentReaction, Profile, Message, PageContent,
@@ -326,7 +327,7 @@ function startEditing() {
 
 const lockedHeroSubtitle = computed(() => {
   if (!post.value) return ''
-  const parts = [`by ${post.value.created_by_profile?.display_name ?? 'Unknown'}`, formatTime(post.value.created_at)]
+  const parts = [`by ${post.value.created_by_profile?.display_name ?? 'Unknown'}`, formatDateTime(post.value.created_at)]
   if (post.value.collaborators.length) {
     parts.push(`+${post.value.collaborators.length} collaborator${post.value.collaborators.length > 1 ? 's' : ''}`)
   }
@@ -344,15 +345,6 @@ function handleCollaboratorAdded(_userId: string) {
 
 function genId() { return Math.random().toString(36).slice(2, 10) }
 
-function escapeHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-}
-
-function formatTime(iso: string) {
-  const d = new Date(iso)
-  return d.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }) + ' at ' +
-    d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-}
 
 defineExpose({
   post,
@@ -432,9 +424,9 @@ defineExpose({
                   :alt="post.created_by_profile?.display_name" size="sm" />
                   <div class="min-w-0 flex-1 flex flex-col">
                     <span class="font-medium text-white/90">{{ post.created_by_profile?.display_name ?? 'Unknown' }}</span>
-                    <span class="text-xs">{{ formatTime(post.created_at) }}</span>
+                    <span class="text-xs">{{ formatDateTime(post.created_at) }}</span>
                   </div>
-                <span v-if="post.updated_by" class="text-xs self-end">· edited {{ formatTime(post.updated_at) }}</span>
+                <span v-if="post.updated_by" class="text-xs self-end">· edited {{ formatDateTime(post.updated_at) }}</span>
                 </div>
                 <div v-if="post.collaborators.length" class="flex items-center gap-1">
                   <span class="text-xs text-white/50">+</span>
@@ -468,7 +460,7 @@ defineExpose({
                 <span>{{ post.created_by_profile?.meta_points }} meta</span>
               </span>
               <span>·</span>
-              <span>{{ formatTime(post.created_at) }}</span>
+              <span>{{ formatDateTime(post.created_at) }}</span>
             </div>
           </div>
 
@@ -591,20 +583,11 @@ defineExpose({
       @close="showInviteDialog = false"
     />
 
-    <Teleport to="body">
-      <div
-        v-if="emojiDrawerOpen && emojiDrawerAnchor"
-        class="fixed z-[9997]"
-        :style="{ bottom: emojiDrawerAnchor.bottom + 'px', right: emojiDrawerAnchor.right + 'px' }"
-        @click.stop
-      >
-        <EmojiPicker @select="insertCommentEmoji" />
-      </div>
-      <div
-        v-if="emojiDrawerOpen"
-        class="fixed inset-0 z-[9996]"
-        @click="emojiDrawerOpen = false"
-      />
-    </Teleport>
+    <EmojiPickerPopover
+      :open="emojiDrawerOpen"
+      :anchor="emojiDrawerAnchor"
+      @select="insertCommentEmoji"
+      @close="emojiDrawerOpen = false"
+    />
   </div>
 </template>

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { backend } from '@/lib/backend'
+import { formatDateFull } from '@/lib/formatters'
 import type { AuditLog } from '@/lib/types'
 
 const props = defineProps<{ serverId: string }>()
@@ -55,9 +56,6 @@ const ACTION_COLORS: Record<string, string> = {
   'role.remove': 'text-text-muted',
 }
 
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleString()
-}
 
 function actionLabel(action: string) {
   return ACTION_LABELS[action] ?? action
@@ -105,7 +103,7 @@ function detailsSummary(log: AuditLog): string {
         </div>
 
         <!-- Timestamp -->
-        <span class="flex-shrink-0 text-xs text-text-muted">{{ formatDate(log.created_at) }}</span>
+        <span class="flex-shrink-0 text-xs text-text-muted">{{ formatDateFull(log.created_at) }}</span>
       </div>
     </div>
 

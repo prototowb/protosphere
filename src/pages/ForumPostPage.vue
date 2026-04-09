@@ -2,6 +2,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { backend } from '@/lib/backend'
+import { formatDateTime } from '@/lib/formatters'
 import { useAuthStore } from '@/stores/auth'
 import { useToastStore } from '@/stores/toast'
 import UserAvatar from '@/components/user/UserAvatar.vue'
@@ -12,7 +13,7 @@ import BlockRenderer from '@/components/editor/BlockRenderer.vue'
 import RichText from '@/components/ui/RichText.vue'
 import InviteCollaboratorDialog from '@/components/forum/InviteCollaboratorDialog.vue'
 import MessageInput from '@/components/chat/MessageInput.vue'
-import EmojiPicker from '@/components/chat/EmojiPicker.vue'
+import EmojiPickerPopover from '@/components/ui/EmojiPickerPopover.vue'
 import type {
   ForumPost, ForumVote, ForumComment, ForumCollaborator,
   ForumCommentReaction, Profile, Message, PageContent,
@@ -273,11 +274,6 @@ function handleCollaboratorAdded(_userId: string) {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function formatTime(iso: string) {
-  const d = new Date(iso)
-  return d.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }) + ' at ' +
-    d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-}
 
 
 </script>
@@ -352,8 +348,8 @@ function formatTime(iso: string) {
                   <span class="font-medium text-text-secondary">{{ post.created_by_profile?.display_name ?? 'Unknown' }}</span>
                 </div>
                 <span>·</span>
-                <span>{{ formatTime(post.created_at) }}</span>
-                <span v-if="post.updated_by" class="text-xs">· edited {{ formatTime(post.updated_at) }}</span>
+                <span>{{ formatDateTime(post.created_at) }}</span>
+                <span v-if="post.updated_by" class="text-xs">· edited {{ formatDateTime(post.updated_at) }}</span>
                 <div v-if="post.collaborators.length" class="flex items-center gap-1">
                   <span class="text-xs text-text-muted">+</span>
                   <div class="flex -space-x-1.5">
@@ -405,7 +401,7 @@ function formatTime(iso: string) {
               <span>{{ post.created_by_profile?.meta_points }} meta</span>
             </span>
             <span>·</span>
-            <span>{{ formatTime(post.created_at) }}</span>
+            <span>{{ formatDateTime(post.created_at) }}</span>
           </div>
         </div>
 
@@ -526,20 +522,11 @@ function formatTime(iso: string) {
       @close="showInviteDialog = false"
     />
 
-  <Teleport to="body">
-    <div
-      v-if="emojiDrawerOpen && emojiDrawerAnchor"
-      class="fixed z-[9997]"
-      :style="{ bottom: emojiDrawerAnchor.bottom + 'px', right: emojiDrawerAnchor.right + 'px' }"
-      @click.stop
-    >
-      <EmojiPicker @select="insertCommentEmoji" />
-    </div>
-    <div
-      v-if="emojiDrawerOpen"
-      class="fixed inset-0 z-[9996]"
-      @click="emojiDrawerOpen = false"
-    />
-  </Teleport>
+  <EmojiPickerPopover
+    :open="emojiDrawerOpen"
+    :anchor="emojiDrawerAnchor"
+    @select="insertCommentEmoji"
+    @close="emojiDrawerOpen = false"
+  />
   </div>
 </template>

@@ -1,11 +1,5 @@
 import { renderMarkdown } from './markdown'
-
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-}
+import { escapeHtml } from './formatters'
 
 function applyMentions(html: string, myUsername: string | null): string {
   return html.replace(/@(\w+)/g, (_, username: string) => {
