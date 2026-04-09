@@ -213,19 +213,6 @@ function copyInviteCode() {
         >{{ totalDmUnread > 99 ? '99+' : totalDmUnread }}</span>
       </router-link>
 
-      <!-- Members directory -->
-      <router-link
-        to="/community/members"
-        @click="mobileMenuOpen = false"
-        class="flex items-center gap-2.5 rounded-md px-3 py-2.5 text-sm transition-colors"
-        :class="route.path === '/community/members' ? 'bg-bg-hover text-text-primary font-medium' : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary'"
-      >
-        <svg class="h-4 w-4 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-        </svg>
-        <span>Members</span>
-      </router-link>
-
       <!-- Approvals (owners only, approval mode) -->
       <router-link
         v-if="isAnyOwner && community?.registration_mode === 'approval'"
@@ -282,17 +269,16 @@ function copyInviteCode() {
 
       <div class="my-1 h-px bg-bg-tertiary" />
 
-      <!-- Add Space (owners and admins) -->
+      <!-- Add Space -->
       <button
-        v-if="isAnyAdminOrOwner"
         @click="showAddMenu = !showAddMenu"
         class="flex items-center gap-2.5 rounded-md px-3 py-2.5 text-sm text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
       >
         <span class="flex h-4 w-4 flex-shrink-0 items-center justify-center text-base leading-none">+</span>
         <span>Add a Space</span>
       </button>
-      <div v-if="showAddMenu && isAnyAdminOrOwner" class="flex flex-col gap-0.5 pl-2">
-        <button @click="showCreateSpace = true; showAddMenu = false; mobileMenuOpen = false" class="flex items-center gap-2 rounded px-3 py-2 text-sm text-text-primary hover:bg-bg-hover">
+      <div v-if="showAddMenu" class="flex flex-col gap-0.5 pl-2">
+        <button v-if="isAnyAdminOrOwner" @click="showCreateSpace = true; showAddMenu = false; mobileMenuOpen = false" class="flex items-center gap-2 rounded px-3 py-2 text-sm text-text-primary hover:bg-bg-hover">
           Create Space
         </button>
         <button @click="showJoinSpace = true; showAddMenu = false; mobileMenuOpen = false" class="flex items-center gap-2 rounded px-3 py-2 text-sm text-text-primary hover:bg-bg-hover">
@@ -355,20 +341,6 @@ function copyInviteCode() {
         >{{ totalDmUnread > 99 ? '99+' : totalDmUnread }}</span>
       </router-link>
 
-      <div class="mx-1 h-4 w-px flex-shrink-0 bg-bg-tertiary" />
-
-      <!-- Members directory -->
-      <router-link
-        to="/community/members"
-        class="flex flex-shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1 text-sm whitespace-nowrap transition-colors"
-        :class="route.path === '/community/members' ? 'bg-bg-hover text-text-primary font-medium' : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary'"
-      >
-        <svg class="h-3.5 w-3.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-        </svg>
-        <span>Members</span>
-      </router-link>
-
       <!-- Approvals (owners only, approval mode) -->
       <router-link
         v-if="isAnyOwner && community?.registration_mode === 'approval'"
@@ -382,9 +354,9 @@ function copyInviteCode() {
         <span>Approvals</span>
       </router-link>
 
-      <!-- Dashboard (owners only) -->
+      <!-- Dashboard (owners and admins) -->
       <router-link
-        v-if="isAnyOwner"
+        v-if="isAnyAdminOrOwner"
         to="/admin"
         class="flex flex-shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1 text-sm whitespace-nowrap transition-colors"
         :class="route.path === '/admin' ? 'bg-bg-hover text-text-primary font-medium' : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary'"
@@ -424,8 +396,8 @@ function copyInviteCode() {
     <!-- Right actions -->
     <div class="flex flex-shrink-0 items-center gap-1 border-l border-bg-tertiary px-2">
 
-      <!-- Add Space (owners and admins) -->
-      <div v-if="isAnyAdminOrOwner" class="relative">
+      <!-- Add Space -->
+      <div class="relative">
         <button
           @click="showAddMenu = !showAddMenu"
           class="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm text-text-muted hover:bg-bg-hover hover:text-text-primary transition-colors"
@@ -438,7 +410,7 @@ function copyInviteCode() {
           v-if="showAddMenu"
           class="absolute right-0 top-full mt-1 min-w-40 rounded-lg bg-bg-primary p-1 shadow-lg z-40"
         >
-          <button @click="showCreateSpace = true; showAddMenu = false" class="flex w-full items-center gap-2 rounded px-3 py-2 text-sm text-text-primary hover:bg-bg-hover">
+          <button v-if="isAnyAdminOrOwner" @click="showCreateSpace = true; showAddMenu = false" class="flex w-full items-center gap-2 rounded px-3 py-2 text-sm text-text-primary hover:bg-bg-hover">
             Create Space
           </button>
           <button @click="showJoinSpace = true; showAddMenu = false" class="flex w-full items-center gap-2 rounded px-3 py-2 text-sm text-text-primary hover:bg-bg-hover">

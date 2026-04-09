@@ -457,28 +457,44 @@ function onDmConversationContext(event: MouseEvent, groupId: string) {
         @select="(id: string) => { closeDmSearch(); scrollToMessage(id) }"
       />
 
-      <!-- Show other user's profile in the member sidebar -->
-      <div v-else-if="activeGroup" class="p-4">
-        <div class="flex flex-col items-center gap-3 py-4 text-center">
-          <UserAvatar
-            :src="activeGroup.otherUser.avatar_url"
-            :alt="activeGroup.otherUser.display_name"
-            :status="activeGroup.otherUser.status"
-            size="lg"
-          />
-          <div>
-            <p class="font-semibold">{{ activeGroup.otherUser.display_name }}</p>
-            <p class="text-sm text-text-muted">@{{ activeGroup.otherUser.username }}</p>
+      <div v-else class="flex h-full flex-col">
+        <!-- Show other user's profile when a DM is active -->
+        <div v-if="activeGroup" class="flex-1 p-4">
+          <div class="flex flex-col items-center gap-3 py-4 text-center">
+            <UserAvatar
+              :src="activeGroup.otherUser.avatar_url"
+              :alt="activeGroup.otherUser.display_name"
+              :status="activeGroup.otherUser.status"
+              size="lg"
+            />
+            <div>
+              <p class="font-semibold">{{ activeGroup.otherUser.display_name }}</p>
+              <p class="text-sm text-text-muted">@{{ activeGroup.otherUser.username }}</p>
+            </div>
+            <p v-if="activeGroup.otherUser.status_text" class="text-xs text-text-secondary">
+              {{ activeGroup.otherUser.status_text }}
+            </p>
+            <p v-if="activeGroup.otherUser.bio" class="text-xs text-text-secondary">
+              {{ activeGroup.otherUser.bio }}
+            </p>
           </div>
-          <p v-if="activeGroup.otherUser.status_text" class="text-xs text-text-secondary">
-            {{ activeGroup.otherUser.status_text }}
-          </p>
-          <p v-if="activeGroup.otherUser.bio" class="text-xs text-text-secondary">
-            {{ activeGroup.otherUser.bio }}
-          </p>
+        </div>
+        <div v-else class="flex-1" />
+
+        <!-- Members directory link -->
+        <div class="border-t border-bg-tertiary p-3">
+          <router-link
+            to="/community/members"
+            class="flex items-center gap-2 rounded-md px-3 py-2 text-sm text-text-secondary transition-colors hover:bg-bg-hover hover:text-text-primary"
+            :class="route.path === '/community/members' ? 'bg-bg-hover text-text-primary font-medium' : ''"
+          >
+            <svg class="h-4 w-4 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+            </svg>
+            <span>Members Directory</span>
+          </router-link>
         </div>
       </div>
-      <div v-else></div>
     </template>
   </AppShell>
 
