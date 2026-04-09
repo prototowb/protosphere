@@ -4,15 +4,14 @@ import { useRoute, useRouter } from 'vue-router'
 import AppShell from '@/components/layout/AppShell.vue'
 import UserAvatar from '@/components/user/UserAvatar.vue'
 import EmojiPickerPopover from '@/components/ui/EmojiPickerPopover.vue'
-import ReplyBar from '@/components/chat/ReplyBar.vue'
 import ChannelListItem from '@/components/channel/ChannelListItem.vue'
 import ChannelHeader from '@/components/channel/ChannelHeader.vue'
 import ForumHeaderComp from '@/components/forum/ForumHeader.vue'
 import ForumPostHeader from '@/components/forum/ForumPostHeader.vue'
-import MessageInput from '@/components/chat/MessageInput.vue'
+import MessageBubble from '@/components/chat/MessageBubble.vue'
+import MessageInputArea from '@/components/chat/MessageInputArea.vue'
+import MemberList from '@/components/chat/MemberList.vue'
 import MessageSearch from '@/components/chat/MessageSearch.vue'
-import MessageAttachments from '@/components/messages/MessageAttachments.vue'
-import EmojiIcon from '@/components/ui/EmojiIcon.vue'
 import { useServersStore } from '@/stores/servers'
 import { useChannelsStore } from '@/stores/channels'
 import { useMessagesStore } from '@/stores/messages'
@@ -54,7 +53,7 @@ import { Permission } from '@/lib/permissions'
 import { checkAutomod } from '@/lib/automod'
 import { expandShortcodes } from '@/lib/emojiNames'
 import { backend, isLocalMode } from '@/lib/backend'
-import { formatTime, formatDate, isExpiringSoon } from '@/lib/formatters'
+import { formatDate } from '@/lib/formatters'
 import { useRealtime } from '@/composables/useRealtime'
 import { usePresenceStore } from '@/stores/presence'
 import type { Message, Profile, Member, MemberRole, Channel, ChannelCategory, AutomodRule, RsvpStatus, UserStatus, NotificationLevel, Attachment, ForumPost, ForumPostType } from '@/lib/types'
@@ -214,31 +213,11 @@ const serverId = ref('')
 const channelId = ref('')
 
 const messageInput = ref('')
-const messageInputEl = ref<InstanceType<typeof MessageInput> | null>(null)
 const sending = ref(false)
 const messageListEl = ref<HTMLElement | null>(null)
-const fileInputEl = ref<HTMLInputElement | null>(null)
 const pendingAttachments = ref<Attachment[]>([])
 const uploadingFiles = ref(false)
 
-// Full emoji drawer (input bar)
-const emojiDrawerOpen = ref(false)
-const emojiDrawerAnchor = ref<{ bottom: number; right: number } | null>(null)
-
-function openEmojiDrawer(event: MouseEvent) {
-  if (emojiDrawerOpen.value) {
-    emojiDrawerOpen.value = false
-    return
-  }
-  const btn = event.currentTarget as HTMLElement
-  const rect = btn.getBoundingClientRect()
-  emojiDrawerAnchor.value = { bottom: window.innerHeight - rect.top + 8, right: window.innerWidth - rect.right }
-  emojiDrawerOpen.value = true
-}
-
-function insertEmoji(emoji: string) {
-  messageInputEl.value?.insertEmoji(emoji)
-}
 
 const editingId = ref<string | null>(null)
 const editingContent = ref('')
@@ -579,7 +558,6 @@ async function uploadAttachments(files: File[] | FileList) {
     toastStore.show('Failed to upload file', 'error')
   } finally {
     uploadingFiles.value = false
-    if (fileInputEl.value) fileInputEl.value.value = ''
   }
 }
 
@@ -1509,285 +1487,59 @@ function onServerHeaderContext(event: MouseEvent) {
             {{ loadingOlder ? 'Loading…' : 'Load earlier messages' }}
           </button>
         </div>
-        <template v-for="msg in groupedMessages" :key="msg.id">
-          <!-- Date separator -->
-          <div v-if="msg.dateSeparator" class="my-4 flex items-center gap-3">
-            <div class="h-px flex-1 bg-bg-tertiary" />
-            <span class="text-xs text-text-muted">{{ msg.dateSeparator }}</span>
-            <div class="h-px flex-1 bg-bg-tertiary" />
-          </div>
-
-          <!-- Message row -->
-          <div
-            :data-message-id="msg.id"
-            class="group relative flex gap-3 rounded px-2 py-0.5 transition-colors hover:bg-bg-secondary"
-            :class="msg.showHeader ? 'mt-3' : ''"
-            @contextmenu.prevent="onMessageContext($event, msg)"
-          >
-            <!-- Avatar (only on first in group) -->
-            <div class="w-10 flex-shrink-0">
-              <UserAvatar
-                v-if="msg.showHeader"
-                :src="msg.profile.avatar_url"
-                :alt="msg.profile.display_name"
-                size="sm"
-              />
-            </div>
-
-            <div class="min-w-0 flex-1">
-              <!-- Reply quote -->
-              <div
-                v-if="msg.reply_to_id"
-                class="mb-1 flex cursor-default items-center gap-1.5 text-xs text-text-muted"
-              >
-                <svg class="h-3 w-3 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                  <polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/>
-                </svg>
-                <span class="font-medium text-text-secondary">{{ getMessageById(msg.reply_to_id)?.profile.display_name ?? 'Unknown' }}</span>
-                <span class="truncate">{{ getMessageById(msg.reply_to_id)?.content ?? '[deleted]' }}</span>
-              </div>
-
-              <!-- Header (only on first in group) -->
-              <div v-if="msg.showHeader" class="mb-0.5 flex items-baseline gap-2">
-                <span class="font-semibold text-text-primary">{{ msg.profile.display_name }}</span>
-                <span class="text-xs text-text-muted">{{ formatTime(msg.created_at) }}</span>
-                <span
-                  v-if="isExpiringSoon(msg.expires_at)"
-                  class="h-1.5 w-1.5 rounded-full bg-amber-400"
-                  title="This message expires soon"
-                />
-              </div>
-
-              <!-- Edit mode -->
-              <div v-if="editingId === msg.id" class="flex gap-2">
-                <input
-                  v-model="editingContent"
-                  @keydown.enter.prevent="submitEdit"
-                  @keydown.escape="cancelEdit"
-                  class="flex-1 rounded border border-accent bg-bg-primary px-2 py-1 text-sm text-text-primary outline-none"
-                  autofocus
-                />
-                <button @click="submitEdit" class="rounded bg-accent px-2 py-1 text-xs text-white">Save</button>
-                <button @click="cancelEdit" class="rounded px-2 py-1 text-xs text-text-muted hover:text-text-primary">Cancel</button>
-              </div>
-
-              <!-- Content -->
-              <p
-                v-else
-                class="break-words text-sm text-text-primary leading-relaxed"
-                v-html="renderMessage(msg.content, myUsername) + (msg.edited_at ? ' <span class=\'text-xs text-text-muted\'>(edited)</span>' : '')"
-              />
-
-              <!-- Attachments -->
-              <MessageAttachments v-if="msg.attachments?.length" :attachments="msg.attachments" />
-
-              <!-- Reaction pills -->
-              <div
-                v-if="getReactionGroups(msg.id).length > 0"
-                class="mt-1 flex flex-wrap gap-1"
-              >
-                <button
-                  v-for="group in getReactionGroups(msg.id)"
-                  :key="group.emoji"
-                  @click="handleToggleReaction(msg.id, group.emoji)"
-                  class="flex items-center gap-1 rounded border px-2 py-0.5 text-xs transition-colors"
-                  :class="group.iMine
-                    ? 'border-accent bg-accent/20 text-accent'
-                    : 'border-bg-tertiary bg-bg-secondary text-text-secondary hover:border-accent/50'"
-                >
-                  <EmojiIcon :emoji="group.emoji" size="1em" />
-                  <span>{{ group.count }}</span>
-                </button>
-              </div>
-
-              <!-- Forum post link -->
-              <router-link
-                v-if="msg.forum_post_id"
-                :to="`/spaces/${serverId}/forum/${msg.forum_post_id}`"
-                class="mt-1 inline-flex items-center gap-1.5 text-xs text-violet-400 hover:underline"
-              >
-                <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-                </svg>
-                Forum post
-              </router-link>
-            </div>
-
-            <!-- Hover actions -->
-            <div
-              v-if="editingId !== msg.id"
-              class="absolute right-2 top-0 hidden -translate-y-1/2 items-center gap-1 rounded border border-bg-tertiary bg-bg-primary p-0.5 shadow group-hover:flex"
-            >
-              <!-- Emoji picker trigger -->
-              <button
-                @click.stop="openEmojiPicker(msg.id, $event)"
-                class="rounded p-1 text-text-muted hover:bg-bg-hover hover:text-text-primary"
-                title="Add Reaction"
-              >
-                <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/>
-                </svg>
-              </button>
-              <button
-                @click="startReply(msg)"
-                class="rounded p-1 text-text-muted hover:bg-bg-hover hover:text-text-primary"
-                title="Reply"
-              >
-                <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/>
-                </svg>
-              </button>
-              <!-- Pin/unpin (moderator+) -->
-              <button
-                v-if="canModerate"
-                @click="msg.is_pinned ? handleUnpinMessage(msg.id) : handlePinMessage(msg.id)"
-                class="rounded p-1 text-text-muted hover:bg-bg-hover hover:text-text-primary"
-                :title="msg.is_pinned ? 'Unpin' : 'Pin'"
-              >
-                <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor" :class="msg.is_pinned ? 'text-accent' : ''">
-                  <path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2l-2-2z"/>
-                </svg>
-              </button>
-              <button
-                v-if="msg.author_id === authStore.user?.id"
-                @click="startEdit(msg)"
-                class="rounded p-1 text-text-muted hover:bg-bg-hover hover:text-text-primary"
-                title="Edit"
-              >
-                <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                </svg>
-              </button>
-              <button
-                v-if="msg.author_id === authStore.user?.id || canModerate"
-                @click="handleDeleteMessage(msg.id)"
-                class="rounded p-1 text-text-muted hover:bg-danger/10 hover:text-danger"
-                title="Delete"
-              >
-                <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/>
-                  <path d="M9 6V4h6v2"/>
-                </svg>
-              </button>
-            </div>
-
-            <!-- Timestamp on hover (for collapsed messages) -->
-            <span
-              v-if="!msg.showHeader && editingId !== msg.id"
-              class="absolute left-2 hidden text-xs text-text-muted group-hover:block"
-              style="top: 50%; transform: translateY(-50%)"
-            >
-              {{ formatTime(msg.created_at) }}
-            </span>
-          </div>
-        </template>
+        <MessageBubble
+          v-for="msg in groupedMessages"
+          :key="msg.id"
+          :message="msg"
+          :content-html="renderMessage(msg.content, myUsername) + (msg.edited_at ? ' <span class=\'text-xs text-text-muted\'>(edited)</span>' : '')"
+          :reply-author-name="msg.reply_to_id ? (getMessageById(msg.reply_to_id)?.profile.display_name ?? 'Unknown') : null"
+          :reply-content="msg.reply_to_id ? (getMessageById(msg.reply_to_id)?.content ?? '[deleted]') : null"
+          :reaction-groups="getReactionGroups(msg.id)"
+          :is-editing="editingId === msg.id"
+          :edit-content="editingContent"
+          :is-author="msg.author_id === authStore.user?.id"
+          :can-moderate="canModerate"
+          :show-reaction-button="true"
+          :show-pin-button="true"
+          :server-id="serverId"
+          @update:edit-content="editingContent = $event"
+          @reply="startReply(msg)"
+          @start-edit="startEdit(msg)"
+          @delete="handleDeleteMessage(msg.id)"
+          @cancel-edit="cancelEdit"
+          @submit-edit="submitEdit"
+          @pin="handlePinMessage(msg.id)"
+          @unpin="handleUnpinMessage(msg.id)"
+          @toggle-reaction="handleToggleReaction(msg.id, $event)"
+          @open-reaction-picker="openEmojiPicker(msg.id, $event)"
+          @contextmenu="onMessageContext($event, msg)"
+        />
       </div>
     </div>
 
     <template #input>
-      <div v-if="activeView === 'channel'" class="px-4 pb-4">
-        <ReplyBar
-          v-if="replyingTo"
-          :display-name="replyingTo.profile.display_name"
-          :content-preview="replyingTo.content"
-          @cancel="replyingTo = null"
-        />
-        <!-- Typing indicator -->
-        <div v-if="displayTypingUsers.length > 0" class="px-1 pb-1 text-xs text-text-muted">
-          <span class="font-medium text-text-secondary">{{ displayTypingUsers.join(', ') }}</span>
-          {{ displayTypingUsers.length === 1 ? 'is' : 'are' }} typing
-          <span class="animate-pulse">...</span>
-        </div>
-        <!-- Pending attachments preview -->
-        <div v-if="pendingAttachments.length > 0" class="mx-2 mb-1 flex flex-wrap gap-2 rounded-lg bg-bg-tertiary px-3 py-2" :class="replyingTo ? '' : ''">
-          <div
-            v-for="(att, idx) in pendingAttachments"
-            :key="idx"
-            class="flex items-center gap-1.5 rounded border border-bg-tertiary bg-bg-secondary px-2 py-1 text-xs"
-          >
-            <span class="max-w-[10rem] truncate text-text-secondary">{{ att.filename }}</span>
-            <button type="button" @click="removePendingAttachment(idx)" class="text-text-muted hover:text-danger">
-              <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-              </svg>
-            </button>
-          </div>
-          <span v-if="uploadingFiles" class="text-xs text-text-muted animate-pulse">Uploading…</span>
-        </div>
-
-        <form @submit.prevent="handleSendMessage" class="flex items-center gap-2 rounded-lg bg-bg-tertiary px-4 py-3" :class="replyingTo ? 'rounded-t-none' : ''">
-          <!-- Hidden file input -->
-          <input
-            ref="fileInputEl"
-            type="file"
-            accept="*/*"
-            multiple
-            class="hidden"
-            @change="uploadAttachments(($event.target as HTMLInputElement).files!)"
-          />
-          <!-- Attachment button -->
-          <button
-            v-if="canPostInChannel"
-            type="button"
-            @click="fileInputEl?.click()"
-            :class="uploadingFiles ? 'text-accent animate-pulse' : 'text-text-muted hover:text-text-primary'"
-            class="flex-shrink-0 rounded p-1 transition-colors"
-            title="Attach File"
-          >
-            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
-              <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
-            </svg>
-          </button>
-          <!-- Poll button -->
-          <button
-            v-if="canPostInChannel"
-            type="button"
-            @click="showCreatePoll = true"
-            :class="showCreatePoll ? 'text-accent' : 'text-text-muted hover:text-text-primary'"
-            class="flex-shrink-0 rounded p-1 transition-colors"
-            title="Create Poll"
-          >
-            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
-              <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>
-            </svg>
-          </button>
-          <MessageInput
-            ref="messageInputEl"
-            v-model="messageInput"
-            :disabled="!activeChannel || slowmodeRemaining > 0 || !canPostInChannel"
-            :placeholder="!canPostInChannel ? 'This is an announcement channel — only moderators can post' : slowmodeRemaining > 0 ? `Slowmode active — wait ${slowmodeRemaining}s` : `Message #${activeChannel?.name ?? 'general'}`"
-            @submit="handleSendMessage"
-            @input="handleInput"
-            @files="uploadAttachments"
-          />
-          <!-- Emoji drawer button -->
-          <button
-            type="button"
-            @click="openEmojiDrawer($event)"
-            :class="emojiDrawerOpen ? 'text-accent' : 'text-text-muted hover:text-text-primary'"
-            class="flex-shrink-0 rounded p-1 transition-colors"
-            title="Emoji"
-          >
-            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
-              <circle cx="12" cy="12" r="10"/>
-              <path d="M8 14s1.5 2 4 2 4-2 4-2"/>
-              <line x1="9" y1="9" x2="9.01" y2="9" stroke-linecap="round" stroke-width="2.5"/>
-              <line x1="15" y1="9" x2="15.01" y2="9" stroke-linecap="round" stroke-width="2.5"/>
-            </svg>
-          </button>
-          <button
-            type="submit"
-            :disabled="(!messageInput.trim() && pendingAttachments.length === 0) || sending || uploadingFiles || !activeChannel || slowmodeRemaining > 0"
-            class="min-w-8 rounded p-1 text-text-muted transition-colors hover:text-text-primary disabled:opacity-30"
-          >
-            <span v-if="slowmodeRemaining > 0" class="text-xs font-medium tabular-nums text-text-muted">{{ slowmodeRemaining }}s</span>
-            <svg v-else class="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
-            </svg>
-          </button>
-        </form>
-      </div>
+      <MessageInputArea
+        v-if="activeView === 'channel'"
+        v-model="messageInput"
+        :reply-display-name="replyingTo?.profile.display_name ?? null"
+        :reply-content="replyingTo?.content ?? null"
+        :typing-users="displayTypingUsers"
+        :pending-attachments="pendingAttachments"
+        :uploading-files="uploadingFiles"
+        :disabled="!activeChannel"
+        :placeholder="!canPostInChannel ? 'This is an announcement channel — only moderators can post' : slowmodeRemaining > 0 ? `Slowmode active — wait ${slowmodeRemaining}s` : `Message #${activeChannel?.name ?? 'general'}`"
+        :can-post="canPostInChannel"
+        :show-attach-button="true"
+        :show-poll-button="true"
+        :slowmode-remaining="slowmodeRemaining"
+        :sending="sending"
+        @submit="handleSendMessage"
+        @input="handleInput"
+        @cancel-reply="replyingTo = null"
+        @attach-files="uploadAttachments"
+        @remove-pending-attachment="removePendingAttachment"
+        @create-poll="showCreatePoll = true"
+      />
     </template>
 
     <template #members-header>
@@ -1869,34 +1621,14 @@ function onServerHeaderContext(event: MouseEvent) {
       />
 
       <!-- Default member list -->
-      <div v-else class="h-full overflow-y-auto p-4">
-        <div v-for="group in memberRoleGroups" :key="group.role" class="mb-3">
-          <h3 class="mb-1 text-xs font-semibold uppercase text-text-muted">
-            {{ group.label }} — {{ group.members.length }}
-          </h3>
-          <div class="space-y-0.5">
-            <button
-              v-for="member in group.members"
-              :key="member.user_id"
-              @click="selectedMember = member"
-              @contextmenu.prevent="onMemberContext($event, member)"
-              class="flex w-full items-center gap-2 rounded px-2 py-1.5 hover:bg-bg-hover text-left"
-              :class="selectedMember?.user_id === member.user_id ? 'bg-bg-hover' : ''"
-            >
-              <UserAvatar
-                :src="member.profile.avatar_url"
-                :alt="member.profile.display_name"
-                :status="getEffectiveStatus(member)"
-                size="sm"
-              />
-              <div class="min-w-0 flex-1">
-                <p class="truncate text-sm font-medium">{{ member.profile.display_name }}</p>
-                <p v-if="member.profile.status_text" class="truncate text-xs text-text-muted">{{ member.profile.status_text }}</p>
-              </div>
-            </button>
-          </div>
-        </div>
-      </div>
+      <MemberList
+        v-else
+        :role-groups="memberRoleGroups"
+        :selected-user-id="selectedMember?.user_id ?? null"
+        :get-effective-status="getEffectiveStatus"
+        @select-member="selectedMember = $event"
+        @contextmenu="(e: MouseEvent, m: any) => onMemberContext(e, m)"
+      />
     </template>
   </AppShell>
 
@@ -2141,13 +1873,6 @@ function onServerHeaderContext(event: MouseEvent) {
       </div>
     </div>
   </div>
-
-  <EmojiPickerPopover
-    :open="emojiDrawerOpen"
-    :anchor="emojiDrawerAnchor ?? { bottom: 80, right: 16 }"
-    @select="insertEmoji"
-    @close="emojiDrawerOpen = false"
-  />
 
   <EmojiPickerPopover
     :open="!!emojiPickerForMsg && !!pickerAnchorRect"
