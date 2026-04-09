@@ -5,6 +5,10 @@ import AppShell from '@/components/layout/AppShell.vue'
 import UserAvatar from '@/components/user/UserAvatar.vue'
 import EmojiPickerPopover from '@/components/ui/EmojiPickerPopover.vue'
 import ReplyBar from '@/components/chat/ReplyBar.vue'
+import ChannelListItem from '@/components/channel/ChannelListItem.vue'
+import ChannelHeader from '@/components/channel/ChannelHeader.vue'
+import ForumHeaderComp from '@/components/forum/ForumHeader.vue'
+import ForumPostHeader from '@/components/forum/ForumPostHeader.vue'
 import MessageInput from '@/components/chat/MessageInput.vue'
 import MessageSearch from '@/components/chat/MessageSearch.vue'
 import MessageAttachments from '@/components/messages/MessageAttachments.vue'
@@ -1259,61 +1263,28 @@ function onServerHeaderContext(event: MouseEvent) {
 
       <div class="space-y-0.5 mb-0.5">
         <!-- Uncategorized channels (category_id = null) -->
-        <div
+        <ChannelListItem
           v-for="channel in channelsStore.channels.filter(c => c.category_id === null).sort((a,b) => a.position - b.position)"
           :key="channel.id"
-          class="group relative"
-        >
-          <router-link
-            :to="`/channels/${serverId}/${channel.id}`"
-            :draggable="canManageChannels"
-            @click="activeView = 'channel'"
-            @contextmenu.prevent="onChannelContext($event, channel)"
-            @dragstart.stop="onChannelDragStart(channel.id)"
-            @dragover.prevent.stop="onChannelDragOver(channel.id)"
-            @dragleave.stop="onChannelDragLeave"
-            @drop.prevent.stop="onChannelDrop(channel.id)"
-            @dragend.stop="onChannelDragEnd"
-            class="flex w-full items-center gap-1.5 rounded px-2 py-1.5 text-sm hover:bg-bg-hover"
-            :class="[
-              channelsStore.activeChannelId === channel.id ? 'bg-bg-hover text-text-primary font-medium' : 'text-text-secondary',
-              dragOverChannelId === channel.id ? 'border-t-2 border-accent' : '',
-              canManageChannels ? 'cursor-pointer' : '',
-            ]"
-          >
-            <span class="text-text-muted">#</span>
-            <span class="truncate flex-1">{{ channel.name }}</span>
-            <span class="ml-auto flex items-center gap-1">
-              <span v-if="unreadChannelIds.has(channel.id)" class="h-2 w-2 flex-shrink-0 rounded-full bg-white" />
-              <button
-                :class="getCached(channel.id) !== 'all' ? 'flex' : 'hidden group-hover:flex'"
-                class="flex-shrink-0 items-center rounded p-0.5 text-text-muted hover:text-text-primary"
-                @click.prevent.stop="openNotifPopover(channel.id)"
-                title="Notification settings"
-              >
-                <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>
-                </svg>
-              </button>
-            </span>
-          </router-link>
-          <!-- Notification popover -->
-          <div
-            v-if="notifPopoverChannelId === channel.id"
-            class="absolute right-0 top-full z-50 mt-1 min-w-32 rounded-lg bg-bg-primary p-1 shadow-lg ring-1 ring-bg-tertiary"
-            @click.stop
-          >
-            <button
-              v-for="opt in NOTIF_OPTIONS"
-              :key="opt.value"
-              @click="setChannelNotifLevel(channel.id, opt.value)"
-              class="flex w-full items-center gap-2 rounded px-3 py-1.5 text-xs hover:bg-bg-hover"
-              :class="getCached(channel.id) === opt.value ? 'text-accent' : 'text-text-secondary'"
-            >
-              {{ opt.label }}
-            </button>
-          </div>
-        </div>
+          :channel="channel"
+          :server-id="serverId"
+          :is-active="channelsStore.activeChannelId === channel.id"
+          :has-unread="unreadChannelIds.has(channel.id)"
+          :can-drag="canManageChannels"
+          :notification-level="getCached(channel.id)"
+          :show-notif-popover="notifPopoverChannelId === channel.id"
+          :drag-over-target="dragOverChannelId === channel.id"
+          :notif-options="NOTIF_OPTIONS"
+          @click="activeView = 'channel'"
+          @contextmenu="onChannelContext($event, channel)"
+          @dragstart="onChannelDragStart(channel.id)"
+          @dragover="onChannelDragOver(channel.id)"
+          @dragleave="onChannelDragLeave"
+          @drop="onChannelDrop(channel.id)"
+          @dragend="onChannelDragEnd"
+          @open-notif-popover="openNotifPopover(channel.id)"
+          @set-notif-level="setChannelNotifLevel(channel.id, $event)"
+        />
 
         <!-- Categories -->
         <div v-for="cat in categoriesStore.categories" :key="cat.id" class="mt-2">
@@ -1364,188 +1335,74 @@ function onServerHeaderContext(event: MouseEvent) {
           </div>
           <!-- Channels in this category -->
           <template v-if="!collapsedCategories.has(cat.id)">
-            <div
+            <ChannelListItem
               v-for="channel in channelsStore.channels.filter(c => c.category_id === cat.id).sort((a,b) => a.position - b.position)"
               :key="channel.id"
-              class="group relative"
-            >
-              <router-link
-                :to="`/channels/${serverId}/${channel.id}`"
-                :draggable="canManageChannels"
-                @click="activeView = 'channel'"
-                @contextmenu.prevent="onChannelContext($event, channel)"
-                @dragstart.stop="onChannelDragStart(channel.id)"
-                @dragover.prevent.stop="onChannelDragOver(channel.id)"
-                @dragleave.stop="onChannelDragLeave"
-                @drop.prevent.stop="onChannelDrop(channel.id)"
-                @dragend.stop="onChannelDragEnd"
-                class="flex w-full items-center gap-1.5 rounded px-2 py-1.5 text-sm hover:bg-bg-hover"
-                :class="[
-                  channelsStore.activeChannelId === channel.id ? 'bg-bg-hover text-text-primary font-medium' : 'text-text-secondary',
-                  dragOverChannelId === channel.id ? 'border-t-2 border-accent' : '',
-                  canManageChannels ? 'cursor-pointer' : '',
-                ]"
-              >
-                <span class="text-text-muted">#</span>
-                <span class="truncate flex-1">{{ channel.name }}</span>
-                <span class="ml-auto flex items-center gap-1">
-                  <span v-if="unreadChannelIds.has(channel.id)" class="h-2 w-2 flex-shrink-0 rounded-full bg-white" />
-                  <button
-                    :class="getCached(channel.id) !== 'all' ? 'flex' : 'hidden group-hover:flex'"
-                    class="flex-shrink-0 items-center rounded p-0.5 text-text-muted hover:text-text-primary"
-                    @click.prevent.stop="openNotifPopover(channel.id)"
-                    title="Notification settings"
-                  >
-                    <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>
-                    </svg>
-                  </button>
-                </span>
-              </router-link>
-              <!-- Notification popover -->
-              <div
-                v-if="notifPopoverChannelId === channel.id"
-                class="absolute right-0 top-full z-50 mt-1 min-w-32 rounded-lg bg-bg-primary p-1 shadow-lg ring-1 ring-bg-tertiary"
-                @click.stop
-              >
-                <button
-                  v-for="opt in NOTIF_OPTIONS"
-                  :key="opt.value"
-                  @click="setChannelNotifLevel(channel.id, opt.value)"
-                  class="flex w-full items-center gap-2 rounded px-3 py-1.5 text-xs hover:bg-bg-hover"
-                  :class="getCached(channel.id) === opt.value ? 'text-accent' : 'text-text-secondary'"
-                >
-                  {{ opt.label }}
-                </button>
-              </div>
-            </div>
+              :channel="channel"
+              :server-id="serverId"
+              :is-active="channelsStore.activeChannelId === channel.id"
+              :has-unread="unreadChannelIds.has(channel.id)"
+              :can-drag="canManageChannels"
+              :notification-level="getCached(channel.id)"
+              :show-notif-popover="notifPopoverChannelId === channel.id"
+              :drag-over-target="dragOverChannelId === channel.id"
+              :notif-options="NOTIF_OPTIONS"
+              @click="activeView = 'channel'"
+              @contextmenu="onChannelContext($event, channel)"
+              @dragstart="onChannelDragStart(channel.id)"
+              @dragover="onChannelDragOver(channel.id)"
+              @dragleave="onChannelDragLeave"
+              @drop="onChannelDrop(channel.id)"
+              @dragend="onChannelDragEnd"
+              @open-notif-popover="openNotifPopover(channel.id)"
+              @set-notif-level="setChannelNotifLevel(channel.id, $event)"
+            />
           </template>
         </div>
       </div>
     </template>
 
     <template #top-bar>
-      <!-- Channel header -->
-      <header v-if="activeView === 'channel'" class="flex h-12 items-center gap-2 border-b border-bg-tertiary bg-bg-primary px-4">
-        <span class="text-text-muted">#</span>
-        <span class="font-semibold text-text-primary">{{ activeChannel?.name ?? 'general' }}</span>
-        <span v-if="activeChannel?.description" class="ml-1 text-text-muted/50">·</span>
-        <span
-          v-if="activeChannel?.description"
-          class="truncate text-sm text-text-muted"
-          :title="activeChannel.description"
-        >
-          {{ activeChannel.description }}
-        </span>
-        <div class="ml-auto flex items-center gap-1">
-          <button
-            @click="searchOpen ? closeSearch() : openSearch()"
-            :class="searchOpen ? 'text-text-primary bg-bg-hover' : 'text-text-muted hover:text-text-primary hover:bg-bg-hover'"
-            class="rounded p-1.5"
-            title="Search Messages"
-          >
-            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-            </svg>
-          </button>
-          <button
-            @click="togglePinnedPanel"
-            :class="showPinnedPanel ? 'text-text-primary bg-bg-hover' : 'text-text-muted hover:text-text-primary hover:bg-bg-hover'"
-            class="rounded p-1.5"
-            title="Pinned Messages"
-          >
-            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2l-2-2z"/>
-            </svg>
-          </button>
-          <!-- Polls panel toggle -->
-          <button
-            @click="showPollsPanel = !showPollsPanel; if (showPollsPanel) { showPinnedPanel = false; showEventsPanel = false }"
-            :class="showPollsPanel ? 'text-text-primary bg-bg-hover' : 'text-text-muted hover:text-text-primary hover:bg-bg-hover'"
-            class="rounded p-1.5"
-            title="Polls"
-          >
-            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>
-            </svg>
-          </button>
-          <!-- Events panel toggle -->
-          <button
-            @click="showEventsPanel = !showEventsPanel; if (showEventsPanel) { showPinnedPanel = false; showPollsPanel = false }"
-            :class="showEventsPanel ? 'text-text-primary bg-bg-hover' : 'text-text-muted hover:text-text-primary hover:bg-bg-hover'"
-            class="rounded p-1.5"
-            title="Events"
-          >
-            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
-            </svg>
-          </button>
-        </div>
-      </header>
+      <ChannelHeader
+        v-if="activeView === 'channel'"
+        :channel-name="activeChannel?.name ?? 'general'"
+        :channel-description="activeChannel?.description"
+        :search-open="searchOpen"
+        :show-pinned-panel="showPinnedPanel"
+        :show-polls-panel="showPollsPanel"
+        :show-events-panel="showEventsPanel"
+        @toggle-search="searchOpen ? closeSearch() : openSearch()"
+        @toggle-pinned="togglePinnedPanel"
+        @toggle-polls="showPollsPanel = !showPollsPanel; if (showPollsPanel) { showPinnedPanel = false; showEventsPanel = false }"
+        @toggle-events="showEventsPanel = !showEventsPanel; if (showEventsPanel) { showPinnedPanel = false; showPollsPanel = false }"
+      />
 
-      <!-- Forum header -->
-      <header v-else-if="activeView === 'forum'" class="flex h-12 items-center gap-2 border-b border-bg-tertiary bg-bg-primary px-4">
-        <button
-          @click="router.push(`/channels/${serverId}/${defaultChannelId}`)"
-          class="text-sm text-text-muted hover:text-text-primary"
-        >Home</button>
-        <span class="text-text-muted/50">/</span>
-        <svg class="h-4 w-4 flex-shrink-0 text-text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
-        </svg>
-        <span class="font-semibold text-text-primary">Forum</span>
-        <span class="text-xs text-text-muted">{{ forumPosts.length }} {{ forumPosts.length === 1 ? 'post' : 'posts' }}</span>
-        <div class="ml-auto">
-          <button
-            v-if="canModerate"
-            @click="pendingForumMsg = null; showForumPostDialog = true"
-            class="flex items-center gap-1.5 rounded bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent-hover"
-          >
-            <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-            </svg>
-            New post
-          </button>
-        </div>
-      </header>
+      <ForumHeaderComp
+        v-else-if="activeView === 'forum'"
+        :server-id="serverId"
+        :default-channel-id="defaultChannelId"
+        :post-count="forumPosts.length"
+        :can-moderate="canModerate"
+        @back="router.push(`/channels/${serverId}/${defaultChannelId}`)"
+        @new-post="pendingForumMsg = null; showForumPostDialog = true"
+      />
 
-      <!-- Forum post header: breadcrumbs + context actions -->
-      <header v-else-if="activeView === 'forum-post'" class="flex h-12 items-center gap-2 border-b border-bg-tertiary bg-bg-primary px-4 min-w-0">
-        <button
-          @click="router.push(`/channels/${serverId}/${defaultChannelId}`)"
-          class="flex-shrink-0 text-sm text-text-muted hover:text-text-primary"
-        >Home</button>
-        <span class="flex-shrink-0 text-text-muted/50">/</span>
-        <button
-          @click="activeView = 'forum'; backend.forum.listBySpace(serverId).then(posts => { forumPosts = posts }).catch(() => {})"
-          class="flex-shrink-0 text-sm text-text-muted hover:text-text-primary"
-        >Forum</button>
-        <span class="flex-shrink-0 text-text-muted/50">/</span>
-        <span class="truncate text-sm font-semibold text-text-primary">{{ (forumPostViewRef?.editingPage && forumPostViewRef?.editingTitle) ? forumPostViewRef.editingTitle : (forumPostViewRef?.post?.title ?? '…') }}</span>
-
-        <div class="ml-auto flex flex-shrink-0 items-center gap-2">
-          <template v-if="forumPostViewRef?.isPageType">
-            <template v-if="forumPostViewRef?.editingPage && forumPostViewRef?.canEdit">
-              <button @click="forumPostViewRef?.savePage()" :disabled="forumPostViewRef?.savingPage" class="rounded bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent-hover disabled:opacity-50">
-                {{ forumPostViewRef?.savingPage ? 'Saving…' : 'Save page' }}
-              </button>
-              <button @click="forumPostViewRef?.cancelEdit()" class="rounded px-3 py-1.5 text-xs text-text-muted hover:text-text-primary">Cancel</button>
-            </template>
-            <button v-else-if="forumPostViewRef?.canEdit" @click="forumPostViewRef?.startEditing()" class="rounded bg-bg-tertiary px-3 py-1.5 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary">
-              Edit page
-            </button>
-          </template>
-          <button
-            v-if="forumPostViewRef?.post && authStore.user?.id === forumPostViewRef?.post?.created_by && (!forumPostViewRef?.isPageType || !forumPostViewRef?.editingPage)"
-            @click="forumPostViewRef?.handleDeletePost()"
-            class="flex items-center gap-1 rounded px-2 py-1 text-xs text-text-muted hover:bg-red-500/10 hover:text-red-400"
-            title="Delete post"
-          >
-            <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
-            Delete
-          </button>
-        </div>
-      </header>
+      <ForumPostHeader
+        v-else-if="activeView === 'forum-post'"
+        :post-title="forumPostViewRef?.post?.title ?? null"
+        :editing-title="forumPostViewRef?.editingTitle ?? ''"
+        :is-page-type="forumPostViewRef?.isPageType ?? false"
+        :editing-page="forumPostViewRef?.editingPage ?? false"
+        :can-edit="forumPostViewRef?.canEdit ?? false"
+        :saving-page="forumPostViewRef?.savingPage ?? false"
+        :is-author="!!forumPostViewRef?.post && authStore.user?.id === forumPostViewRef?.post?.created_by"
+        @go-home="router.push(`/channels/${serverId}/${defaultChannelId}`)"
+        @go-forum="activeView = 'forum'; backend.forum.listBySpace(serverId).then(posts => { forumPosts = posts }).catch(() => {})"
+        @save="forumPostViewRef?.savePage()"
+        @cancel="forumPostViewRef?.cancelEdit()"
+        @start-edit="forumPostViewRef?.startEditing()"
+        @delete="forumPostViewRef?.handleDeletePost()"
+      />
     </template>
 
     <!-- Forum index view -->
