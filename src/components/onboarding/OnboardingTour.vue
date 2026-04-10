@@ -52,6 +52,7 @@ async function finish() {
 async function skip() {
   if (!authStore.user?.id) return
   await backend.profiles.completeOnboarding(authStore.user.id).catch(() => {})
+  await fetchProfile()
   emit('done')
 }
 
