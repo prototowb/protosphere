@@ -595,7 +595,7 @@ export function createSupabaseBackend(): Backend {
             .select('user_id, profiles(*)')
             .eq('dm_group_id', group.id)
             .neq('user_id', userId)
-            .single()
+            .maybeSingle()
           const { data: lastMsg } = await client
             .from('direct_messages')
             .select('*')
