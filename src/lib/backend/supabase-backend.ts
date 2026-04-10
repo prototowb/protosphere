@@ -1,4 +1,4 @@
-import type { Profile, Server, Channel, ChannelCategory, Member, Message, Attachment, Reaction, Ban, DirectMessageGroup, DirectMessage, Role, UserRole, ChannelRoleOverride, CommunitySettings, AuditLog, Report, Mute, AutomodRule, Poll, PollOption, PollVote, AppEvent, EventRsvp, CommunityInvite, NotificationPreference, DmNotificationPreference } from '@/lib/types'
+import type { Profile, Server, Channel, ChannelCategory, Member, Message, Attachment, Reaction, Ban, DirectMessageGroup, DirectMessage, Role, UserRole, ChannelRoleOverride, CommunitySettings, AuditLog, Report, Mute, AutomodRule, Poll, PollOption, PollVote, AppEvent, EventRsvp, CommunityInvite, NotificationPreference, DmNotificationPreference, ForumPost, ForumCollaborator, ForumComment, ForumCommentVote, ForumCommentReaction, ForumVote, PageContent } from '@/lib/types'
 import type { Backend } from './types'
 import { supabase } from '@/lib/supabase'
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -56,17 +56,11 @@ export function createSupabaseBackend(): Backend {
       },
 
       init(onSession) {
-        client.auth.getSession().then(({ data: { session } }) => {
-          if (session) {
-            onSession({
-              user: { id: session.user.id, email: session.user.email ?? '' },
-              access_token: session.access_token,
-            })
-          } else {
-            onSession(null)
-          }
-        })
-
+        // Use only onAuthStateChange — it fires with INITIAL_SESSION on first call,
+        // covering both normal sessions and OAuth PKCE code exchange.
+        // Using getSession() alongside it creates a race: getSession() can resolve
+        // with null before the PKCE exchange completes, setting loading=false with
+        // isAuthenticated=false, causing the router guard to redirect to login.
         client.auth.onAuthStateChange((_event, session) => {
           if (session) {
             onSession({
@@ -107,6 +101,23 @@ export function createSupabaseBackend(): Backend {
         if (uploadError) throw uploadError
         const { data } = client.storage.from('avatars').getPublicUrl(filePath)
         return data.publicUrl
+      },
+
+      async getByUsername(username: string) {
+        const { data, error } = await client.from('profiles').select('*').eq('username', username).single()
+        if (error) throw error
+        return data as Profile
+      },
+
+      async updatePage(userId: string, page: PageContent | null) {
+        const { data, error } = await client
+          .from('profiles')
+          .update({ profile_page: page, updated_at: new Date().toISOString() })
+          .eq('id', userId)
+          .select()
+          .single()
+        if (error) throw error
+        return data as Profile
       },
 
       async listPending() {
@@ -248,7 +259,6 @@ export function createSupabaseBackend(): Backend {
           .from('channels')
           .select('*')
           .eq('server_id', serverId)
-          .is('parent_message_id', null)
           .order('position')
         if (error) throw error
         return data as Channel[]
@@ -291,6 +301,15 @@ export function createSupabaseBackend(): Backend {
           .eq('server_id', serverId)
         if (error) throw error
         return data as (Member & { profile: Profile })[]
+      },
+
+      async getMyRoles(userId: string) {
+        const { data, error } = await client
+          .from('members')
+          .select('server_id, role')
+          .eq('user_id', userId)
+        if (error) throw error
+        return (data ?? []) as { server_id: string; role: string }[]
       },
 
       async join(serverId: string, userId: string) {
@@ -347,10 +366,12 @@ export function createSupabaseBackend(): Backend {
 
     messages: {
       async list(channelId: string, before?: string, limit = 50) {
+        const now = new Date().toISOString()
         let query = client
           .from('messages')
           .select('*, profile:profiles!author_id(*)')
           .eq('channel_id', channelId)
+          .or(`expires_at.is.null,expires_at.gt.${now}`)
           .order('created_at', { ascending: false })
           .limit(limit + 1)
         if (before) query = query.lt('created_at', before)
@@ -410,11 +431,13 @@ export function createSupabaseBackend(): Backend {
       },
 
       async listPinned(channelId: string) {
+        const now = new Date().toISOString()
         const { data, error } = await client
           .from('messages')
           .select('*, profile:profiles!author_id(*)')
           .eq('channel_id', channelId)
           .eq('is_pinned', true)
+          .or(`expires_at.is.null,expires_at.gt.${now}`)
           .order('created_at')
         if (error) throw error
         return data as (Message & { profile: Profile })[]
@@ -429,11 +452,13 @@ export function createSupabaseBackend(): Backend {
       },
 
       async search(channelId: string, query: string, limit = 25) {
+        const now = new Date().toISOString()
         const { data, error } = await client
           .from('messages')
           .select('*, profile:profiles!author_id(*)')
           .eq('channel_id', channelId)
           .textSearch('search_tsv', query, { type: 'websearch' })
+          .or(`expires_at.is.null,expires_at.gt.${now}`)
           .order('created_at', { ascending: false })
           .limit(limit)
         if (error) throw error
@@ -570,11 +595,12 @@ export function createSupabaseBackend(): Backend {
             .select('user_id, profiles(*)')
             .eq('dm_group_id', group.id)
             .neq('user_id', userId)
-            .single()
+            .maybeSingle()
           const { data: lastMsg } = await client
             .from('direct_messages')
             .select('*')
             .eq('dm_group_id', group.id)
+            .or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`)
             .order('created_at', { ascending: false })
             .limit(1)
             .maybeSingle()
@@ -626,10 +652,16 @@ export function createSupabaseBackend(): Backend {
           .from('direct_message_groups')
           .insert({ id: groupId, is_group: false })
         if (createError) throw createError
-        await client.from('direct_message_members').insert([
-          { dm_group_id: groupId, user_id: userId },
-          { dm_group_id: groupId, user_id: otherUserId },
-        ])
+        // The on_dm_group_created trigger already inserts the creator (userId),
+        // so use upsert/ignoreDuplicates to avoid a 409 on that row.
+        const { error: membersError } = await client.from('direct_message_members').upsert(
+          [
+            { dm_group_id: groupId, user_id: userId },
+            { dm_group_id: groupId, user_id: otherUserId },
+          ],
+          { onConflict: 'dm_group_id,user_id', ignoreDuplicates: true },
+        )
+        if (membersError) throw membersError
         const { data: group, error: fetchError } = await client
           .from('direct_message_groups')
           .select('*')
@@ -640,10 +672,12 @@ export function createSupabaseBackend(): Backend {
       },
 
       async listMessages(dmGroupId: string) {
+        const now = new Date().toISOString()
         const { data, error } = await client
           .from('direct_messages')
           .select('*, profile:profiles!author_id(*)')
           .eq('dm_group_id', dmGroupId)
+          .or(`expires_at.is.null,expires_at.gt.${now}`)
           .order('created_at')
         if (error) throw error
         return data as (DirectMessage & { profile: Profile })[]
@@ -779,13 +813,14 @@ export function createSupabaseBackend(): Backend {
           .from('community_settings')
           .select('*')
           .limit(1)
-          .single()
+          .maybeSingle()
         if (error) throw error
+        if (!data) throw new Error('Community settings not initialized — run db reset')
         return data as CommunitySettings
       },
 
       async update(updates) {
-        const { data: existing } = await client.from('community_settings').select('id').limit(1).single()
+        const { data: existing } = await client.from('community_settings').select('id').limit(1).maybeSingle()
         if (!existing) throw new Error('Community settings not found')
         const { data, error } = await client
           .from('community_settings')
@@ -899,24 +934,216 @@ export function createSupabaseBackend(): Backend {
       },
     },
 
-    threads: {
-      async create(serverId, parentChannelId, parentMessageId, name) {
+    forum: {
+      async createPost(spaceId, type, title, createdBy, sourceMessageId = null, body = null) {
         const { data, error } = await client
-          .from('channels')
-          .insert({ server_id: serverId, name, description: '', type: 'text', position: 0, is_default: false, slowmode_seconds: 0, parent_message_id: parentMessageId, parent_channel_id: parentChannelId })
+          .from('forum_posts')
+          .insert({ space_id: spaceId, type, title, body, created_by: createdBy, source_message_id: sourceMessageId })
           .select()
           .single()
         if (error) throw error
-        return data as Channel
+        // Clear expiry on source message (PTSPH-182)
+        if (sourceMessageId) {
+          await client.from('messages').update({ expires_at: null, forum_post_id: data.id }).eq('id', sourceMessageId)
+        }
+        return data as ForumPost
       },
 
-      async listByChannel(channelId) {
+      async getPost(postId) {
         const { data, error } = await client
-          .from('channels')
-          .select('*')
-          .eq('parent_channel_id', channelId)
+          .from('forum_posts')
+          .select('*, created_by_profile:profiles!created_by(*), source_message:messages!source_message_id(*, profile:profiles!author_id(*)), collaborators:forum_collaborators(*, user:profiles!user_id(*))')
+          .eq('id', postId)
+          .single()
         if (error) throw error
-        return data as Channel[]
+        return data as ForumPost & { created_by_profile: Profile; source_message: (Message & { profile: Profile }) | null; collaborators: (ForumCollaborator & { user: Profile })[] }
+      },
+
+      async listBySpace(spaceId) {
+        const { data, error } = await client
+          .from('forum_posts')
+          .select('*, created_by_profile:profiles!created_by(*)')
+          .eq('space_id', spaceId)
+          .eq('is_deleted', false)
+          .order('created_at', { ascending: false })
+        if (error) throw error
+        return data as (ForumPost & { created_by_profile: Profile })[]
+      },
+
+      async deletePost(postId) {
+        const { error } = await client
+          .from('forum_posts')
+          .update({ is_deleted: true })
+          .eq('id', postId)
+        if (error) throw error
+      },
+
+      async updatePageContent(postId, content, updatedBy, title) {
+        const { data, error } = await client
+          .from('forum_posts')
+          .update({ content, updated_by: updatedBy, ...(title !== undefined ? { title } : {}) })
+          .eq('id', postId)
+          .select()
+          .single()
+        if (error) throw error
+        return data as ForumPost
+      },
+
+      async addCollaborator(postId, userId, invitedBy) {
+        const { data, error } = await client
+          .from('forum_collaborators')
+          .insert({ post_id: postId, user_id: userId, invited_by: invitedBy })
+          .select('*, user:profiles!user_id(*)')
+          .single()
+        if (error) throw error
+        return data as ForumCollaborator & { user: Profile }
+      },
+
+      async listCollaborators(postId) {
+        const { data, error } = await client
+          .from('forum_collaborators')
+          .select('*, user:profiles!user_id(*)')
+          .eq('post_id', postId)
+          .order('added_at')
+        if (error) throw error
+        return data as (ForumCollaborator & { user: Profile })[]
+      },
+
+      async removeCollaborator(postId, userId) {
+        const { error } = await client
+          .from('forum_collaborators')
+          .delete()
+          .eq('post_id', postId)
+          .eq('user_id', userId)
+        if (error) throw error
+      },
+
+      async addComment(postId, authorId, content, parentCommentId = null) {
+        const { data, error } = await client
+          .from('forum_comments')
+          .insert({ post_id: postId, author_id: authorId, content, parent_comment_id: parentCommentId })
+          .select('*, profile:profiles!author_id(*)')
+          .single()
+        if (error) throw error
+        // vote_score starts at 1 due to auto self-vote trigger; RETURNING fires before trigger so override here
+        return { ...data, vote_score: 1 } as ForumComment & { profile: Profile }
+      },
+
+      async deleteComment(commentId, authorId) {
+        const { error } = await client
+          .from('forum_comments')
+          .update({ is_deleted: true })
+          .eq('id', commentId)
+          .eq('author_id', authorId)
+        if (error) throw error
+      },
+
+      async editComment(commentId, authorId, content) {
+        const { data, error } = await client
+          .from('forum_comments')
+          .update({ content, edited_at: new Date().toISOString() })
+          .eq('id', commentId)
+          .eq('author_id', authorId)
+          .select(`*, profile:profiles!author_id(*)`)
+          .single()
+        if (error) throw error
+        return data as ForumComment & { profile: Profile }
+      },
+
+      async listComments(postId) {
+        const { data, error } = await client
+          .from('forum_comments')
+          .select('*, profile:profiles!author_id(*)')
+          .eq('post_id', postId)
+          .order('created_at')
+        if (error) throw error
+        return data as (ForumComment & { profile: Profile })[]
+      },
+
+      async vote(postId, userId, value) {
+        const { data, error } = await client
+          .from('forum_post_votes')
+          .upsert({ post_id: postId, user_id: userId, value }, { onConflict: 'post_id,user_id' })
+          .select()
+          .single()
+        if (error) throw error
+        return data as ForumVote
+      },
+
+      async removeVote(postId, userId) {
+        const { error } = await client
+          .from('forum_post_votes')
+          .delete()
+          .eq('post_id', postId)
+          .eq('user_id', userId)
+        if (error) throw error
+      },
+
+      async getUserVote(postId, userId) {
+        const { data } = await client
+          .from('forum_post_votes')
+          .select('*')
+          .eq('post_id', postId)
+          .eq('user_id', userId)
+          .maybeSingle()
+        return data as ForumVote | null
+      },
+
+      async voteComment(commentId, userId, value) {
+        const { data, error } = await client
+          .from('forum_comment_votes')
+          .upsert({ comment_id: commentId, user_id: userId, value })
+          .select()
+          .single()
+        if (error) throw error
+        return data as ForumCommentVote
+      },
+
+      async removeCommentVote(commentId, userId) {
+        const { error } = await client
+          .from('forum_comment_votes')
+          .delete()
+          .eq('comment_id', commentId)
+          .eq('user_id', userId)
+        if (error) throw error
+      },
+
+      async getUserCommentVotes(postId, userId) {
+        const { data: comments } = await client.from('forum_comments').select('id').eq('post_id', postId)
+        const ids = (comments ?? []).map((c: { id: string }) => c.id)
+        if (!ids.length) return []
+        const { data, error } = await client.from('forum_comment_votes').select('*').eq('user_id', userId).in('comment_id', ids)
+        if (error) throw error
+        return (data ?? []) as ForumCommentVote[]
+      },
+
+      async reactToComment(commentId, userId, emoji) {
+        const { data, error } = await client
+          .from('forum_comment_reactions')
+          .upsert({ comment_id: commentId, user_id: userId, emoji })
+          .select()
+          .single()
+        if (error) throw error
+        return data as ForumCommentReaction
+      },
+
+      async removeCommentReaction(commentId, userId, emoji) {
+        const { error } = await client
+          .from('forum_comment_reactions')
+          .delete()
+          .eq('comment_id', commentId)
+          .eq('user_id', userId)
+          .eq('emoji', emoji)
+        if (error) throw error
+      },
+
+      async listCommentReactions(postId) {
+        const { data: comments } = await client.from('forum_comments').select('id').eq('post_id', postId)
+        const ids = (comments ?? []).map((c: { id: string }) => c.id)
+        if (!ids.length) return []
+        const { data, error } = await client.from('forum_comment_reactions').select('*').in('comment_id', ids).order('created_at')
+        if (error) throw error
+        return (data ?? []) as ForumCommentReaction[]
       },
     },
 

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, onMounted, watchEffect } from 'vue'
+import { ref, watch, watchEffect } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUiStore } from '@/stores/ui'
 import { useAuthStore } from '@/stores/auth'
@@ -9,6 +9,7 @@ import { useProfile } from '@/composables/useProfile'
 import { useServers } from '@/composables/useServers'
 import { useCommunity } from '@/composables/useCommunity'
 import { usePresence } from '@/composables/usePresence'
+import { startGlobalPresence } from '@/composables/useRealtime'
 import { useMentionsStore } from '@/stores/mentions'
 import { useDmUnread } from '@/composables/useDmUnread'
 import { useContextMenuStore } from '@/stores/contextMenu'
@@ -76,17 +77,19 @@ function onUserBarContext(event: MouseEvent) {
   }))
 }
 
-onMounted(async () => {
-  if (authStore.user?.id) {
-    fetchProfile()
-    await fetchServers()
-    await fetchCommunity()
-    const isOwner = serversStore.servers.some((s) => s.owner_id === authStore.user?.id)
-    if (isOwner && communityStore.settings && !communityStore.settings.setup_complete) {
-      showSetupWizard.value = true
-    }
+// Watch for user ID becoming available — handles OAuth where the session arrives
+// asynchronously after mount, so onMounted would see user?.id as null and skip fetching.
+watch(() => authStore.user?.id, async (userId) => {
+  if (!userId) return
+  fetchProfile()
+  startGlobalPresence(userId, 'online')
+  await fetchServers()
+  await fetchCommunity()
+  const isOwner = serversStore.servers.some((s) => s.owner_id === authStore.user?.id)
+  if (isOwner && communityStore.settings && !communityStore.settings.setup_complete) {
+    showSetupWizard.value = true
   }
-})
+}, { immediate: true })
 </script>
 
 <template>
@@ -220,7 +223,7 @@ onMounted(async () => {
         </header>
       </slot>
 
-      <div class="flex-1 overflow-y-auto">
+      <div class="relative flex flex-1 min-h-0 flex-col overflow-hidden">
         <slot>
           <div class="flex h-full items-center justify-center p-4">
             <p class="text-text-muted">Select a conversation to start chatting</p>
@@ -251,7 +254,7 @@ onMounted(async () => {
           <slot name="members-header" />
         </div>
       </div>
-      <div class="flex-1 overflow-y-auto">
+      <div class="flex-1 overflow-hidden">
         <slot name="members">
           <div class="p-4">
             <h3 class="mb-2 text-xs font-semibold uppercase text-text-muted">Members</h3>

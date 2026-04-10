@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, computed } from 'vue'
+import { ref, watch, computed, onMounted } from 'vue'
 import EmojiIcon from '@/components/ui/EmojiIcon.vue'
 import { getEmojiUrl } from '@/lib/emojiMap'
 import { loadEmojiData, getEmojiData } from '@/lib/emojiNames'
@@ -90,6 +90,12 @@ function extractText(): string {
 function clearEditor() {
   if (editorEl.value) editorEl.value.innerHTML = ''
 }
+
+onMounted(() => {
+  if (props.modelValue && editorEl.value) {
+    editorEl.value.textContent = props.modelValue
+  }
+})
 
 watch(() => props.modelValue, (newVal) => {
   // Only clear — handles the "after send" case; never overwrite user input

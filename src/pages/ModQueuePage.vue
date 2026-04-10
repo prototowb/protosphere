@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { backend } from '@/lib/backend'
+import { formatDateFull } from '@/lib/formatters'
 import type { Report, Profile } from '@/lib/types'
 import type { ReportStatus } from '@/lib/types'
 
@@ -41,9 +42,6 @@ async function updateStatus(id: string, status: 'resolved' | 'dismissed') {
 
 onMounted(() => load(true))
 
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleString()
-}
 
 const CATEGORY_LABELS: Record<string, string> = {
   spam: 'Spam',
@@ -90,7 +88,7 @@ const CATEGORY_LABELS: Record<string, string> = {
               </span>
               <span class="text-xs text-text-muted">{{ report.reported_type }}</span>
             </div>
-            <span class="flex-shrink-0 text-xs text-text-muted">{{ formatDate(report.created_at) }}</span>
+            <span class="flex-shrink-0 text-xs text-text-muted">{{ formatDateFull(report.created_at) }}</span>
           </div>
 
           <p v-if="report.description" class="mb-2 text-sm text-text-secondary">

@@ -9,7 +9,14 @@ export function useServers() {
 
   async function fetchServers() {
     if (!authStore.user?.id) return
-    serversStore.servers = await backend.servers.list(authStore.user.id)
+    const [serverList, roleList] = await Promise.all([
+      backend.servers.list(authStore.user.id),
+      backend.members.getMyRoles(authStore.user.id),
+    ])
+    serversStore.servers = serverList
+    const rolesMap: Record<string, string> = {}
+    for (const r of roleList) rolesMap[r.server_id] = r.role
+    serversStore.myRoles = rolesMap
   }
 
   async function createServer(name: string, description?: string, visibility?: SpaceVisibility) {

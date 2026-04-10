@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useServersStore } from '@/stores/servers'
 import { useCommunityStore } from '@/stores/community'
 import { useMentionsStore } from '@/stores/mentions'
+import { useDmsStore } from '@/stores/dms'
+import { useDmTabsStore } from '@/stores/dmTabs'
 import { useDmUnread } from '@/composables/useDmUnread'
 import { useServers } from '@/composables/useServers'
 import { useCommunity } from '@/composables/useCommunity'
@@ -14,6 +16,7 @@ import { serverIconContextItems } from '@/lib/contextMenuItems'
 import CreateServerDialog from '@/components/server/CreateServerDialog.vue'
 import JoinServerDialog from '@/components/server/JoinServerDialog.vue'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
+import UserAvatar from '@/components/user/UserAvatar.vue'
 import type { SpaceVisibility } from '@/lib/types'
 
 const router = useRouter()
@@ -23,11 +26,63 @@ const authStore = useAuthStore()
 const serversStore = useServersStore()
 const communityStore = useCommunityStore()
 const mentionsStore = useMentionsStore()
-const { totalDmUnread } = useDmUnread()
+const dmsStore = useDmsStore()
+const dmTabsStore = useDmTabsStore()
+const { totalDmUnread, unreadDmGroupIds } = useDmUnread()
 const { createServer, joinServer, leaveServer, deleteServer, regenerateInviteCode } = useServers()
 const { fetchCommunity } = useCommunity()
 const contextMenuStore = useContextMenuStore()
 const toastStore = useToastStore()
+
+/** True when the user is in the DM view. */
+const inDmView = computed(() => route.path.startsWith('/channels/@me'))
+
+/** Last non-DM route for the "Back to Spaces" navigation. */
+const lastSpaceRoute = ref<string>('/channels/@me')
+watch(
+  () => route.path,
+  (path) => {
+    if (!path.startsWith('/channels/@me')) lastSpaceRoute.value = path
+  },
+)
+
+/** Resolved tabs: groups that exist in the store, in tab order. */
+const openDmTabs = computed(() =>
+  dmTabsStore.openTabs
+    .map((id) => dmsStore.groups.find((g) => g.id === id))
+    .filter((g): g is NonNullable<typeof g> => g != null),
+)
+
+function onCommunityIdentityClick() {
+  if (inDmView.value) {
+    // Navigate back to the last spaces route (or first space/home)
+    const target = lastSpaceRoute.value !== '/channels/@me' ? lastSpaceRoute.value
+      : spaces.value[0] ? `/channels/${spaces.value[0].id}/${spaces.value[0].id}`
+      : '/'
+    router.push(target)
+  } else if (isAnyOwner.value) {
+    router.push('/admin/community')
+  }
+  mobileMenuOpen.value = false
+}
+
+function onTabDragStart(event: DragEvent, groupId: string) {
+  event.dataTransfer!.setData('application/x-dm-group-id', groupId)
+  event.dataTransfer!.effectAllowed = 'move'
+}
+
+function closeTab(groupId: string) {
+  dmTabsStore.closeTab(groupId)
+  // If the closed tab was the active conversation, navigate away
+  if (dmsStore.activeDmGroupId === groupId) {
+    const remaining = dmTabsStore.openTabs
+    if (remaining.length > 0) {
+      router.push(`/channels/@me/${remaining[remaining.length - 1]}`)
+    } else {
+      router.push('/channels/@me')
+    }
+  }
+}
 
 onMounted(() => {
   fetchCommunity()
@@ -52,9 +107,18 @@ function getSpaceInitial(name: string) {
   return name.split(/\s+/).map((w) => w[0]).join('').substring(0, 2).toUpperCase()
 }
 
-// Whether the current user owns any space (used as proxy for community admin access)
+// Whether the current user owns any space (used for owner-only actions like Community Settings)
 const isAnyOwner = computed(() =>
   serversStore.servers.some((s) => s.owner_id === authStore.user?.id),
+)
+
+// Owners and admins can manage spaces and access the Dashboard
+const isAnyAdminOrOwner = computed(() =>
+  serversStore.servers.some((s) => {
+    if (s.owner_id === authStore.user?.id) return true
+    const role = serversStore.myRoles[s.id]
+    return role === 'admin' || role === 'owner'
+  }),
 )
 
 // Create / Join dialogs
@@ -200,21 +264,8 @@ function copyInviteCode() {
         <span class="flex-1">Direct Messages</span>
         <span
           v-if="totalDmUnread > 0"
-          class="flex h-4 min-w-4 items-center justify-center rounded-full bg-danger px-1 text-[10px] font-bold text-white"
+          class="flex h-4 min-w-4 items-center justify-center rounded bg-danger px-1 text-[10px] font-bold text-white"
         >{{ totalDmUnread > 99 ? '99+' : totalDmUnread }}</span>
-      </router-link>
-
-      <!-- Members directory -->
-      <router-link
-        to="/community/members"
-        @click="mobileMenuOpen = false"
-        class="flex items-center gap-2.5 rounded-md px-3 py-2.5 text-sm transition-colors"
-        :class="route.path === '/community/members' ? 'bg-bg-hover text-text-primary font-medium' : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary'"
-      >
-        <svg class="h-4 w-4 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-        </svg>
-        <span>Members</span>
       </router-link>
 
       <!-- Approvals (owners only, approval mode) -->
@@ -231,9 +282,9 @@ function copyInviteCode() {
         <span>Approvals</span>
       </router-link>
 
-      <!-- Dashboard (owners only) -->
+      <!-- Dashboard (owners and admins) -->
       <router-link
-        v-if="isAnyOwner"
+        v-if="isAnyAdminOrOwner"
         to="/admin"
         @click="mobileMenuOpen = false"
         class="flex items-center gap-2.5 rounded-md px-3 py-2.5 text-sm transition-colors"
@@ -265,7 +316,7 @@ function copyInviteCode() {
         <span v-if="space.visibility !== 'public'" class="flex-shrink-0 text-xs" :title="space.visibility">{{ VISIBILITY_ICON[space.visibility] }}</span>
         <span
           v-if="mentionsStore.mentionsByServer[space.id]"
-          class="flex h-4 min-w-4 flex-shrink-0 items-center justify-center rounded-full bg-danger px-1 text-[10px] font-bold text-white"
+          class="flex h-4 min-w-4 flex-shrink-0 items-center justify-center rounded bg-danger px-1 text-[10px] font-bold text-white"
         >{{ (mentionsStore.mentionsByServer[space.id] ?? 0) > 99 ? '99+' : mentionsStore.mentionsByServer[space.id] }}</span>
       </router-link>
 
@@ -282,7 +333,7 @@ function copyInviteCode() {
         <span>Add a Space</span>
       </button>
       <div v-if="showAddMenu" class="flex flex-col gap-0.5 pl-2">
-        <button @click="showCreateSpace = true; showAddMenu = false; mobileMenuOpen = false" class="flex items-center gap-2 rounded px-3 py-2 text-sm text-text-primary hover:bg-bg-hover">
+        <button v-if="isAnyAdminOrOwner" @click="showCreateSpace = true; showAddMenu = false; mobileMenuOpen = false" class="flex items-center gap-2 rounded px-3 py-2 text-sm text-text-primary hover:bg-bg-hover">
           Create Space
         </button>
         <button @click="showJoinSpace = true; showAddMenu = false; mobileMenuOpen = false" class="flex items-center gap-2 rounded px-3 py-2 text-sm text-text-primary hover:bg-bg-hover">
@@ -311,29 +362,32 @@ function copyInviteCode() {
 
     <!-- Community identity (left) -->
     <div
-      class="flex h-full flex-shrink-0 items-center gap-2 border-r border-bg-tertiary px-3 transition-colors"
-      :class="isAnyOwner ? 'cursor-pointer hover:bg-bg-hover' : 'cursor-default'"
-      @click="isAnyOwner ? router.push('/admin/community') : undefined"
-      :title="isAnyOwner ? 'Community Settings' : undefined"
+      class="flex h-full flex-shrink-0 items-center gap-2 border-r border-bg-tertiary px-3 transition-colors cursor-pointer hover:bg-bg-hover"
+      @click="onCommunityIdentityClick"
+      :title="inDmView ? 'Back to Spaces' : (isAnyOwner ? 'Community Settings' : undefined)"
     >
+      <!-- Back arrow when in DM view -->
+      <svg v-if="inDmView" class="h-3.5 w-3.5 flex-shrink-0 text-text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="15 18 9 12 15 6"/>
+      </svg>
       <div class="flex h-7 w-7 flex-shrink-0 items-center justify-center overflow-hidden rounded-md bg-accent text-[10px] font-bold text-white">
         <img v-if="community?.logo_url" :src="community.logo_url" :alt="community.name" class="h-full w-full object-cover" />
         <span v-else>{{ getCommunityInitial(community?.name ?? 'PS') }}</span>
       </div>
       <span class="max-w-[8rem] truncate text-sm font-semibold">{{ community?.name ?? 'Community' }}</span>
-      <svg v-if="isAnyOwner" class="h-3 w-3 flex-shrink-0 text-text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <svg v-if="!inDmView && isAnyOwner" class="h-3 w-3 flex-shrink-0 text-text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <polyline points="6 9 12 15 18 9"/>
       </svg>
     </div>
 
-    <!-- Scrollable navigation (middle) -->
+    <!-- ── Navigation (single nav, always visible) ───────────────── -->
     <nav class="flex flex-1 items-center gap-1 overflow-x-auto px-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
 
-      <!-- Direct Messages -->
+      <!-- Direct Messages (always visible) -->
       <router-link
         to="/channels/@me"
         class="flex flex-shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1 text-sm whitespace-nowrap transition-colors"
-        :class="route.path.startsWith('/channels/@me') ? 'bg-bg-hover text-text-primary font-medium' : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary'"
+        :class="route.path.startsWith('/channels/@me') && !route.params.dmGroupId ? 'bg-bg-hover text-text-primary font-medium' : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary'"
       >
         <svg class="h-3.5 w-3.5 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
           <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/>
@@ -341,22 +395,8 @@ function copyInviteCode() {
         <span>DMs</span>
         <span
           v-if="totalDmUnread > 0"
-          class="flex h-4 min-w-4 items-center justify-center rounded-full bg-danger px-1 text-[10px] font-bold text-white"
+          class="flex h-4 min-w-4 items-center justify-center rounded bg-danger px-1 text-[10px] font-bold text-white"
         >{{ totalDmUnread > 99 ? '99+' : totalDmUnread }}</span>
-      </router-link>
-
-      <div class="mx-1 h-4 w-px flex-shrink-0 bg-bg-tertiary" />
-
-      <!-- Members directory -->
-      <router-link
-        to="/community/members"
-        class="flex flex-shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1 text-sm whitespace-nowrap transition-colors"
-        :class="route.path === '/community/members' ? 'bg-bg-hover text-text-primary font-medium' : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary'"
-      >
-        <svg class="h-3.5 w-3.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-        </svg>
-        <span>Members</span>
       </router-link>
 
       <!-- Approvals (owners only, approval mode) -->
@@ -372,9 +412,9 @@ function copyInviteCode() {
         <span>Approvals</span>
       </router-link>
 
-      <!-- Dashboard (owners only) -->
+      <!-- Dashboard (owners and admins) -->
       <router-link
-        v-if="isAnyOwner"
+        v-if="isAnyAdminOrOwner"
         to="/admin"
         class="flex flex-shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1 text-sm whitespace-nowrap transition-colors"
         :class="route.path === '/admin' ? 'bg-bg-hover text-text-primary font-medium' : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary'"
@@ -387,32 +427,66 @@ function copyInviteCode() {
 
       <div class="mx-1 h-4 w-px flex-shrink-0 bg-bg-tertiary" />
 
-      <!-- Space list -->
-      <router-link
-        v-for="space in spaces"
-        :key="space.id"
-        :to="`/channels/${space.id}/${space.id}`"
-        class="flex flex-shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1 text-sm whitespace-nowrap transition-colors"
-        :class="serversStore.activeServerId === space.id ? 'bg-bg-hover text-text-primary font-medium' : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary'"
-        @contextmenu.prevent="onSpaceContext($event, space)"
-      >
-        <div class="flex h-4 w-4 flex-shrink-0 items-center justify-center overflow-hidden rounded bg-bg-tertiary text-[8px] font-bold">
-          <img v-if="space.icon_url" :src="space.icon_url" :alt="space.name" class="h-full w-full object-cover" />
-          <span v-else>{{ getSpaceInitial(space.name) }}</span>
+      <!-- In DM view: individual conversation tabs -->
+      <template v-if="inDmView">
+        <div
+          v-for="tab in openDmTabs"
+          :key="tab.id"
+          draggable="true"
+          @dragstart="onTabDragStart($event, tab.id)"
+          class="group relative flex flex-shrink-0 items-center gap-1.5 rounded-md pl-2 pr-1 py-1 text-sm whitespace-nowrap transition-colors cursor-grab"
+          :class="dmsStore.activeDmGroupId === tab.id ? 'bg-bg-hover text-text-primary' : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary'"
+        >
+          <router-link :to="`/channels/@me/${tab.id}`" class="flex items-center gap-1.5 min-w-0">
+            <UserAvatar
+              :src="tab.otherUser.avatar_url"
+              :alt="tab.otherUser.display_name"
+              :status="tab.otherUser.status"
+              size="xs"
+            />
+            <span class="max-w-[7rem] truncate text-[13px]">{{ tab.otherUser.display_name }}</span>
+            <span v-if="unreadDmGroupIds.has(tab.id)" class="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-white" />
+          </router-link>
+          <button
+            @click.prevent.stop="closeTab(tab.id)"
+            class="ml-0.5 rounded p-0.5 text-text-muted opacity-0 group-hover:opacity-100 hover:text-text-primary transition-opacity"
+            title="Close tab"
+          >
+            <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
         </div>
-        <span>{{ space.name }}</span>
-        <span v-if="space.visibility !== 'public'" class="flex-shrink-0 text-[10px]" :title="space.visibility">{{ VISIBILITY_ICON[space.visibility] }}</span>
-        <span
-          v-if="mentionsStore.mentionsByServer[space.id]"
-          class="flex h-4 min-w-4 flex-shrink-0 items-center justify-center rounded-full bg-danger px-1 text-[10px] font-bold text-white"
-        >{{ (mentionsStore.mentionsByServer[space.id] ?? 0) > 99 ? '99+' : mentionsStore.mentionsByServer[space.id] }}</span>
-      </router-link>
+        <p v-if="openDmTabs.length === 0" class="flex-shrink-0 px-2 text-xs text-text-muted">Open a conversation to pin it here</p>
+      </template>
 
-      <p v-if="spaces.length === 0" class="flex-shrink-0 px-2 text-xs text-text-muted">No spaces yet.</p>
+      <!-- In spaces view: space list -->
+      <template v-else>
+        <router-link
+          v-for="space in spaces"
+          :key="space.id"
+          :to="`/channels/${space.id}/${space.id}`"
+          class="flex flex-shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1 text-sm whitespace-nowrap transition-colors"
+          :class="serversStore.activeServerId === space.id ? 'bg-bg-hover text-text-primary font-medium' : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary'"
+          @contextmenu.prevent="onSpaceContext($event, space)"
+        >
+          <div class="flex h-4 w-4 flex-shrink-0 items-center justify-center overflow-hidden rounded bg-bg-tertiary text-[8px] font-bold">
+            <img v-if="space.icon_url" :src="space.icon_url" :alt="space.name" class="h-full w-full object-cover" />
+            <span v-else>{{ getSpaceInitial(space.name) }}</span>
+          </div>
+          <span>{{ space.name }}</span>
+          <span v-if="space.visibility !== 'public'" class="flex-shrink-0 text-[10px]" :title="space.visibility">{{ VISIBILITY_ICON[space.visibility] }}</span>
+          <span
+            v-if="mentionsStore.mentionsByServer[space.id]"
+            class="flex h-4 min-w-4 flex-shrink-0 items-center justify-center rounded bg-danger px-1 text-[10px] font-bold text-white"
+          >{{ (mentionsStore.mentionsByServer[space.id] ?? 0) > 99 ? '99+' : mentionsStore.mentionsByServer[space.id] }}</span>
+        </router-link>
+        <p v-if="spaces.length === 0" class="flex-shrink-0 px-2 text-xs text-text-muted">No spaces yet.</p>
+      </template>
     </nav>
 
-    <!-- Right actions -->
-    <div class="flex flex-shrink-0 items-center gap-1 border-l border-bg-tertiary px-2">
+    <!-- Right actions (spaces mode only) -->
+    <div v-if="!inDmView" class="flex flex-shrink-0 items-center gap-1 border-l border-bg-tertiary px-2">
 
       <!-- Add Space -->
       <div class="relative">
@@ -428,7 +502,7 @@ function copyInviteCode() {
           v-if="showAddMenu"
           class="absolute right-0 top-full mt-1 min-w-40 rounded-lg bg-bg-primary p-1 shadow-lg z-40"
         >
-          <button @click="showCreateSpace = true; showAddMenu = false" class="flex w-full items-center gap-2 rounded px-3 py-2 text-sm text-text-primary hover:bg-bg-hover">
+          <button v-if="isAnyAdminOrOwner" @click="showCreateSpace = true; showAddMenu = false" class="flex w-full items-center gap-2 rounded px-3 py-2 text-sm text-text-primary hover:bg-bg-hover">
             Create Space
           </button>
           <button @click="showJoinSpace = true; showAddMenu = false" class="flex w-full items-center gap-2 rounded px-3 py-2 text-sm text-text-primary hover:bg-bg-hover">

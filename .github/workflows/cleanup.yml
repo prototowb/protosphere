@@ -1,0 +1,47 @@
+name: Cleanup Expired Messages
+
+on:
+  schedule:
+    # Daily at 02:00 UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - name: staging
+            url_secret: SUPABASE_URL_STAGING
+            key_secret: SUPABASE_SECRET_KEY_STAGING
+          - name: production
+            url_secret: SUPABASE_URL_PROD
+            key_secret: SUPABASE_SECRET_KEY
+    steps:
+      - name: Run cleanup_expired_messages on ${{ matrix.name }}
+        env:
+          SUPABASE_URL: ${{ secrets[matrix.url_secret] }}
+          SUPABASE_SECRET_KEY: ${{ secrets[matrix.key_secret] }}
+        run: |
+          if [ -z "${SUPABASE_URL}" ] || [ -z "${SUPABASE_SECRET_KEY}" ]; then
+            echo "Skipping ${{ matrix.name }} — secrets not configured."
+            exit 0
+          fi
+
+          RESPONSE=$(curl -sS -w "\n%{http_code}" \
+            -X POST "${SUPABASE_URL}/rest/v1/rpc/cleanup_expired_messages" \
+            -H "apikey: ${SUPABASE_SECRET_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_SECRET_KEY}" \
+            -H "Content-Type: application/json" \
+            -d '{}')
+
+          HTTP_STATUS=$(echo "$RESPONSE" | tail -n1)
+          BODY=$(echo "$RESPONSE" | head -n-1)
+
+          echo "[${{ matrix.name }}] HTTP $HTTP_STATUS — $BODY"
+
+          if [ "$HTTP_STATUS" != "200" ]; then
+            echo "Cleanup RPC failed on ${{ matrix.name }}"
+            exit 1
+          fi

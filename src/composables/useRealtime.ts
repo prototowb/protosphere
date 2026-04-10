@@ -15,17 +15,51 @@ import type { Message, Profile, DirectMessage, UserStatus } from '@/lib/types'
 let _messagesChannel: RealtimeChannel | null = null
 let _dmMessagesChannel: RealtimeChannel | null = null
 let _presenceChannel: RealtimeChannel | null = null
+let _globalPresenceChannel: RealtimeChannel | null = null
 let _typingChannel: RealtimeChannel | null = null
 
 // Typing state (per-user timer map)
 const _typingState = new Map<string, { displayName: string; timer: ReturnType<typeof setTimeout> }>()
 let _onTypingUpdate: ((names: string[]) => void) | null = null
 
-// ── Exported module-level helper (called by usePresence.ts) ───────────────
+// ── Exported module-level helpers (called by usePresence.ts) ──────────────
 export function trackPresenceStatus(status: UserStatus) {
-  if (_presenceChannel) {
-    _presenceChannel.track({ status }).catch(() => {})
-  }
+  // Track on the global channel first; fall back to server-scoped channel.
+  const ch = _globalPresenceChannel ?? _presenceChannel
+  if (ch) ch.track({ status }).catch(() => {})
+}
+
+export function startGlobalPresence(userId: string, initialStatus: UserStatus) {
+  if (!supabase || _globalPresenceChannel) return
+  const presenceStore = usePresenceStore()
+
+  type PresencePayload = { status: UserStatus }
+
+  _globalPresenceChannel = supabase.channel('presence:community', {
+    config: { presence: { key: userId } },
+  })
+
+  _globalPresenceChannel
+    .on('presence', { event: 'sync' }, () => {
+      if (!_globalPresenceChannel) return
+      const state = _globalPresenceChannel.presenceState<PresencePayload>()
+      for (const [uid, entries] of Object.entries(state)) {
+        const entry = (entries as PresencePayload[])[0]
+        if (entry) presenceStore.setStatus(uid, entry.status)
+      }
+    })
+    .on('presence', { event: 'join' }, ({ key, newPresences }) => {
+      const entry = (newPresences as unknown as PresencePayload[])[0]
+      if (key && entry) presenceStore.setStatus(key, entry.status ?? 'online')
+    })
+    .on('presence', { event: 'leave' }, ({ key }) => {
+      if (key) presenceStore.setStatus(key, 'offline')
+    })
+    .subscribe(async (status) => {
+      if (status === 'SUBSCRIBED') {
+        await _globalPresenceChannel!.track({ status: initialStatus })
+      }
+    })
 }
 
 // ── Composable ────────────────────────────────────────────────────────────

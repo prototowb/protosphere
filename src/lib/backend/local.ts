@@ -1,4 +1,4 @@
-import type { Profile, Server, Channel, ChannelCategory, Member, Message, Attachment, Reaction, Ban, DirectMessageGroup, DirectMessageMember, DirectMessage, Role, UserRole, ChannelRoleOverride, CommunitySettings, AuditLog, Report, Mute, AutomodRule, Poll, PollOption, PollVote, AppEvent, EventRsvp, CommunityInvite, NotificationPreference, DmNotificationPreference } from '@/lib/types'
+import type { Profile, Server, Channel, ChannelCategory, Member, Message, Attachment, Reaction, Ban, DirectMessageGroup, DirectMessageMember, DirectMessage, Role, UserRole, ChannelRoleOverride, CommunitySettings, AuditLog, Report, Mute, AutomodRule, Poll, PollOption, PollVote, AppEvent, EventRsvp, CommunityInvite, NotificationPreference, DmNotificationPreference, ForumPost, ForumCollaborator, ForumComment, ForumCommentVote, ForumCommentReaction, ForumVote, PageContent } from '@/lib/types'
 import type { AuthSession, Backend } from './types'
 import { serializePermissions, PermissionPresets, Permission } from '@/lib/permissions'
 
@@ -114,6 +114,8 @@ export function createLocalBackend(): Backend {
           location: '',
           display_banner_url: null,
           account_status: 'active',
+          meta_points: 0,
+          profile_page: null,
           created_at: now,
           updated_at: now,
         }
@@ -159,7 +161,7 @@ export function createLocalBackend(): Backend {
         const profiles = readJson<Record<string, Profile>>(KEYS.profiles, {})
         const profile = profiles[id]
         if (!profile) throw new Error('Profile not found')
-        return profile
+        return { ...profile, meta_points: profile.meta_points ?? 0 }
       },
 
       async update(id: string, updates: Partial<Profile>) {
@@ -180,6 +182,23 @@ export function createLocalBackend(): Backend {
           reader.onerror = () => reject(new Error('Failed to read file'))
           reader.readAsDataURL(file)
         })
+      },
+
+      async getByUsername(username: string) {
+        const profiles = readJson<Record<string, Profile>>(KEYS.profiles, {})
+        const profile = Object.values(profiles).find((p) => p.username === username)
+        if (!profile) throw new Error('Profile not found')
+        return { ...profile, meta_points: profile.meta_points ?? 0 }
+      },
+
+      async updatePage(userId: string, page: PageContent | null) {
+        const profiles = readJson<Record<string, Profile>>(KEYS.profiles, {})
+        const profile = profiles[userId]
+        if (!profile) throw new Error('Profile not found')
+        const updated = { ...profile, profile_page: page, updated_at: new Date().toISOString() }
+        profiles[userId] = updated
+        writeJson(KEYS.profiles, profiles)
+        return updated
       },
 
       async listPending() {
@@ -275,8 +294,6 @@ export function createLocalBackend(): Backend {
           is_default: true,
           slowmode_seconds: 0,
           category_id: null,
-          parent_message_id: null,
-          parent_channel_id: null,
           created_at: new Date().toISOString(),
         })
         writeJson(KEYS.channels, channels)
@@ -348,7 +365,7 @@ export function createLocalBackend(): Backend {
       async list(serverId: string) {
         const channels = readJson<Channel[]>(KEYS.channels, [])
         return channels
-          .filter((c) => c.server_id === serverId && c.parent_message_id === null)
+          .filter((c) => c.server_id === serverId)
           .sort((a, b) => a.position - b.position)
       },
 
@@ -373,8 +390,6 @@ export function createLocalBackend(): Backend {
           is_default: data.is_default ?? false,
           slowmode_seconds: 0,
           category_id: data.category_id ?? null,
-          parent_message_id: null,
-          parent_channel_id: null,
           created_at: new Date().toISOString(),
         }
         channels.push(channel)
@@ -407,9 +422,16 @@ export function createLocalBackend(): Backend {
         for (const m of members) {
           if (m.server_id !== serverId) continue
           const profile = profiles[m.user_id]
-          if (profile) result.push({ ...m, profile })
+          if (profile) result.push({ ...m, profile: { ...profile, meta_points: profile.meta_points ?? 0 } })
         }
         return result
+      },
+
+      async getMyRoles(userId: string) {
+        const members = readJson<Member[]>(KEYS.members, [])
+        return members
+          .filter((m) => m.user_id === userId)
+          .map((m) => ({ server_id: m.server_id, role: m.role }))
       },
 
       async join(serverId: string, userId: string) {
@@ -519,6 +541,8 @@ export function createLocalBackend(): Backend {
           attachments,
           is_pinned: false,
           created_at: new Date().toISOString(),
+          expires_at: null,
+          forum_post_id: null,
         }
         messages.push(message)
         writeJson(KEYS.messages, messages)
@@ -822,6 +846,7 @@ export function createLocalBackend(): Backend {
           reply_to_id: replyToId ?? null,
           attachments: [],
           created_at: new Date().toISOString(),
+          expires_at: null,
         }
         messages.push(message)
         writeJson(KEYS.dm_messages, messages)
@@ -1158,31 +1183,284 @@ export function createLocalBackend(): Backend {
       },
     },
 
-    threads: {
-      async create(serverId, parentChannelId, parentMessageId, name) {
-        const channels = readJson<Channel[]>(KEYS.channels, [])
-        const thread: Channel = {
+    forum: {
+      async createPost(spaceId, type, title, createdBy, sourceMessageId = null, body = null) {
+        const posts = readJson<ForumPost[]>('protosphere_forum_posts', [])
+        const post: ForumPost = {
           id: crypto.randomUUID(),
-          server_id: serverId,
-          name,
-          description: '',
-          type: 'text',
-          position: 0,
-          is_default: false,
-          slowmode_seconds: 0,
-          category_id: null,
-          parent_message_id: parentMessageId,
-          parent_channel_id: parentChannelId,
+          space_id: spaceId,
+          source_message_id: sourceMessageId,
+          type,
+          title,
+          body: body ?? null,
+          content: null,
+          vote_score: 0,
+          is_deleted: false,
+          created_by: createdBy,
+          marked_by: null,
+          updated_by: null,
           created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
         }
-        channels.push(thread)
-        writeJson(KEYS.channels, channels)
-        return thread
+        posts.push(post)
+        localStorage.setItem('protosphere_forum_posts', JSON.stringify(posts))
+        if (sourceMessageId) {
+          const messages = readJson<Message[]>(KEYS.messages, [])
+          const msg = messages.find((m) => m.id === sourceMessageId)
+          if (msg) { msg.expires_at = null; msg.forum_post_id = post.id; localStorage.setItem(KEYS.messages, JSON.stringify(messages)) }
+        }
+        return post
       },
 
-      async listByChannel(channelId) {
-        const channels = readJson<Channel[]>(KEYS.channels, [])
-        return channels.filter((c) => c.parent_channel_id === channelId)
+      async getPost(postId) {
+        const posts = readJson<ForumPost[]>('protosphere_forum_posts', [])
+        const post = posts.find((p) => p.id === postId)
+        if (!post) throw new Error('Forum post not found')
+        const profiles = readJson<Record<string, Profile>>('protosphere_profiles', {})
+        const messages = readJson<Message[]>(KEYS.messages, [])
+        const collabs = readJson<ForumCollaborator[]>('protosphere_forum_collaborators', [])
+        const srcMsg = post.source_message_id ? messages.find((m) => m.id === post.source_message_id) ?? null : null
+        return {
+          ...post,
+          created_by_profile: profiles[post.created_by] ?? null,
+          source_message: srcMsg ? { ...srcMsg, profile: profiles[srcMsg.author_id] ?? null } : null,
+          collaborators: collabs
+            .filter((c) => c.post_id === postId)
+            .map((c) => ({ ...c, user: profiles[c.user_id] ?? null })),
+        } as ForumPost & { created_by_profile: Profile; source_message: (Message & { profile: Profile }) | null; collaborators: (ForumCollaborator & { user: Profile })[] }
+      },
+
+      async listBySpace(spaceId) {
+        const posts = readJson<ForumPost[]>('protosphere_forum_posts', [])
+        const profiles = readJson<Record<string, Profile>>('protosphere_profiles', {})
+        return posts
+          .filter((p) => p.space_id === spaceId && !p.is_deleted)
+          .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+          .map((p) => ({ ...p, created_by_profile: profiles[p.created_by] ?? null })) as (ForumPost & { created_by_profile: Profile })[]
+      },
+
+      async deletePost(postId) {
+        const posts = readJson<ForumPost[]>('protosphere_forum_posts', [])
+        const post = posts.find((p) => p.id === postId)
+        if (post && !post.is_deleted) {
+          post.is_deleted = true
+          localStorage.setItem('protosphere_forum_posts', JSON.stringify(posts))
+          const profiles = readJson<Record<string, Profile>>('protosphere_profiles', {})
+          if (profiles[post.created_by]) {
+            profiles[post.created_by]!.meta_points = Math.max(0, (profiles[post.created_by]!.meta_points ?? 0) - 1)
+            writeJson('protosphere_profiles', profiles)
+          }
+        }
+      },
+
+      async updatePageContent(postId, content, updatedBy, title) {
+        const posts = readJson<ForumPost[]>('protosphere_forum_posts', [])
+        const idx = posts.findIndex((p) => p.id === postId)
+        if (idx === -1) throw new Error('Forum post not found')
+        const post = posts[idx]!
+        const updated = { ...post, content, updated_by: updatedBy, updated_at: new Date().toISOString(), ...(title !== undefined ? { title } : {}) }
+        posts[idx] = updated
+        localStorage.setItem('protosphere_forum_posts', JSON.stringify(posts))
+        return updated
+      },
+
+      async addCollaborator(postId, userId, invitedBy) {
+        const collabs = readJson<ForumCollaborator[]>('protosphere_forum_collaborators', [])
+        const existing = collabs.find((c) => c.post_id === postId && c.user_id === userId)
+        if (existing) throw new Error('Already a collaborator')
+        const collab: ForumCollaborator = {
+          post_id: postId,
+          user_id: userId,
+          invited_by: invitedBy,
+          added_at: new Date().toISOString(),
+        }
+        collabs.push(collab)
+        localStorage.setItem('protosphere_forum_collaborators', JSON.stringify(collabs))
+        const profiles = readJson<Record<string, Profile>>('protosphere_profiles', {})
+        return { ...collab, user: profiles[userId] ?? null } as ForumCollaborator & { user: Profile }
+      },
+
+      async listCollaborators(postId) {
+        const collabs = readJson<ForumCollaborator[]>('protosphere_forum_collaborators', [])
+        const profiles = readJson<Record<string, Profile>>('protosphere_profiles', {})
+        return collabs
+          .filter((c) => c.post_id === postId)
+          .sort((a, b) => new Date(a.added_at).getTime() - new Date(b.added_at).getTime())
+          .map((c) => ({ ...c, user: profiles[c.user_id] ?? null })) as (ForumCollaborator & { user: Profile })[]
+      },
+
+      async removeCollaborator(postId, userId) {
+        const collabs = readJson<ForumCollaborator[]>('protosphere_forum_collaborators', [])
+        localStorage.setItem('protosphere_forum_collaborators', JSON.stringify(collabs.filter((c) => !(c.post_id === postId && c.user_id === userId))))
+      },
+
+      async addComment(postId, authorId, content, parentCommentId = null) {
+        const comments = readJson<ForumComment[]>('protosphere_forum_comments', [])
+        const profiles = readJson<Record<string, Profile>>('protosphere_profiles', {})
+        const comment: ForumComment = {
+          id: crypto.randomUUID(),
+          post_id: postId,
+          parent_comment_id: parentCommentId,
+          author_id: authorId,
+          content,
+          vote_score: 1,
+          is_deleted: false,
+          created_at: new Date().toISOString(),
+          edited_at: null,
+        }
+        comments.push(comment)
+        localStorage.setItem('protosphere_forum_comments', JSON.stringify(comments))
+        // Auto self-vote
+        const votes = readJson<ForumCommentVote[]>('protosphere_forum_comment_votes', [])
+        votes.push({ comment_id: comment.id, user_id: authorId, value: 1 })
+        writeJson('protosphere_forum_comment_votes', votes)
+        // +1 meta_point for the self-vote
+        if (profiles[authorId]) {
+          profiles[authorId]!.meta_points = (profiles[authorId]!.meta_points ?? 0) + 1
+          writeJson('protosphere_profiles', profiles)
+        }
+        return { ...comment, profile: profiles[authorId] ?? null } as ForumComment & { profile: Profile }
+      },
+
+      async deleteComment(commentId, authorId) {
+        const comments = readJson<ForumComment[]>('protosphere_forum_comments', [])
+        const comment = comments.find((c) => c.id === commentId && c.author_id === authorId)
+        if (comment && !comment.is_deleted) {
+          comment.is_deleted = true
+          writeJson('protosphere_forum_comments', comments)
+          const profiles = readJson<Record<string, Profile>>('protosphere_profiles', {})
+          if (profiles[authorId]) {
+            profiles[authorId]!.meta_points = Math.max(0, (profiles[authorId]!.meta_points ?? 0) - 1)
+            writeJson('protosphere_profiles', profiles)
+          }
+        }
+      },
+
+      async editComment(commentId, authorId, content) {
+        const comments = readJson<ForumComment[]>('protosphere_forum_comments', [])
+        const comment = comments.find((c) => c.id === commentId && c.author_id === authorId)
+        if (!comment) throw new Error('Comment not found')
+        comment.content = content
+        comment.edited_at = new Date().toISOString()
+        writeJson('protosphere_forum_comments', comments)
+        const profiles = readJson<Record<string, Profile>>('protosphere_profiles', {})
+        const profile = profiles[comment.author_id] ?? null
+        return { ...comment, profile } as ForumComment & { profile: Profile }
+      },
+
+      async listComments(postId) {
+        const comments = readJson<ForumComment[]>('protosphere_forum_comments', [])
+        const profiles = readJson<Record<string, Profile>>('protosphere_profiles', {})
+        return comments
+          .filter((c) => c.post_id === postId)
+          .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+          .map((c) => ({ ...c, profile: profiles[c.author_id] ?? null })) as (ForumComment & { profile: Profile })[]
+      },
+
+      async vote(postId, userId, value) {
+        const votes = readJson<ForumVote[]>('protosphere_forum_votes', [])
+        const posts = readJson<ForumPost[]>('protosphere_forum_posts', [])
+        const profiles = readJson<Record<string, Profile>>('protosphere_profiles', {})
+        const post = posts.find((p) => p.id === postId)
+        const existing = votes.find((v) => v.post_id === postId && v.user_id === userId)
+        const delta = existing ? value - existing.value : value
+        if (existing) { existing.value = value } else { votes.push({ post_id: postId, user_id: userId, value }) }
+        if (post) {
+          post.vote_score += delta
+          writeJson('protosphere_forum_posts', posts)
+          const author = profiles[post.created_by]
+          if (author) { author.meta_points = Math.max(0, (author.meta_points ?? 0) + delta); writeJson('protosphere_profiles', profiles) }
+        }
+        writeJson('protosphere_forum_votes', votes)
+        return { post_id: postId, user_id: userId, value } as ForumVote
+      },
+
+      async removeVote(postId, userId) {
+        const votes = readJson<ForumVote[]>('protosphere_forum_votes', [])
+        const existing = votes.find((v) => v.post_id === postId && v.user_id === userId)
+        if (existing) {
+          const posts = readJson<ForumPost[]>('protosphere_forum_posts', [])
+          const profiles = readJson<Record<string, Profile>>('protosphere_profiles', {})
+          const post = posts.find((p) => p.id === postId)
+          if (post) {
+            post.vote_score -= existing.value
+            writeJson('protosphere_forum_posts', posts)
+            const author = profiles[post.created_by]
+            if (author) { author.meta_points = Math.max(0, (author.meta_points ?? 0) - existing.value); writeJson('protosphere_profiles', profiles) }
+          }
+          writeJson('protosphere_forum_votes', votes.filter((v) => !(v.post_id === postId && v.user_id === userId)))
+        }
+      },
+
+      async getUserVote(postId, userId) {
+        const votes = readJson<ForumVote[]>('protosphere_forum_votes', [])
+        return votes.find((v) => v.post_id === postId && v.user_id === userId) ?? null
+      },
+
+      async voteComment(commentId, userId, value) {
+        const votes = readJson<ForumCommentVote[]>('protosphere_forum_comment_votes', [])
+        const comments = readJson<ForumComment[]>('protosphere_forum_comments', [])
+        const profiles = readJson<Record<string, Profile>>('protosphere_profiles', {})
+        const idx = votes.findIndex((v) => v.comment_id === commentId && v.user_id === userId)
+        const prev = idx !== -1 ? votes[idx]!.value : 0
+        const delta = value - prev
+        const entry: ForumCommentVote = { comment_id: commentId, user_id: userId, value }
+        if (idx !== -1) votes[idx] = entry; else votes.push(entry)
+        writeJson('protosphere_forum_comment_votes', votes)
+        const c = comments.find((x) => x.id === commentId)
+        if (c) {
+          c.vote_score += delta
+          writeJson('protosphere_forum_comments', comments)
+          const author = profiles[c.author_id]
+          if (author) { author.meta_points = Math.max(0, (author.meta_points ?? 0) + delta); writeJson('protosphere_profiles', profiles) }
+        }
+        return entry
+      },
+
+      async removeCommentVote(commentId, userId) {
+        const votes = readJson<ForumCommentVote[]>('protosphere_forum_comment_votes', [])
+        const existing = votes.find((v) => v.comment_id === commentId && v.user_id === userId)
+        if (existing) {
+          const comments = readJson<ForumComment[]>('protosphere_forum_comments', [])
+          const profiles = readJson<Record<string, Profile>>('protosphere_profiles', {})
+          const c = comments.find((x) => x.id === commentId)
+          if (c) {
+            c.vote_score -= existing.value
+            writeJson('protosphere_forum_comments', comments)
+            const author = profiles[c.author_id]
+            if (author) { author.meta_points = Math.max(0, (author.meta_points ?? 0) - existing.value); writeJson('protosphere_profiles', profiles) }
+          }
+          writeJson('protosphere_forum_comment_votes', votes.filter((v) => !(v.comment_id === commentId && v.user_id === userId)))
+        }
+      },
+
+      async getUserCommentVotes(postId, userId) {
+        const votes = readJson<ForumCommentVote[]>('protosphere_forum_comment_votes', [])
+        const comments = readJson<ForumComment[]>('protosphere_forum_comments', [])
+        const postCommentIds = new Set(comments.filter((c) => c.post_id === postId).map((c) => c.id))
+        return votes.filter((v) => v.user_id === userId && postCommentIds.has(v.comment_id))
+      },
+
+      async reactToComment(commentId, userId, emoji) {
+        const reactions = readJson<ForumCommentReaction[]>('protosphere_forum_comment_reactions', [])
+        const existing = reactions.find((r) => r.comment_id === commentId && r.user_id === userId && r.emoji === emoji)
+        if (existing) return existing
+        const reaction: ForumCommentReaction = { comment_id: commentId, user_id: userId, emoji, created_at: new Date().toISOString() }
+        reactions.push(reaction)
+        localStorage.setItem('protosphere_forum_comment_reactions', JSON.stringify(reactions))
+        return reaction
+      },
+
+      async removeCommentReaction(commentId, userId, emoji) {
+        const reactions = readJson<ForumCommentReaction[]>('protosphere_forum_comment_reactions', [])
+        localStorage.setItem('protosphere_forum_comment_reactions', JSON.stringify(reactions.filter((r) => !(r.comment_id === commentId && r.user_id === userId && r.emoji === emoji))))
+      },
+
+      async listCommentReactions(postId) {
+        const reactions = readJson<ForumCommentReaction[]>('protosphere_forum_comment_reactions', [])
+        const comments = readJson<ForumComment[]>('protosphere_forum_comments', [])
+        const postCommentIds = new Set(comments.filter((c) => c.post_id === postId).map((c) => c.id))
+        return reactions.filter((r) => postCommentIds.has(r.comment_id)).sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
       },
     },
 

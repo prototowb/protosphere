@@ -38,6 +38,11 @@ const router = createRouter({
       alias: '/spaces/:serverId/:channelId',
     },
     {
+      path: '/spaces/:serverId/forum/:postId',
+      name: 'forum-post',
+      component: () => import('@/pages/ServerPage.vue'),
+    },
+    {
       path: '/settings',
       name: 'settings',
       component: () => import('@/pages/SettingsPage.vue'),
@@ -96,6 +101,11 @@ const router = createRouter({
       path: '/community/members',
       name: 'community-members',
       component: () => import('@/pages/MemberDirectoryPage.vue'),
+    },
+    {
+      path: '/u/:username',
+      name: 'user-profile',
+      component: () => import('@/pages/UserProfilePage.vue'),
     },
     {
       path: '/404',

@@ -66,7 +66,7 @@ onMounted(loadPending)
         :key="user.id"
         class="flex items-center gap-4 rounded-lg bg-bg-secondary px-4 py-3"
       >
-        <div class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-accent/20 text-sm font-bold text-accent">
+        <div class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded bg-accent/20 text-sm font-bold text-accent">
           {{ (user.display_name || user.username || '?').charAt(0).toUpperCase() }}
         </div>
         <div class="min-w-0 flex-1">

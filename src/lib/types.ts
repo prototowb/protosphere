@@ -15,6 +15,8 @@ export type RegistrationMode = 'open' | 'approval' | 'invite_only' | 'closed'
 
 export type ProfileStatus = 'active' | 'pending' | 'rejected'
 
+export type ForumPostType = 'thread' | 'page'
+
 export interface Profile {
   id: string
   username: string
@@ -28,6 +30,8 @@ export interface Profile {
   location: string
   display_banner_url: string | null
   account_status: ProfileStatus
+  meta_points: number
+  profile_page: PageContent | null
   created_at: string
   updated_at: string
 }
@@ -79,8 +83,6 @@ export interface Channel {
   is_default: boolean
   slowmode_seconds: number
   category_id: string | null
-  parent_message_id: string | null
-  parent_channel_id: string | null
   created_at: string
 }
 
@@ -101,6 +103,8 @@ export interface Message {
   attachments: Attachment[]
   is_pinned: boolean
   created_at: string
+  expires_at: string | null
+  forum_post_id: string | null
 }
 
 export interface Member {
@@ -147,6 +151,7 @@ export interface DirectMessage {
   reply_to_id: string | null
   attachments: Attachment[]
   created_at: string
+  expires_at: string | null
 }
 
 export interface Ban {
@@ -356,4 +361,79 @@ export interface DmNotificationPreference {
   user_id: string
   group_id: string
   muted: boolean
+}
+
+// ── Forum ─────────────────────────────────────────────────────
+
+// ── Block editor ─────────────────────────────────────────────────────────────
+
+export interface HeroBlock    { id: string; type: 'hero';      title: string; subtitle: string; backgroundUrl?: string; textAlign?: 'left' | 'center' | 'right' }
+export interface TextBlock    { id: string; type: 'text';      html: string; _author?: string; _date?: string; _pinned?: true; _variant?: 'default' | 'quote' | 'highlight' }
+export interface ImageBlock   { id: string; type: 'image';     url: string; caption?: string; fullWidth?: boolean }
+export interface ColumnsBlock { id: string; type: 'columns';   cols: 2 | 3; items: string[] }
+export interface CalloutBlock { id: string; type: 'callout';   variant: 'info' | 'warning' | 'success' | 'error'; title?: string; text: string }
+export interface DividerBlock { id: string; type: 'divider' }
+export interface LinkCardBlock{ id: string; type: 'link-card'; url: string; title: string; description?: string; imageUrl?: string }
+
+export type Block = HeroBlock | TextBlock | ImageBlock | ColumnsBlock | CalloutBlock | DividerBlock | LinkCardBlock
+
+export interface PageContent {
+  blocks: Block[]
+  customCss: string
+  lockedHeroStyle?: { backgroundUrl?: string; textAlign?: 'left' | 'center' | 'right' }
+}
+
+export interface ForumPost {
+  id: string
+  space_id: string
+  source_message_id: string | null
+  type: ForumPostType
+  title: string
+  body: string | null
+  content: PageContent | null
+  vote_score: number
+  is_deleted: boolean
+  created_by: string
+  marked_by: string | null
+  updated_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ForumCollaborator {
+  post_id: string
+  user_id: string
+  invited_by: string
+  added_at: string
+}
+
+export interface ForumComment {
+  id: string
+  post_id: string
+  parent_comment_id: string | null
+  author_id: string
+  content: string
+  vote_score: number
+  is_deleted: boolean
+  created_at: string
+  edited_at: string | null
+}
+
+export interface ForumCommentVote {
+  comment_id: string
+  user_id: string
+  value: 1 | -1
+}
+
+export interface ForumCommentReaction {
+  comment_id: string
+  user_id: string
+  emoji: string
+  created_at: string
+}
+
+export interface ForumVote {
+  post_id: string
+  user_id: string
+  value: 1 | -1
 }

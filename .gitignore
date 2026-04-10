@@ -9,10 +9,11 @@ dist/
 .output/
 .nuxt/
 
-# Environment variables (local development)
+# Environment variables (local development + staging secrets)
 .env
 .env.local
 .env.*.local
+.env.staging
 
 # IDE & Editor
 .vscode/

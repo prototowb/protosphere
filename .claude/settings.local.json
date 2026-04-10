@@ -10,7 +10,12 @@
       "Bash(\"/c/Users/tobia/scoop/shims/supabase\" status:*)",
       "Bash(\"/c/Users/tobia/scoop/shims/supabase\" db:*)",
       "Bash(npm run:*)",
-      "Bash(npx vue-tsc:*)"
+      "Bash(npx vue-tsc:*)",
+      "Bash(npx vite:*)",
+      "Bash(gh run:*)",
+      "Bash(/c/Users/tobia/scoop/shims/supabase db:*)",
+      "Bash(/c/Users/tobia/scoop/shims/supabase migration:*)",
+      "Bash(xargs grep:*)"
     ]
   }
 }
