@@ -5,12 +5,12 @@
 ## Current State
 
 ```yaml
-project_phase: "Active Development — M24 Complete, M25 Planned"
+project_phase: "Active Development — M25 Complete"
 protogear_enabled: true
 framework: "Vue 3 + TypeScript 5.9 + Vite 7 + Tailwind CSS 4 + Pinia + Supabase"
 project_type: "Single-Community Communication Platform"
 initialization_date: "2026-02-20"
-current_milestone: "M25 — Granular Permissions Management"
+current_milestone: "M25 Complete — planning next milestone"
 local_supabase: true
 ```
 
@@ -90,18 +90,18 @@ Backend adapter auto-detects mode via `VITE_SUPABASE_URL` env var. Local mode us
 
 ---
 
-### M25 — Granular Permissions Management 🔲
+### M25 — Granular Permissions Management ✅
 
 **Goal:** Allow space owners and admins to configure exactly which permissions each custom role has via a visual permission editor in Space Settings → Roles, and define per-channel overrides. Replaces implicit trust in the legacy 4-tier role string.
 
 | Ticket | Title | Priority | Status | Description |
 |--------|-------|----------|--------|-------------|
-| PTSPH-201 | Permission editor UI | High | 🔲 Todo | In `ServerSettingsPage` Roles tab, expand each role row with a permissions checklist — grouped into sections (Moderation, Content, Channels, Admin). Toggle per-bit; save via `backend.roles.update(roleId, { permissions })`. Uses existing `Permission` constants from `src/lib/permissions.ts`. |
-| PTSPH-202 | Channel-level permission overrides | Medium | 🔲 Todo | Per-channel override panel in channel settings (allow/deny per permission per role). Backend: `backend.roles.setChannelOverride(channelId, roleId, allow, deny)`. DB table `channel_role_overrides` already exists (migration 007). |
-| PTSPH-203 | Community-level admin roles | Medium | 🔲 Todo | Separate concept of community admins (can access Dashboard + Add Space) vs space-level admins. Currently gated on legacy `role === 'admin'` — introduce `COMMUNITY_ADMIN` permission bit or a community-scoped roles system. |
-| PTSPH-204 | Permission audit log entries | Low | 🔲 Todo | Log `role.permissions_changed` and `channel_override.changed` actions to audit log when a role's bits are edited. |
+| PTSPH-201 | Permission editor UI | High | ✅ Done | `ServerSettingsPage` Roles tab: grouped permission checkboxes (Space Management, Channels, Messages, Moderation, Profile, Advanced); toggle per-bit; save via `updateRole(id, { permissions })`. Already existed prior to this milestone. |
+| PTSPH-202 | Channel-level permission overrides | Medium | ✅ Done | `ChannelPermissionsPanel.vue` — per-role allow/deny/inherit cycle for channel-relevant perms; integrated into `EditChannelDialog` as "Permissions" tab; saves via `backend.roles.setChannelOverride()`; audit log on save/remove |
+| PTSPH-203 | Community-level admin roles | Medium | ✅ Done | `CommunitySidebar.isAnyAdminOrOwner` now checks custom role ADMINISTRATOR bit via `rolesStore.getUserRoles()` + `hasPermission()`, in addition to legacy `role === 'admin'` fallback |
+| PTSPH-204 | Permission audit log entries | Low | ✅ Done | New `AuditLogAction` types: `role.permissions_changed`, `channel_override.changed`, `channel_override.removed`; `useRoles.updateRole()` detects permission changes and logs specific action; `AuditLogViewer` renders new actions |
 
-**Migration:** `045_permissions_editor_support.sql` — no schema changes needed (table exists); may add indexes on `channel_role_overrides(channel_id, role_id)`.
+**No new migration needed** — `channel_role_overrides` table already exists (migration 007).
 
 ---
 

@@ -29,10 +29,14 @@ export function useRoles() {
   }
 
   async function updateRole(id: string, serverId: string, updates: Parameters<typeof backend.roles.update>[1]): Promise<Role> {
+    const oldRole = store.getServerRoles(serverId).find((r) => r.id === id)
     const role = await backend.roles.update(id, updates)
     store.setServerRoles(serverId, store.getServerRoles(serverId).map((r) => (r.id === id ? role : r)))
     if (authStore.user?.id) {
-      backend.audit_log.log(serverId, authStore.user.id, 'role.update', 'role', id, updates as Record<string, unknown>).catch(() => {})
+      const action = updates.permissions !== undefined && updates.permissions !== oldRole?.permissions
+        ? 'role.permissions_changed' as const
+        : 'role.update' as const
+      backend.audit_log.log(serverId, authStore.user.id, action, 'role', id, updates as Record<string, unknown>).catch(() => {})
     }
     return role
   }

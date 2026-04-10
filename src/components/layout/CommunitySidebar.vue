@@ -12,6 +12,8 @@ import { useServers } from '@/composables/useServers'
 import { useCommunity } from '@/composables/useCommunity'
 import { useContextMenuStore } from '@/stores/contextMenu'
 import { useToastStore } from '@/stores/toast'
+import { useRolesStore } from '@/stores/roles'
+import { hasPermission, deserializePermissions, Permission } from '@/lib/permissions'
 import { serverIconContextItems } from '@/lib/contextMenuItems'
 import CreateServerDialog from '@/components/server/CreateServerDialog.vue'
 import JoinServerDialog from '@/components/server/JoinServerDialog.vue'
@@ -32,6 +34,7 @@ const { totalDmUnread, unreadDmGroupIds } = useDmUnread()
 const { createServer, joinServer, leaveServer, deleteServer, regenerateInviteCode } = useServers()
 const { fetchCommunity } = useCommunity()
 const contextMenuStore = useContextMenuStore()
+const rolesStore = useRolesStore()
 const toastStore = useToastStore()
 
 /** True when the user is in the DM view. */
@@ -113,13 +116,19 @@ const isAnyOwner = computed(() =>
 )
 
 // Owners and admins can manage spaces and access the Dashboard
-const isAnyAdminOrOwner = computed(() =>
-  serversStore.servers.some((s) => {
-    if (s.owner_id === authStore.user?.id) return true
-    const role = serversStore.myRoles[s.id]
-    return role === 'admin' || role === 'owner'
-  }),
-)
+// Checks legacy role string AND custom role ADMINISTRATOR bit
+const isAnyAdminOrOwner = computed(() => {
+  const uid = authStore.user?.id
+  if (!uid) return false
+  return serversStore.servers.some((s) => {
+    if (s.owner_id === uid) return true
+    const legacyRole = serversStore.myRoles[s.id]
+    if (legacyRole === 'admin' || legacyRole === 'owner') return true
+    // Check custom roles for ADMINISTRATOR bit
+    const customRoles = rolesStore.getUserRoles(s.id, uid)
+    return customRoles.some((r) => hasPermission(deserializePermissions(r.permissions), Permission.ADMINISTRATOR))
+  })
+})
 
 // Create / Join dialogs
 const showCreateSpace = ref(false)

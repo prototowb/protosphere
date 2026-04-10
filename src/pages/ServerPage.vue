@@ -1675,6 +1675,8 @@ function onServerHeaderContext(event: MouseEvent) {
     :name="editChannelName"
     :description="editChannelDescription"
     :slowmode-seconds="editChannelSlowmode"
+    :channel-id="editChannelId ?? undefined"
+    :server-id="serverId"
     @save="async (data) => { if (editChannelId) { await updateChannel(editChannelId, { name: data.name, description: data.description, slowmode_seconds: data.slowmodeSeconds }); showEditChannel = false; toastStore.show('Channel updated', 'success') } }"
     @close="showEditChannel = false"
   />
