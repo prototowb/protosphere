@@ -88,7 +88,10 @@ onMounted(async () => {
   await fetchGroups()
   fetchMyProfile()
   refreshDmUnread()
-  if (dmGroupId.value) loadMessages(dmGroupId.value)
+  if (dmGroupId.value) {
+    dmTabsStore.openTab(dmGroupId.value)
+    loadMessages(dmGroupId.value)
+  }
   startListening()
 })
 
