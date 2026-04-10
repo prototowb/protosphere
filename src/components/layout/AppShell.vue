@@ -9,6 +9,7 @@ import { useProfile } from '@/composables/useProfile'
 import { useServers } from '@/composables/useServers'
 import { useCommunity } from '@/composables/useCommunity'
 import { usePresence } from '@/composables/usePresence'
+import { startGlobalPresence } from '@/composables/useRealtime'
 import { useMentionsStore } from '@/stores/mentions'
 import { useDmUnread } from '@/composables/useDmUnread'
 import { useContextMenuStore } from '@/stores/contextMenu'
@@ -81,6 +82,7 @@ function onUserBarContext(event: MouseEvent) {
 watch(() => authStore.user?.id, async (userId) => {
   if (!userId) return
   fetchProfile()
+  startGlobalPresence(userId, 'online')
   await fetchServers()
   await fetchCommunity()
   const isOwner = serversStore.servers.some((s) => s.owner_id === authStore.user?.id)

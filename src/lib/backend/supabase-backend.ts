@@ -654,13 +654,14 @@ export function createSupabaseBackend(): Backend {
         if (createError) throw createError
         // The on_dm_group_created trigger already inserts the creator (userId),
         // so use upsert/ignoreDuplicates to avoid a 409 on that row.
-        await client.from('direct_message_members').upsert(
+        const { error: membersError } = await client.from('direct_message_members').upsert(
           [
             { dm_group_id: groupId, user_id: userId },
             { dm_group_id: groupId, user_id: otherUserId },
           ],
           { onConflict: 'dm_group_id,user_id', ignoreDuplicates: true },
         )
+        if (membersError) throw membersError
         const { data: group, error: fetchError } = await client
           .from('direct_message_groups')
           .select('*')

@@ -19,13 +19,14 @@ import { useRealtime } from '@/composables/useRealtime'
 import { useMessageSearch } from '@/composables/useMessageSearch'
 import { useProfile } from '@/composables/useProfile'
 import { useDmNotificationPreferences } from '@/composables/useDmNotificationPreferences'
+import { usePresenceStore } from '@/stores/presence'
 import { isLocalMode } from '@/lib/backend'
 import { formatDate } from '@/lib/formatters'
 import { expandShortcodes } from '@/lib/emojiNames'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 import DmConversationPane from '@/components/dm/DmConversationPane.vue'
 import { useDmTabsStore } from '@/stores/dmTabs'
-import type { DirectMessage, Profile } from '@/lib/types'
+import type { DirectMessage, Profile, UserStatus } from '@/lib/types'
 
 const route = useRoute()
 const router = useRouter()
@@ -45,6 +46,12 @@ const { startDmMessages, stopDmMessages, startTypingChannel, broadcastTyping, br
 const realtimeTypingUsers = ref<string[]>([])
 const { query: dmSearchQuery, results: dmSearchResults, isOpen: dmSearchOpen, open: openDmSearch, close: closeDmSearch } = useMessageSearch(() => messages.value)
 const { isMuted, loadMute, setMute } = useDmNotificationPreferences()
+const presenceStore = usePresenceStore()
+
+function dmUserStatus(userId: string, fallback: UserStatus): UserStatus {
+  if (isLocalMode) return fallback
+  return presenceStore.getStatus(userId, fallback)
+}
 
 const messageInput = ref('')
 const sending = ref(false)
@@ -340,7 +347,7 @@ function onDmConversationContext(event: MouseEvent, groupId: string) {
           <UserAvatar
             :src="group.otherUser.avatar_url"
             :alt="group.otherUser.display_name"
-            :status="group.otherUser.status"
+            :status="dmUserStatus(group.otherUser.id, group.otherUser.status)"
             size="sm"
           />
           <div class="min-w-0 flex-1">
@@ -361,7 +368,7 @@ function onDmConversationContext(event: MouseEvent, groupId: string) {
           <UserAvatar
             :src="activeGroup.otherUser.avatar_url"
             :alt="activeGroup.otherUser.display_name"
-            :status="activeGroup.otherUser.status"
+            :status="dmUserStatus(activeGroup.otherUser.id, activeGroup.otherUser.status)"
             size="sm"
           />
           <span class="font-semibold text-text-primary">{{ activeGroup.otherUser.display_name }}</span>
@@ -548,7 +555,7 @@ function onDmConversationContext(event: MouseEvent, groupId: string) {
             <UserAvatar
               :src="activeGroup.otherUser.avatar_url"
               :alt="activeGroup.otherUser.display_name"
-              :status="activeGroup.otherUser.status"
+              :status="dmUserStatus(activeGroup.otherUser.id, activeGroup.otherUser.status)"
               size="lg"
             />
             <div>
@@ -605,7 +612,7 @@ function onDmConversationContext(event: MouseEvent, groupId: string) {
           @click="handleOpenDM(user.id)"
           class="flex w-full items-center gap-3 rounded px-3 py-2 hover:bg-bg-hover"
         >
-          <UserAvatar :src="user.avatar_url" :alt="user.display_name" :status="user.status" size="sm" />
+          <UserAvatar :src="user.avatar_url" :alt="user.display_name" :status="dmUserStatus(user.id, user.status)" size="sm" />
           <div class="min-w-0 text-left">
             <p class="truncate text-sm font-medium">{{ user.display_name }}</p>
             <p class="text-xs text-text-muted">@{{ user.username }}</p>

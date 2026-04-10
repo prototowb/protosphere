@@ -89,7 +89,7 @@ const { typingUsers, onTyping: localOnTyping, onSent: localOnSent, startListenin
   () => channelsStore.activeChannelId,
   () => myMember.value?.profile.display_name ?? authStore.user?.email?.split('@')[0] ?? 'Someone',
 )
-const { startMessages, stopMessages, startPresence, startTypingChannel, broadcastTyping, broadcastStopTyping, stopTypingChannel, stopAll } = useRealtime()
+const { startMessages, stopMessages, startTypingChannel, broadcastTyping, broadcastStopTyping, stopTypingChannel, stopAll } = useRealtime()
 const presenceStore = usePresenceStore()
 const realtimeTypingUsers = ref<string[]>([])
 const { unreadChannelIds, markRead, refreshUnread } = useUnread()
@@ -280,10 +280,6 @@ function loadServer() {
       if (authStore.user?.id) {
         fetchServerRoles(serverId.value)
         fetchUserRoles(serverId.value, authStore.user.id)
-        if (!isLocalMode) {
-          const displayName = myMember.value?.profile.display_name ?? authStore.user.email?.split('@')[0] ?? 'Someone'
-          startPresence(serverId.value, authStore.user.id, displayName, 'online')
-        }
       }
     })
     fetchMutes(serverId.value).catch(() => {})
