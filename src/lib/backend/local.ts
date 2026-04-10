@@ -116,6 +116,7 @@ export function createLocalBackend(): Backend {
           account_status: 'active',
           meta_points: 0,
           profile_page: null,
+          onboarding_complete: false,
           created_at: now,
           updated_at: now,
         }
@@ -199,6 +200,14 @@ export function createLocalBackend(): Backend {
         profiles[userId] = updated
         writeJson(KEYS.profiles, profiles)
         return updated
+      },
+
+      async completeOnboarding(userId: string) {
+        const profiles = readJson<Record<string, Profile>>(KEYS.profiles, {})
+        const profile = profiles[userId]
+        if (!profile) throw new Error('Profile not found')
+        profiles[userId] = { ...profile, onboarding_complete: true, updated_at: new Date().toISOString() }
+        writeJson(KEYS.profiles, profiles)
       },
 
       async listPending() {

@@ -19,6 +19,7 @@ import { userBarContextItems } from '@/lib/contextMenuItems'
 import UserAvatar from '@/components/user/UserAvatar.vue'
 import CommunitySidebar from '@/components/layout/CommunitySidebar.vue'
 import SetupWizard from '@/components/community/SetupWizard.vue'
+import OnboardingTour from '@/components/onboarding/OnboardingTour.vue'
 import type { UserStatus } from '@/lib/types'
 
 const router = useRouter()
@@ -29,6 +30,7 @@ const communityStore = useCommunityStore()
 const { fetchCommunity } = useCommunity()
 const { sessionExpired, broadcastLogout, broadcastLogin, dismissExpired } = useSessionSync()
 const showSetupWizard = ref(false)
+const showOnboardingTour = ref(false)
 
 // Broadcast auth state changes to other tabs (PTSPH-160)
 watch(() => authStore.isAuthenticated, (val, prev) => {
@@ -90,11 +92,21 @@ watch(() => authStore.user?.id, async (userId) => {
     showSetupWizard.value = true
   }
 }, { immediate: true })
+
+// Show onboarding tour once, after profile loads, if not yet completed
+watch(profile, (p) => {
+  if (p && !p.onboarding_complete && !showSetupWizard.value && !showOnboardingTour.value) {
+    showOnboardingTour.value = true
+  }
+}, { once: true })
 </script>
 
 <template>
   <!-- Setup Wizard (first admin login) -->
   <SetupWizard v-if="showSetupWizard" @done="showSetupWizard = false" />
+
+  <!-- Onboarding Tour (new users) -->
+  <OnboardingTour v-if="showOnboardingTour" @done="showOnboardingTour = false" />
 
   <!-- Session expired overlay (PTSPH-160) -->
   <div v-if="sessionExpired" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60">

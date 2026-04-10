@@ -32,6 +32,7 @@ export interface Profile {
   account_status: ProfileStatus
   meta_points: number
   profile_page: PageContent | null
+  onboarding_complete: boolean
   created_at: string
   updated_at: string
 }

@@ -120,6 +120,14 @@ export function createSupabaseBackend(): Backend {
         return data as Profile
       },
 
+      async completeOnboarding(userId: string) {
+        const { error } = await client
+          .from('profiles')
+          .update({ onboarding_complete: true, updated_at: new Date().toISOString() })
+          .eq('id', userId)
+        if (error) throw error
+      },
+
       async listPending() {
         const { data, error } = await client
           .from('profiles')

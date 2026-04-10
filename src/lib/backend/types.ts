@@ -33,6 +33,7 @@ export interface Backend {
     search(query: string, excludeUserId: string): Promise<Profile[]>
     getByUsername(username: string): Promise<Profile>
     updatePage(userId: string, page: PageContent | null): Promise<Profile>
+    completeOnboarding(userId: string): Promise<void>
     listPending(): Promise<Profile[]>
     approve(userId: string): Promise<void>
     reject(userId: string): Promise<void>

@@ -5,12 +5,12 @@
 ## Current State
 
 ```yaml
-project_phase: "Active Development — M23 Complete, M24–M25 Planned"
+project_phase: "Active Development — M24 Complete, M25 Planned"
 protogear_enabled: true
 framework: "Vue 3 + TypeScript 5.9 + Vite 7 + Tailwind CSS 4 + Pinia + Supabase"
 project_type: "Single-Community Communication Platform"
 initialization_date: "2026-02-20"
-current_milestone: "M24 — Onboarding Tour"
+current_milestone: "M25 — Granular Permissions Management"
 local_supabase: true
 ```
 
@@ -84,7 +84,7 @@ Backend adapter auto-detects mode via `VITE_SUPABASE_URL` env var. Local mode us
 | PTSPH-193 | BlockEditor core + basic blocks | High | ✅ Done | `BlockEditor.vue` — block list with add/move/delete; block type picker; inline editing for Hero (locked), Text, Divider, Image; CSS override panel; preview tab |
 | PTSPH-194 | Advanced blocks + CSS override panel | Medium | ✅ Done | Columns (2/3 col), Callout (info/warning/success), Link card; global "Custom CSS" textarea; live preview pane |
 | PTSPH-195 | Forum page integration | High | ✅ Done | `BlockEditor.vue` in `ForumPostView.vue`; locked hero (non-removable title block, editable title/bg/alignment); pinned source message block (quote variant, auto-seeded); `ForumCommentsPanel.vue` in AppShell right sidebar; comments metric button toggles sidebar; `updatePageContent` accepts optional `title` |
-| PTSPH-196 | User profile pages | High | 🔲 Todo | Migration: `profile_page JSONB` on profiles; `/u/:username` route + `UserProfilePage.vue` (public read-only); `/settings/page` or inline in SettingsPage for editing own page; `profiles.updatePage()` in both backends |
+| PTSPH-196 | User profile pages | High | ✅ Done | Migration `046_profile_page.sql`; `/u/:username` route + `UserProfilePage.vue` (edit + view modes); `profiles.updatePage()` in both backends; UserProfileModal links to profile page |
 
 **Migrations:** `043_forum_page_content.sql` (existing — `content JSONB` on forum_posts already done)
 
@@ -105,18 +105,18 @@ Backend adapter auto-detects mode via `VITE_SUPABASE_URL` env var. Local mode us
 
 ---
 
-### M24 — Onboarding Tour 🔲
+### M24 — Onboarding Tour ✅
 
 **Goal:** After account creation, walk new users through the platform's unique rules (message expiry, forum system) and help them customize their profile before they engage with the community.
 
 | Ticket | Title | Priority | Status | Description |
 |--------|-------|----------|--------|-------------|
-| PTSPH-197 | Tour component system | Medium | 🔲 Todo | `OnboardingTour.vue` — multi-step modal overlay with progress dots, "Next" / "Skip" controls; triggered once after first login (flag `onboarding_complete` on profiles, migration); stores completion in `profiles` via `profiles.completeOnboarding()` |
-| PTSPH-198 | Message rules step | High | 🔲 Todo | Step explaining ephemeral messages (3-day channel TTL, 6-month DM TTL, forum post exemption); visual diagram showing message → forum post lifecycle |
-| PTSPH-199 | Platform tour steps | Medium | 🔲 Todo | Steps highlighting: spaces sidebar, forum section, DM, admin panel (owners only); each step spotlights the relevant UI element with a highlight ring |
-| PTSPH-200 | Profile setup step | Medium | 🔲 Todo | Final onboarding step: inline mini profile editor (avatar upload, display name, bio, pronouns); submits via `updateProfile()`; skip allowed |
+| PTSPH-197 | Tour component system | Medium | ✅ Done | `OnboardingTour.vue` — 4-step modal with progress bar + dots; "Next" / "Skip" / "Get started" controls; triggered once from AppShell on profile load when `!onboarding_complete`; calls `profiles.completeOnboarding()` on finish/skip |
+| PTSPH-198 | Message rules step | High | ✅ Done | Step 2 — three info cards: channel TTL (3 days), DM TTL (6 months), forum posts permanent |
+| PTSPH-199 | Platform tour steps | Medium | ✅ Done | Step 3 — three info cards: spaces sidebar, forum section, DMs |
+| PTSPH-200 | Profile setup step | Medium | ✅ Done | Step 4 — display name + bio fields; "Add more in Settings" link navigates to /settings and finishes tour |
 
-**Migration:** `044_onboarding_complete_flag.sql`
+**Migration:** `047_onboarding_complete.sql` — `onboarding_complete boolean DEFAULT false` on profiles
 
 ---
 
