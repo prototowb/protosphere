@@ -174,10 +174,12 @@ function groupedReactions(commentId: string) {
 }
 
 const depthColors = ['border-violet-500/40', 'border-sky-500/40', 'border-emerald-500/40']
+
+defineOptions({ inheritAttrs: false })
 </script>
 
 <template>
-  <div class="space-y-2">
+  <div class="space-y-2" v-bind="$attrs">
     <div
       v-for="comment in children"
       :key="comment.id"
