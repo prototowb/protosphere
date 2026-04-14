@@ -62,6 +62,7 @@ export interface CommunitySettings {
   rules: string
   welcome_message: string
   setup_complete: boolean
+  owner_id: string | null  // first registered user / community admin
   created_at: string
   updated_at: string
 }

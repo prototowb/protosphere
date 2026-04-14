@@ -99,7 +99,7 @@ export interface Backend {
   }
   community: {
     get(): Promise<CommunitySettings>
-    update(updates: Partial<Pick<CommunitySettings, 'name' | 'description' | 'logo_url' | 'banner_url' | 'registration_mode' | 'rules' | 'welcome_message' | 'setup_complete'>>): Promise<CommunitySettings>
+    update(updates: Partial<Pick<CommunitySettings, 'name' | 'description' | 'logo_url' | 'banner_url' | 'registration_mode' | 'rules' | 'welcome_message' | 'setup_complete' | 'owner_id'>>): Promise<CommunitySettings>
   }
   roles: {
     list(serverId: string): Promise<Role[]>

@@ -94,10 +94,24 @@ export function createLocalBackend(): Backend {
           throw new Error('Username already taken')
         }
 
+        const isFirstUser = users.length === 0
+
         const id = crypto.randomUUID()
         const newUser: StoredUser = { id, email, password, username }
         users.push(newUser)
         writeJson(KEYS.users, users)
+
+        // First user becomes community owner
+        if (isFirstUser) {
+          const stored = readJson<CommunitySettings | null>(KEYS.community, null)
+          const now2 = new Date().toISOString()
+          const community: CommunitySettings = stored ?? {
+            id: 'local', name: 'My Community', description: '', logo_url: null,
+            banner_url: null, registration_mode: 'open', rules: '', welcome_message: '',
+            setup_complete: false, owner_id: null, created_at: now2, updated_at: now2,
+          }
+          writeJson(KEYS.community, { ...community, owner_id: id, updated_at: now2 })
+        }
 
         const profiles = readJson<Record<string, Profile>>(KEYS.profiles, {})
         const now = new Date().toISOString()
@@ -993,6 +1007,7 @@ export function createLocalBackend(): Backend {
           rules: '',
           welcome_message: '',
           setup_complete: false,
+          owner_id: null,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         }
@@ -1006,7 +1021,7 @@ export function createLocalBackend(): Backend {
         const current: CommunitySettings = stored ?? {
           id: 'local', name: 'My Community', description: '', logo_url: null,
           banner_url: null, registration_mode: 'open', rules: '', welcome_message: '',
-          setup_complete: false, created_at: now, updated_at: now,
+          setup_complete: false, owner_id: null, created_at: now, updated_at: now,
         }
         const updated: CommunitySettings = { ...current, ...updates, updated_at: now }
         writeJson(KEYS.community, updated)

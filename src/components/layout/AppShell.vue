@@ -87,8 +87,9 @@ watch(() => authStore.user?.id, async (userId) => {
   startGlobalPresence(userId, 'online')
   await fetchServers()
   await fetchCommunity()
-  const isOwner = serversStore.servers.some((s) => s.owner_id === authStore.user?.id)
-  if (isOwner && communityStore.settings && !communityStore.settings.setup_complete) {
+  const isSpaceOwner = serversStore.servers.some((s) => s.owner_id === authStore.user?.id)
+  const isCommunityOwner = communityStore.settings?.owner_id === authStore.user?.id
+  if ((isSpaceOwner || isCommunityOwner) && communityStore.settings && !communityStore.settings.setup_complete) {
     showSetupWizard.value = true
   }
 }, { immediate: true })

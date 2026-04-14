@@ -110,21 +110,27 @@ function getSpaceInitial(name: string) {
   return name.split(/\s+/).map((w) => w[0]).join('').substring(0, 2).toUpperCase()
 }
 
-// Whether the current user owns any space (used for owner-only actions like Community Settings)
+// Community owner = the first registered user / admin who set up this community
+const isCommunityOwner = computed(() =>
+  !!authStore.user?.id && communityStore.settings?.owner_id === authStore.user.id,
+)
+
+// Whether the current user owns any space OR is the community owner
 const isAnyOwner = computed(() =>
+  isCommunityOwner.value ||
   serversStore.servers.some((s) => s.owner_id === authStore.user?.id),
 )
 
 // Owners and admins can manage spaces and access the Dashboard
-// Checks legacy role string AND custom role ADMINISTRATOR bit
+// Checks community owner, space ownership, legacy role, and custom ADMINISTRATOR bit
 const isAnyAdminOrOwner = computed(() => {
+  if (isCommunityOwner.value) return true
   const uid = authStore.user?.id
   if (!uid) return false
   return serversStore.servers.some((s) => {
     if (s.owner_id === uid) return true
     const legacyRole = serversStore.myRoles[s.id]
     if (legacyRole === 'admin' || legacyRole === 'owner') return true
-    // Check custom roles for ADMINISTRATOR bit
     const customRoles = rolesStore.getUserRoles(s.id, uid)
     return customRoles.some((r) => hasPermission(deserializePermissions(r.permissions), Permission.ADMINISTRATOR))
   })
