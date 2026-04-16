@@ -7,7 +7,7 @@
 
 ## Vision
 
-The central communication hub for a single online community. Protosphere provides **spaces** (sub-communities) within one shared identity, a **custom role system** with granular permissions, community **branding and onboarding**, robust **moderation tools**, and **engagement features** (threads, polls, events). Also serves as the **unified identity hub** for all future services (TypeScript course, web games, etc.).
+The central communication hub for a single online community. Protosphere provides **spaces** (sub-communities) within one shared identity, a **custom role system** with granular permissions, community **branding and onboarding**, robust **moderation tools**, a **first-class forum** with a visual block editor, and **engagement features** (polls, events). Also serves as the **unified identity hub** for all future services (TypeScript course, web games, etc.).
 
 ---
 
