@@ -32,6 +32,7 @@ export interface Profile {
   account_status: ProfileStatus
   meta_points: number
   profile_page: PageContent | null
+  onboarding_complete: boolean
   created_at: string
   updated_at: string
 }
@@ -61,6 +62,7 @@ export interface CommunitySettings {
   rules: string
   welcome_message: string
   setup_complete: boolean
+  owner_id: string | null  // first registered user / community admin
   created_at: string
   updated_at: string
 }
@@ -205,6 +207,9 @@ export type AuditLogAction =
   | 'role.delete'
   | 'role.assign'
   | 'role.remove'
+  | 'role.permissions_changed'
+  | 'channel_override.changed'
+  | 'channel_override.removed'
   | 'server.update'
   | 'mute.add'
   | 'mute.remove'

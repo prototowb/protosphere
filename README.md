@@ -1,6 +1,6 @@
 # Protosphere
 
-A single-community chat platform built with Vue 3, Supabase, and Tailwind CSS 4. Supports public spaces, private areas, real-time messaging, moderation tools, polls, events, and threaded discussions.
+A single-community chat platform built with Vue 3, Supabase, and Tailwind CSS 4. Supports public spaces, private areas, real-time messaging, moderation tools, polls, events, and a first-class forum system with a block-editor for long-form posts and personal profile pages.
 
 ## Tech Stack
 
@@ -116,7 +116,7 @@ src/
   router.ts
   stores/         # Pinia stores
 supabase/
-  migrations/     # SQL migrations (001–035)
+  migrations/     # SQL migrations (001–049)
 ```
 
 ---

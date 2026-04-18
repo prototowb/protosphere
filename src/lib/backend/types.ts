@@ -33,6 +33,7 @@ export interface Backend {
     search(query: string, excludeUserId: string): Promise<Profile[]>
     getByUsername(username: string): Promise<Profile>
     updatePage(userId: string, page: PageContent | null): Promise<Profile>
+    completeOnboarding(userId: string): Promise<void>
     listPending(): Promise<Profile[]>
     approve(userId: string): Promise<void>
     reject(userId: string): Promise<void>
@@ -98,7 +99,7 @@ export interface Backend {
   }
   community: {
     get(): Promise<CommunitySettings>
-    update(updates: Partial<Pick<CommunitySettings, 'name' | 'description' | 'logo_url' | 'banner_url' | 'registration_mode' | 'rules' | 'welcome_message' | 'setup_complete'>>): Promise<CommunitySettings>
+    update(updates: Partial<Pick<CommunitySettings, 'name' | 'description' | 'logo_url' | 'banner_url' | 'registration_mode' | 'rules' | 'welcome_message' | 'setup_complete' | 'owner_id'>>): Promise<CommunitySettings>
   }
   roles: {
     list(serverId: string): Promise<Role[]>
