@@ -2,14 +2,29 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
+import { useAuthStore } from '@/stores/auth'
 import { useProfile } from '@/composables/useProfile'
+import { useIntegrations } from '@/composables/useIntegrations'
+import { useUserIntegrations } from '@/composables/useUserIntegrations'
 import { useToastStore } from '@/stores/toast'
 import UserAvatar from '@/components/user/UserAvatar.vue'
+import IntegrationConnectDialog from '@/components/integrations/IntegrationConnectDialog.vue'
+import FieldVisibilityControl from '@/components/integrations/FieldVisibilityControl.vue'
+import type { Integration, IntegrationFieldSchema, FieldVisibility } from '@/lib/types'
 
 const router = useRouter()
 const { logout, logoutGlobal } = useAuth()
 const { profile, loading, error, fetchProfile, updateProfile, uploadAvatar } = useProfile()
 const toastStore = useToastStore()
+
+const authStore = useAuthStore()
+const { integrations: allIntegrations, fetchIntegrations, listFieldSchemas } = useIntegrations()
+const { myIntegrations, fetchMyIntegrations, connect, disconnect, syncData, setFieldVisibility, isConnected, getVisibility } = useUserIntegrations()
+
+const syncing = ref<Record<string, boolean>>({})
+
+const connectDialog = ref<Integration | null>(null)
+const fieldSchemaCache = ref<Record<string, IntegrationFieldSchema[]>>({})
 
 const username = ref('')
 const displayName = ref('')
@@ -22,6 +37,15 @@ const saving = ref(false)
 
 onMounted(async () => {
   await fetchProfile()
+  // Load integrations data
+  await fetchIntegrations()
+  if (authStore.user) {
+    await fetchMyIntegrations(authStore.user.id)
+    // Preload field schemas for connected integrations
+    for (const ui of myIntegrations.value) {
+      fieldSchemaCache.value[ui.integration_id] = await listFieldSchemas(ui.integration_id)
+    }
+  }
   if (profile.value) {
     username.value = profile.value.username
     displayName.value = profile.value.display_name
@@ -69,6 +93,67 @@ async function handleLogout() {
 async function handleLogoutGlobal() {
   await logoutGlobal()
   router.push('/login')
+}
+
+async function handleConnect(token?: string) {
+  if (!authStore.user || !connectDialog.value) return
+  try {
+    await connect(authStore.user.id, connectDialog.value.id, token)
+    fieldSchemaCache.value[connectDialog.value.id] = await listFieldSchemas(connectDialog.value.id)
+    toastStore.show(`Connected to ${connectDialog.value.name}`, 'success')
+  } catch (e: unknown) {
+    toastStore.show(e instanceof Error ? e.message : 'Failed to connect', 'error')
+  }
+  connectDialog.value = null
+}
+
+async function handleDisconnect(integrationId: string) {
+  if (!authStore.user) return
+  try {
+    await disconnect(authStore.user.id, integrationId)
+    toastStore.show('Disconnected', 'success')
+  } catch (e: unknown) {
+    toastStore.show(e instanceof Error ? e.message : 'Failed to disconnect', 'error')
+  }
+}
+
+function getMyIntegration(integrationId: string) {
+  return myIntegrations.value.find((ui) => ui.integration_id === integrationId)
+}
+
+function relativeTime(dateStr: string | null): string {
+  if (!dateStr) return 'Never'
+  const diff = Date.now() - new Date(dateStr).getTime()
+  const mins = Math.floor(diff / 60000)
+  if (mins < 1) return 'Just now'
+  if (mins < 60) return `${mins}m ago`
+  const hrs = Math.floor(mins / 60)
+  if (hrs < 24) return `${hrs}h ago`
+  return `${Math.floor(hrs / 24)}d ago`
+}
+
+async function handleSync(integrationId: string) {
+  const ui = getMyIntegration(integrationId)
+  if (!ui) return
+  syncing.value[integrationId] = true
+  try {
+    await syncData(ui.id)
+    if (authStore.user) await fetchMyIntegrations(authStore.user.id)
+    toastStore.show('Data synced', 'success')
+  } catch (e: unknown) {
+    toastStore.show(e instanceof Error ? e.message : 'Sync failed', 'error')
+  } finally {
+    syncing.value[integrationId] = false
+  }
+}
+
+async function handleVisibilityChange(fieldSchemaId: string, visibility: FieldVisibility) {
+  if (!authStore.user) return
+  try {
+    await setFieldVisibility(authStore.user.id, fieldSchemaId, visibility)
+  } catch (e: unknown) {
+    toastStore.show(e instanceof Error ? e.message : 'Failed to update visibility', 'error')
+  }
 }
 </script>
 
@@ -247,6 +332,70 @@ async function handleLogoutGlobal() {
             </div>
           </div>
         </form>
+
+        <!-- Connected Integrations section -->
+        <div v-if="allIntegrations.filter((i) => i.enabled).length > 0" class="mt-8 border-t border-bg-tertiary pt-6">
+          <h2 class="mb-4 text-xs font-semibold uppercase tracking-wide text-text-muted">Connected Integrations</h2>
+
+          <div class="space-y-3">
+            <div
+              v-for="integration in allIntegrations.filter((i) => i.enabled)"
+              :key="integration.id"
+              class="rounded-lg bg-bg-primary p-4"
+            >
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-3 min-w-0">
+                  <div class="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-accent/15">
+                    <img v-if="integration.icon_url" :src="integration.icon_url" :alt="integration.name" class="h-5 w-5 rounded" />
+                    <svg v-else class="h-4 w-4 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" /></svg>
+                  </div>
+                  <div class="min-w-0">
+                    <p class="text-sm font-medium text-text-primary truncate">{{ integration.name }}</p>
+                    <p v-if="integration.description" class="text-xs text-text-muted truncate">{{ integration.description }}</p>
+                    <p v-if="isConnected(integration.id)" class="text-[10px] text-text-muted">Synced: {{ relativeTime(getMyIntegration(integration.id)?.synced_at ?? null) }}</p>
+                  </div>
+                </div>
+                <div v-if="isConnected(integration.id)" class="flex flex-shrink-0 items-center gap-2">
+                  <button
+                    @click="handleSync(integration.id)"
+                    :disabled="syncing[integration.id]"
+                    class="rounded-md border border-bg-tertiary px-3 py-1.5 text-xs text-text-secondary hover:bg-bg-hover transition-colors disabled:opacity-50"
+                  >{{ syncing[integration.id] ? 'Syncing...' : 'Sync' }}</button>
+                  <button
+                    @click="handleDisconnect(integration.id)"
+                    class="rounded-md border border-red-500/30 px-3 py-1.5 text-xs text-red-400 hover:bg-red-500/10 transition-colors"
+                  >Disconnect</button>
+                </div>
+                <button
+                  v-else
+                  @click="connectDialog = integration"
+                  class="flex-shrink-0 rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent-hover transition-colors"
+                >Connect</button>
+              </div>
+
+              <!-- Field visibility controls (only for connected integrations) -->
+              <div v-if="isConnected(integration.id) && fieldSchemaCache[integration.id]?.length" class="mt-3 border-t border-bg-tertiary pt-3">
+                <p class="mb-2 text-xs text-text-muted">Choose which data to share on your profile:</p>
+                <FieldVisibilityControl
+                  v-for="schema in fieldSchemaCache[integration.id]"
+                  :key="schema.id"
+                  :label="schema.label"
+                  :field-key="schema.field_key"
+                  :visibility="getVisibility(schema.id, schema.default_visibility)"
+                  @change="handleVisibilityChange(schema.id, $event)"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Connect dialog -->
+        <IntegrationConnectDialog
+          v-if="connectDialog"
+          :integration="connectDialog"
+          @connect="handleConnect"
+          @cancel="connectDialog = null"
+        />
       </template>
 
       <!-- No profile / error fallback -->

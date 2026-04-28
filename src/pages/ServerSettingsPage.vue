@@ -11,6 +11,7 @@ import { Permission, hasPermission, deserializePermissions, serializePermissions
 import type { PermissionBits } from '@/lib/permissions'
 import type { Ban, Profile, Role } from '@/lib/types'
 import AuditLogViewer from '@/components/moderation/AuditLogViewer.vue'
+import SpaceRequirementEditor from '@/components/integrations/SpaceRequirementEditor.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -21,7 +22,7 @@ const { fetchServers, updateServer, deleteServer, unbanMember } = useServers()
 const { fetchServerRoles, createRole, updateRole, deleteRole } = useRoles()
 
 const serverId = ref(route.params.serverId as string)
-const activeTab = ref<'overview' | 'roles' | 'bans' | 'audit-log'>('overview')
+const activeTab = ref<'overview' | 'roles' | 'bans' | 'audit-log' | 'integrations'>('overview')
 
 // ── Overview tab ──────────────────────────────────────────────────────────────
 const name = ref('')
@@ -263,7 +264,7 @@ function getServerInitial(n: string) {
       <!-- Tabs -->
       <div class="mb-6 flex gap-1 border-b border-bg-tertiary">
         <button
-          v-for="tab in (['overview', 'roles', 'bans', 'audit-log'] as const)"
+          v-for="tab in (['overview', 'roles', 'bans', 'audit-log', 'integrations'] as const)"
           :key="tab"
           @click="activeTab = tab; closeEditRole()"
           class="px-4 py-2 text-sm capitalize transition-colors"
@@ -487,6 +488,11 @@ function getServerInitial(n: string) {
             </button>
           </div>
         </div>
+      </div>
+
+      <!-- ── Integrations tab ─────────────────────────────────────────────── -->
+      <div v-else-if="activeTab === 'integrations'">
+        <SpaceRequirementEditor :server-id="serverId" />
       </div>
     </div>
   </div>

@@ -61,6 +61,7 @@ import { useRealtime } from '@/composables/useRealtime'
 import { usePresenceStore } from '@/stores/presence'
 import type { Message, Profile, Member, MemberRole, Channel, ChannelCategory, AutomodRule, RsvpStatus, UserStatus, NotificationLevel, Attachment, ForumPost, ForumPostType } from '@/lib/types'
 import { useNotificationPreferences } from '@/composables/useNotificationPreferences'
+import { useSpaceRequirements, type MissingRequirement } from '@/composables/useSpaceRequirements'
 
 const route = useRoute()
 const router = useRouter()
@@ -98,6 +99,11 @@ const activeChannelIdRef = computed(() => channelsStore.activeChannelId ?? '')
 const { query: searchQuery, results: searchResults, isOpen: searchOpen, open: openSearch, close: closeSearch } = useMessageSearch(activeChannelIdRef)
 
 const myUsername = ref<string | null>(null)
+
+// Space integration requirements
+const { getMissingRequirements } = useSpaceRequirements()
+const missingIntegrations = ref<MissingRequirement[]>([])
+const dismissedIntegrationBanner = ref(false)
 
 // Notification preferences
 const { getCached, loadLevel, setLevel } = useNotificationPreferences()
@@ -285,6 +291,12 @@ function loadServer() {
     fetchMutes(serverId.value).catch(() => {})
     backend.automod_rules.list(serverId.value).then((rules) => { automodRules.value = rules }).catch(() => {})
     fetchEvents(serverId.value).catch(() => {})
+    // Check space integration requirements
+    if (authStore.user?.id) {
+      getMissingRequirements(serverId.value, authStore.user.id)
+        .then((missing) => { missingIntegrations.value = missing; dismissedIntegrationBanner.value = false })
+        .catch(() => {})
+    }
   }
 }
 
@@ -1362,6 +1374,24 @@ function onServerHeaderContext(event: MouseEvent) {
         @delete="forumPostViewRef?.handleDeletePost()"
       />
     </template>
+
+    <!-- Integration requirements banner -->
+    <div
+      v-if="missingIntegrations.length > 0 && !dismissedIntegrationBanner"
+      class="flex items-center justify-between border-b border-accent/20 bg-accent/10 px-4 py-2 text-sm"
+    >
+      <div class="flex items-center gap-2 min-w-0">
+        <svg class="h-4 w-4 flex-shrink-0 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" /></svg>
+        <span class="text-text-secondary truncate">
+          This space recommends connecting
+          <span class="font-medium text-text-primary">{{ missingIntegrations.map((m) => m.integration.name).join(', ') }}</span>
+        </span>
+        <button @click="router.push('/settings')" class="flex-shrink-0 text-accent hover:underline">Connect in Settings</button>
+      </div>
+      <button @click="dismissedIntegrationBanner = true" class="ml-2 flex-shrink-0 rounded p-1 text-text-muted hover:text-text-primary">
+        <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
 
     <!-- Forum index view -->
     <div v-if="activeView === 'forum'" class="flex-1 overflow-y-auto">

@@ -73,6 +73,11 @@ const router = createRouter({
       component: () => import('@/pages/ModQueuePage.vue'),
     },
     {
+      path: '/admin/integrations',
+      name: 'admin-integrations',
+      component: () => import('@/pages/AdminIntegrationsPage.vue'),
+    },
+    {
       path: '/invite/:code',
       name: 'invite',
       component: () => import('@/pages/InvitePage.vue'),

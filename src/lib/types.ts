@@ -442,3 +442,64 @@ export interface ForumVote {
   user_id: string
   value: 1 | -1
 }
+
+// ── Integrations ─────────────────────────────────────────────
+
+export type IntegrationAuthMode = 'same_domain_cookie' | 'oauth_redirect' | 'token_exchange'
+
+export type IntegrationFieldType = 'number' | 'text' | 'badge' | 'list' | 'activity_feed' | 'progress_bar'
+
+export type FieldVisibility = 'public' | 'private' | 'hidden'
+
+export interface Integration {
+  id: string
+  name: string
+  slug: string
+  description: string
+  icon_url: string | null
+  api_base_url: string
+  auth_mode: IntegrationAuthMode
+  data_endpoint: string
+  default_ttl_seconds: number
+  enabled: boolean
+  created_by: string
+  created_at: string
+  updated_at: string
+}
+
+export interface IntegrationFieldSchema {
+  id: string
+  integration_id: string
+  field_key: string
+  label: string
+  field_type: IntegrationFieldType
+  default_visibility: FieldVisibility
+  sort_order: number
+  created_at: string
+}
+
+export interface UserIntegration {
+  id: string
+  user_id: string
+  integration_id: string
+  external_user_id: string | null
+  connected_at: string
+  synced_data: Record<string, unknown> | null
+  synced_at: string | null
+  connection_token: string | null
+}
+
+export interface UserFieldVisibility {
+  user_id: string
+  field_schema_id: string
+  visibility: FieldVisibility
+}
+
+export interface SpaceIntegrationRequirement {
+  id: string
+  server_id: string
+  integration_id: string
+  field_key: string
+  required: boolean
+  created_at: string
+}

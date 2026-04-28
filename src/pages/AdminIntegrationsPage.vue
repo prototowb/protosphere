@@ -1,0 +1,393 @@
+<script setup lang="ts">
+import { ref, onMounted } from 'vue'
+import { useIntegrations } from '@/composables/useIntegrations'
+import { useAuthStore } from '@/stores/auth'
+import { useToastStore } from '@/stores/toast'
+import IntegrationCard from '@/components/integrations/IntegrationCard.vue'
+import type { Integration, IntegrationFieldSchema, IntegrationFieldType, FieldVisibility } from '@/lib/types'
+
+const authStore = useAuthStore()
+const toastStore = useToastStore()
+const {
+  integrations,
+  loading,
+  fetchIntegrations,
+  createIntegration,
+  updateIntegration,
+  deleteIntegration,
+  listFieldSchemas,
+  createFieldSchema,
+  deleteFieldSchema,
+} = useIntegrations()
+
+// ── Views ─────────────────────────────────────────────────────
+const view = ref<'list' | 'create' | 'detail'>('list')
+const selectedIntegration = ref<Integration | null>(null)
+const fieldSchemas = ref<IntegrationFieldSchema[]>([])
+
+// ── Create form ───────────────────────────────────────────────
+const form = ref({
+  name: '',
+  slug: '',
+  description: '',
+  api_base_url: '',
+  data_endpoint: '',
+  auth_mode: 'same_domain_cookie' as Integration['auth_mode'],
+  default_ttl_seconds: 300,
+})
+const saving = ref(false)
+
+// ── Field form ────────────────────────────────────────────────
+const showFieldForm = ref(false)
+const fieldForm = ref({
+  field_key: '',
+  label: '',
+  field_type: 'text' as IntegrationFieldType,
+  default_visibility: 'public' as FieldVisibility,
+})
+
+onMounted(fetchIntegrations)
+
+function autoSlug() {
+  form.value.slug = form.value.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+}
+
+async function handleCreate() {
+  if (!authStore.user) return
+  saving.value = true
+  try {
+    await createIntegration({ ...form.value, created_by: authStore.user.id })
+    toastStore.show('Integration created', 'success')
+    form.value = { name: '', slug: '', description: '', api_base_url: '', data_endpoint: '', auth_mode: 'same_domain_cookie', default_ttl_seconds: 300 }
+    view.value = 'list'
+  } catch (e: unknown) {
+    toastStore.show(e instanceof Error ? e.message : 'Failed to create', 'error')
+  } finally {
+    saving.value = false
+  }
+}
+
+async function openDetail(integration: Integration) {
+  selectedIntegration.value = integration
+  initEditForm(integration)
+  fieldSchemas.value = await listFieldSchemas(integration.id)
+  view.value = 'detail'
+}
+
+async function toggleEnabled(integration: Integration) {
+  await updateIntegration(integration.id, { enabled: !integration.enabled })
+}
+
+async function handleDelete(id: string) {
+  await deleteIntegration(id)
+  toastStore.show('Integration deleted', 'success')
+  view.value = 'list'
+}
+
+async function handleAddField() {
+  if (!selectedIntegration.value) return
+  const schema = await createFieldSchema({
+    integration_id: selectedIntegration.value.id,
+    ...fieldForm.value,
+    sort_order: fieldSchemas.value.length,
+  })
+  fieldSchemas.value = [...fieldSchemas.value, schema]
+  fieldForm.value = { field_key: '', label: '', field_type: 'text', default_visibility: 'public' }
+  showFieldForm.value = false
+}
+
+async function handleDeleteField(id: string) {
+  await deleteFieldSchema(id)
+  fieldSchemas.value = fieldSchemas.value.filter((s) => s.id !== id)
+}
+
+// ── Detail editing ───────────────────────────────────────────
+const editForm = ref({
+  name: '',
+  description: '',
+  api_base_url: '',
+  data_endpoint: '',
+  auth_mode: 'same_domain_cookie' as Integration['auth_mode'],
+  default_ttl_seconds: 300,
+})
+const editSaving = ref(false)
+const testing = ref(false)
+
+function initEditForm(integration: Integration) {
+  editForm.value = {
+    name: integration.name,
+    description: integration.description,
+    api_base_url: integration.api_base_url,
+    data_endpoint: integration.data_endpoint,
+    auth_mode: integration.auth_mode,
+    default_ttl_seconds: integration.default_ttl_seconds,
+  }
+}
+
+async function handleSaveDetail() {
+  if (!selectedIntegration.value) return
+  editSaving.value = true
+  try {
+    await updateIntegration(selectedIntegration.value.id, editForm.value)
+    selectedIntegration.value = { ...selectedIntegration.value, ...editForm.value }
+    toastStore.show('Integration updated', 'success')
+  } catch (e: unknown) {
+    toastStore.show(e instanceof Error ? e.message : 'Failed to update', 'error')
+  } finally {
+    editSaving.value = false
+  }
+}
+
+async function handleTestConnection() {
+  testing.value = true
+  const url = editForm.value.api_base_url.replace(/\/$/, '') + editForm.value.data_endpoint
+  try {
+    const resp = await fetch(url, { method: 'HEAD', mode: 'no-cors' })
+    // no-cors returns opaque response (status 0) — any non-error means reachable
+    if (resp.ok || resp.type === 'opaque') {
+      toastStore.show('Connection successful', 'success')
+    } else {
+      toastStore.show(`Connection returned ${resp.status}`, 'error')
+    }
+  } catch {
+    toastStore.show('Connection failed — check URL and CORS', 'error')
+  } finally {
+    testing.value = false
+  }
+}
+
+const authModes: { value: Integration['auth_mode']; label: string; desc: string }[] = [
+  { value: 'same_domain_cookie', label: 'SSO (Cookie)', desc: 'Automatic login via shared parent domain cookie' },
+  { value: 'oauth_redirect', label: 'OAuth Redirect', desc: 'Redirect to external app for authorization' },
+  { value: 'token_exchange', label: 'Token Exchange', desc: 'User pastes a connection token manually' },
+]
+
+const fieldTypes: IntegrationFieldType[] = ['number', 'text', 'badge', 'list', 'activity_feed', 'progress_bar']
+</script>
+
+<template>
+  <div class="flex flex-1 flex-col overflow-y-auto p-6">
+    <!-- ── List view ─────────────────────────────────────────── -->
+    <template v-if="view === 'list'">
+      <div class="mb-6 flex items-center justify-between">
+        <h1 class="text-2xl font-bold text-text-primary">Integrations</h1>
+        <button
+          @click="view = 'create'"
+          class="rounded-md bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover transition-colors"
+        >Add Integration</button>
+      </div>
+
+      <div v-if="loading" class="grid gap-3 sm:grid-cols-2">
+        <div v-for="i in 4" :key="i" class="h-24 animate-pulse rounded-lg bg-bg-secondary" />
+      </div>
+
+      <div v-else-if="integrations.length === 0" class="rounded-lg bg-bg-secondary p-8 text-center text-sm text-text-muted">
+        No integrations registered yet. Add one to connect external apps.
+      </div>
+
+      <div v-else class="grid gap-3 sm:grid-cols-2">
+        <IntegrationCard
+          v-for="integration in integrations"
+          :key="integration.id"
+          :integration="integration"
+          @click="openDetail(integration)"
+        />
+      </div>
+    </template>
+
+    <!-- ── Create view ───────────────────────────────────────── -->
+    <template v-if="view === 'create'">
+      <div class="mb-6 flex items-center gap-3">
+        <button @click="view = 'list'" class="rounded p-1 text-text-muted hover:bg-bg-hover hover:text-text-primary">
+          <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
+        </button>
+        <h1 class="text-2xl font-bold text-text-primary">Add Integration</h1>
+      </div>
+
+      <form class="mx-auto max-w-2xl space-y-5" @submit.prevent="handleCreate">
+        <div>
+          <label class="mb-1 block text-sm font-medium text-text-secondary">Name</label>
+          <input v-model="form.name" @input="autoSlug" required class="w-full rounded border border-bg-tertiary bg-bg-primary px-3 py-2 text-text-primary outline-none focus:border-accent" placeholder="TypeScript Learning Platform" />
+        </div>
+        <div>
+          <label class="mb-1 block text-sm font-medium text-text-secondary">Slug</label>
+          <input v-model="form.slug" required class="w-full rounded border border-bg-tertiary bg-bg-primary px-3 py-2 text-text-primary outline-none focus:border-accent font-mono text-sm" placeholder="ts-learning" />
+          <p class="mt-1 text-xs text-text-muted">URL-safe identifier. Auto-generated from name.</p>
+        </div>
+        <div>
+          <label class="mb-1 block text-sm font-medium text-text-secondary">Description</label>
+          <textarea v-model="form.description" rows="2" class="w-full rounded border border-bg-tertiary bg-bg-primary px-3 py-2 text-text-primary outline-none focus:border-accent resize-none" placeholder="Track your coding progress..." />
+        </div>
+        <div>
+          <label class="mb-1 block text-sm font-medium text-text-secondary">API Base URL</label>
+          <input v-model="form.api_base_url" required class="w-full rounded border border-bg-tertiary bg-bg-primary px-3 py-2 text-text-primary outline-none focus:border-accent font-mono text-sm" placeholder="https://typescript.protocode.xyz" />
+        </div>
+        <div>
+          <label class="mb-1 block text-sm font-medium text-text-secondary">Data Endpoint</label>
+          <input v-model="form.data_endpoint" required class="w-full rounded border border-bg-tertiary bg-bg-primary px-3 py-2 text-text-primary outline-none focus:border-accent font-mono text-sm" placeholder="/functions/v1/protosphere-user-data" />
+          <p class="mt-1 text-xs text-text-muted">Path appended to base URL when fetching user data.</p>
+        </div>
+        <div>
+          <label class="mb-1 block text-sm font-medium text-text-secondary">Auth Mode</label>
+          <div class="grid gap-2 sm:grid-cols-3">
+            <label
+              v-for="mode in authModes"
+              :key="mode.value"
+              class="cursor-pointer rounded border p-3 transition-colors"
+              :class="form.auth_mode === mode.value ? 'border-accent bg-accent/10' : 'border-bg-tertiary hover:border-bg-hover'"
+            >
+              <input v-model="form.auth_mode" type="radio" :value="mode.value" class="sr-only" />
+              <p class="text-sm font-medium text-text-primary">{{ mode.label }}</p>
+              <p class="mt-0.5 text-xs text-text-muted">{{ mode.desc }}</p>
+            </label>
+          </div>
+        </div>
+        <div>
+          <label class="mb-1 block text-sm font-medium text-text-secondary">Cache TTL (seconds)</label>
+          <input v-model.number="form.default_ttl_seconds" type="number" min="0" class="w-32 rounded border border-bg-tertiary bg-bg-primary px-3 py-2 text-text-primary outline-none focus:border-accent" />
+        </div>
+        <div class="flex justify-end gap-2 pt-2">
+          <button type="button" @click="view = 'list'" class="rounded-md px-4 py-2 text-sm text-text-secondary hover:bg-bg-hover transition-colors">Cancel</button>
+          <button type="submit" :disabled="saving" class="rounded-md bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover transition-colors disabled:opacity-50">
+            {{ saving ? 'Creating...' : 'Create Integration' }}
+          </button>
+        </div>
+      </form>
+    </template>
+
+    <!-- ── Detail view ───────────────────────────────────────── -->
+    <template v-if="view === 'detail' && selectedIntegration">
+      <div class="mb-6 flex items-center gap-3">
+        <button @click="view = 'list'" class="rounded p-1 text-text-muted hover:bg-bg-hover hover:text-text-primary">
+          <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
+        </button>
+        <h1 class="text-2xl font-bold text-text-primary">{{ selectedIntegration.name }}</h1>
+        <span class="rounded-full px-2 py-0.5 text-xs font-medium" :class="selectedIntegration.enabled ? 'bg-green-500/15 text-green-400' : 'bg-red-500/15 text-red-400'">
+          {{ selectedIntegration.enabled ? 'Enabled' : 'Disabled' }}
+        </span>
+      </div>
+
+      <div class="mx-auto max-w-2xl space-y-6">
+        <!-- Editable config -->
+        <section>
+          <h2 class="mb-3 text-xs font-semibold uppercase tracking-wide text-text-muted">Configuration</h2>
+          <form class="space-y-3 rounded-lg bg-bg-secondary p-4" @submit.prevent="handleSaveDetail">
+            <div class="flex justify-between text-sm"><span class="text-text-muted pt-1.5">Slug</span><span class="font-mono text-text-secondary pt-1.5">{{ selectedIntegration.slug }}</span></div>
+            <div>
+              <label class="mb-1 block text-xs text-text-muted">Name</label>
+              <input v-model="editForm.name" required class="w-full rounded border border-bg-tertiary bg-bg-primary px-2 py-1.5 text-sm text-text-primary outline-none focus:border-accent" />
+            </div>
+            <div>
+              <label class="mb-1 block text-xs text-text-muted">Description</label>
+              <textarea v-model="editForm.description" rows="2" class="w-full rounded border border-bg-tertiary bg-bg-primary px-2 py-1.5 text-sm text-text-primary outline-none focus:border-accent resize-none" />
+            </div>
+            <div>
+              <label class="mb-1 block text-xs text-text-muted">API Base URL</label>
+              <input v-model="editForm.api_base_url" required class="w-full rounded border border-bg-tertiary bg-bg-primary px-2 py-1.5 text-sm text-text-primary outline-none focus:border-accent font-mono" />
+            </div>
+            <div>
+              <label class="mb-1 block text-xs text-text-muted">Data Endpoint</label>
+              <input v-model="editForm.data_endpoint" required class="w-full rounded border border-bg-tertiary bg-bg-primary px-2 py-1.5 text-sm text-text-primary outline-none focus:border-accent font-mono" />
+            </div>
+            <div>
+              <label class="mb-1 block text-xs text-text-muted">Auth Mode</label>
+              <select v-model="editForm.auth_mode" class="w-full rounded border border-bg-tertiary bg-bg-primary px-2 py-1.5 text-sm text-text-primary outline-none focus:border-accent">
+                <option v-for="mode in authModes" :key="mode.value" :value="mode.value">{{ mode.label }}</option>
+              </select>
+            </div>
+            <div>
+              <label class="mb-1 block text-xs text-text-muted">Cache TTL (seconds)</label>
+              <input v-model.number="editForm.default_ttl_seconds" type="number" min="0" class="w-32 rounded border border-bg-tertiary bg-bg-primary px-2 py-1.5 text-sm text-text-primary outline-none focus:border-accent" />
+            </div>
+            <div class="flex items-center gap-2 pt-1">
+              <button type="submit" :disabled="editSaving" class="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent-hover transition-colors disabled:opacity-50">
+                {{ editSaving ? 'Saving...' : 'Save Changes' }}
+              </button>
+              <button type="button" @click="handleTestConnection" :disabled="testing" class="rounded-md border border-bg-tertiary px-3 py-1.5 text-xs text-text-secondary hover:bg-bg-hover transition-colors disabled:opacity-50">
+                {{ testing ? 'Testing...' : 'Test Connection' }}
+              </button>
+            </div>
+          </form>
+        </section>
+
+        <!-- Field schemas -->
+        <section>
+          <div class="mb-3 flex items-center justify-between">
+            <h2 class="text-xs font-semibold uppercase tracking-wide text-text-muted">Data Fields</h2>
+            <button
+              @click="showFieldForm = !showFieldForm"
+              class="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent-hover transition-colors"
+            >{{ showFieldForm ? 'Cancel' : 'Add Field' }}</button>
+          </div>
+
+          <!-- Add field form -->
+          <form v-if="showFieldForm" class="mb-4 space-y-3 rounded-lg border border-accent/30 bg-bg-secondary p-4" @submit.prevent="handleAddField">
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="mb-1 block text-xs text-text-muted">Field Key</label>
+                <input v-model="fieldForm.field_key" required placeholder="xp" class="w-full rounded border border-bg-tertiary bg-bg-primary px-2 py-1.5 text-sm text-text-primary outline-none focus:border-accent font-mono" />
+              </div>
+              <div>
+                <label class="mb-1 block text-xs text-text-muted">Label</label>
+                <input v-model="fieldForm.label" required placeholder="Experience Points" class="w-full rounded border border-bg-tertiary bg-bg-primary px-2 py-1.5 text-sm text-text-primary outline-none focus:border-accent" />
+              </div>
+              <div>
+                <label class="mb-1 block text-xs text-text-muted">Type</label>
+                <select v-model="fieldForm.field_type" class="w-full rounded border border-bg-tertiary bg-bg-primary px-2 py-1.5 text-sm text-text-primary outline-none focus:border-accent">
+                  <option v-for="t in fieldTypes" :key="t" :value="t">{{ t }}</option>
+                </select>
+              </div>
+              <div>
+                <label class="mb-1 block text-xs text-text-muted">Default Visibility</label>
+                <select v-model="fieldForm.default_visibility" class="w-full rounded border border-bg-tertiary bg-bg-primary px-2 py-1.5 text-sm text-text-primary outline-none focus:border-accent">
+                  <option value="public">Public</option>
+                  <option value="private">Only me</option>
+                  <option value="hidden">Hidden</option>
+                </select>
+              </div>
+            </div>
+            <div class="flex justify-end">
+              <button type="submit" class="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent-hover transition-colors">Add Field</button>
+            </div>
+          </form>
+
+          <!-- Field list -->
+          <div v-if="fieldSchemas.length === 0" class="rounded-lg bg-bg-secondary p-4 text-center text-sm text-text-muted">
+            No fields defined yet. Add fields to specify what data this integration exposes.
+          </div>
+          <div v-else class="space-y-1">
+            <div
+              v-for="schema in fieldSchemas"
+              :key="schema.id"
+              class="flex items-center justify-between rounded-lg bg-bg-secondary px-4 py-2.5"
+            >
+              <div class="flex items-center gap-3 min-w-0">
+                <span class="rounded bg-bg-tertiary px-1.5 py-0.5 text-[10px] font-mono text-text-muted">{{ schema.field_key }}</span>
+                <span class="text-sm text-text-primary truncate">{{ schema.label }}</span>
+                <span class="rounded bg-bg-tertiary px-1.5 py-0.5 text-[10px] text-text-muted">{{ schema.field_type }}</span>
+              </div>
+              <button
+                @click="handleDeleteField(schema.id)"
+                class="flex-shrink-0 rounded p-1 text-text-muted hover:bg-bg-hover hover:text-red-400 transition-colors"
+              >
+                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <!-- Actions -->
+        <section class="flex gap-2 border-t border-bg-tertiary pt-4">
+          <button
+            @click="toggleEnabled(selectedIntegration)"
+            class="rounded-md border border-bg-tertiary px-3 py-2 text-sm text-text-secondary hover:bg-bg-hover transition-colors"
+          >{{ selectedIntegration.enabled ? 'Disable' : 'Enable' }}</button>
+          <button
+            @click="handleDelete(selectedIntegration.id)"
+            class="rounded-md bg-red-600/20 px-3 py-2 text-sm font-medium text-red-400 hover:bg-red-600/30 transition-colors"
+          >Delete Integration</button>
+        </section>
+      </div>
+    </template>
+  </div>
+</template>

@@ -14,7 +14,7 @@ onMounted(loadStats)
     <h1 class="mb-6 text-2xl font-bold text-text-primary">Admin Dashboard</h1>
 
     <div v-if="loading" class="grid grid-cols-2 gap-4">
-      <div v-for="i in 4" :key="i" class="rounded-xl bg-bg-secondary p-6 animate-pulse">
+      <div v-for="i in 5" :key="i" class="rounded-xl bg-bg-secondary p-6 animate-pulse">
         <div class="mb-2 h-8 w-16 rounded bg-bg-tertiary" />
         <div class="h-4 w-24 rounded bg-bg-tertiary" />
       </div>
@@ -72,6 +72,18 @@ onMounted(loadStats)
           Manage
         </button>
       </div>
+
+      <!-- Integrations -->
+      <div class="rounded-xl bg-bg-secondary p-6">
+        <p class="mb-1 text-3xl font-bold text-text-primary">{{ stats.integrations }}</p>
+        <p class="mb-4 text-sm text-text-secondary">Integrations</p>
+        <button
+          @click="router.push('/admin/integrations')"
+          class="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent-hover transition-colors"
+        >
+          Manage
+        </button>
+      </div>
     </div>
 
     <!-- Quick links -->
@@ -101,6 +113,12 @@ onMounted(loadStats)
           class="rounded-md border border-bg-tertiary px-3 py-2 text-sm text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
         >
           Member Directory
+        </router-link>
+        <router-link
+          to="/admin/integrations"
+          class="rounded-md border border-bg-tertiary px-3 py-2 text-sm text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
+        >
+          Integrations
         </router-link>
       </div>
     </div>
