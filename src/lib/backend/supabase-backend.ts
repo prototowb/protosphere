@@ -1512,7 +1512,14 @@ export function createSupabaseBackend(): Backend {
         if (integration.auth_mode === 'token_exchange' && userIntegration.connection_token) {
           (fetchOpts.headers as Record<string, string>)['Authorization'] = `Bearer ${userIntegration.connection_token}`
         } else if (integration.auth_mode === 'same_domain_cookie') {
-          fetchOpts.credentials = 'include'
+          // Both Supabase projects share the same JWT secret, so the current
+          // session's access_token is accepted by the external API natively.
+          // We send it as Bearer rather than relying on cookie propagation,
+          // which breaks for cross-origin endpoints (e.g. *.supabase.co).
+          const { data: { session } } = await client.auth.getSession()
+          if (session?.access_token) {
+            (fetchOpts.headers as Record<string, string>)['Authorization'] = `Bearer ${session.access_token}`
+          }
         }
 
         const resp = await fetch(url, fetchOpts)
