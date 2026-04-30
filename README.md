@@ -101,13 +101,21 @@ The Supabase CLI is linked to staging by default. Production requires the explic
 
 ---
 
+## Integrations
+
+Protosphere has a generic integrations framework for connecting external apps. Admins register integrations via the dashboard, users link their accounts and control what data is visible on their profile.
+
+See **[INTEGRATIONS.md](INTEGRATIONS.md)** for the full guide on building an integration for Protosphere.
+
+---
+
 ## Project Structure
 
 ```
 src/
   assets/         # Global CSS + theme tokens
-  components/     # UI components (layout, messages, moderation, ui/)
-  composables/    # Vue composables (useRealtime, usePermissions, etc.)
+  components/     # UI components (layout, messages, moderation, integrations/, ui/)
+  composables/    # Vue composables (useRealtime, usePermissions, useIntegrations, etc.)
   lib/
     backend/      # Backend adapter (local.ts / supabase-backend.ts)
     permissions.ts
@@ -116,7 +124,7 @@ src/
   router.ts
   stores/         # Pinia stores
 supabase/
-  migrations/     # SQL migrations (001–049)
+  migrations/     # SQL migrations (001–050)
 ```
 
 ---

@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useIntegrations } from '@/composables/useIntegrations'
 import { useAuthStore } from '@/stores/auth'
 import { useToastStore } from '@/stores/toast'
+import { supabase } from '@/lib/supabase'
 import IntegrationCard from '@/components/integrations/IntegrationCard.vue'
 import type { Integration, IntegrationFieldSchema, IntegrationFieldType, FieldVisibility } from '@/lib/types'
 
@@ -163,6 +164,101 @@ const authModes: { value: Integration['auth_mode']; label: string; desc: string 
 ]
 
 const fieldTypes: IntegrationFieldType[] = ['number', 'text', 'badge', 'list', 'activity_feed', 'progress_bar']
+
+// ── Remote schema discovery ──────────────────────────────────
+interface RemoteField {
+  key: string
+  label: string
+  type: IntegrationFieldType
+}
+const remoteFields = ref<RemoteField[]>([])
+const fetchingSchema = ref(false)
+const selectedRemoteFields = ref<Set<string>>(new Set())
+
+const availableRemoteFields = computed(() => {
+  const existingKeys = new Set(fieldSchemas.value.map((s) => s.field_key))
+  return remoteFields.value.filter((f) => !existingKeys.has(f.key))
+})
+
+async function fetchRemoteSchema() {
+  if (!selectedIntegration.value) return
+  fetchingSchema.value = true
+  remoteFields.value = []
+  selectedRemoteFields.value = new Set()
+
+  const integration = selectedIntegration.value
+  const url = integration.api_base_url.replace(/\/$/, '') + integration.data_endpoint
+
+  try {
+    // Try schema-only mode first (no auth needed, supported by compliant endpoints)
+    let resp = await fetch(url + '?schema=true')
+
+    if (!resp.ok) {
+      // Fall back to authenticated data endpoint
+      const headers: Record<string, string> = {}
+      if (supabase) {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (session?.access_token) {
+          headers['Authorization'] = `Bearer ${session.access_token}`
+        }
+      }
+      resp = await fetch(url, { headers })
+    }
+
+    if (!resp.ok) throw new Error(`API returned ${resp.status}`)
+    const payload = await resp.json()
+
+    const fields = payload.fields ?? payload
+    if (typeof fields !== 'object' || fields === null) throw new Error('No fields object in response')
+
+    const parsed: RemoteField[] = []
+    for (const [key, val] of Object.entries(fields)) {
+      const f = val as Record<string, unknown>
+      const type = (typeof f.type === 'string' && fieldTypes.includes(f.type as IntegrationFieldType))
+        ? f.type as IntegrationFieldType
+        : 'text'
+      parsed.push({
+        key,
+        label: typeof f.label === 'string' ? f.label : key,
+        type,
+      })
+    }
+    remoteFields.value = parsed
+    if (parsed.length === 0) {
+      toastStore.show('No fields found in API response', 'info')
+    }
+  } catch (e: unknown) {
+    toastStore.show(e instanceof Error ? e.message : 'Failed to fetch schema', 'error')
+  } finally {
+    fetchingSchema.value = false
+  }
+}
+
+function toggleRemoteField(key: string) {
+  const s = new Set(selectedRemoteFields.value)
+  if (s.has(key)) s.delete(key)
+  else s.add(key)
+  selectedRemoteFields.value = s
+}
+
+async function importSelectedFields() {
+  if (!selectedIntegration.value) return
+  const toImport = remoteFields.value.filter((f) => selectedRemoteFields.value.has(f.key))
+  for (const f of toImport) {
+    const schema = await createFieldSchema({
+      integration_id: selectedIntegration.value.id,
+      field_key: f.key,
+      label: f.label,
+      field_type: f.type,
+      default_visibility: 'public',
+      sort_order: fieldSchemas.value.length,
+    })
+    fieldSchemas.value = [...fieldSchemas.value, schema]
+  }
+  toastStore.show(`Imported ${toImport.length} field(s)`, 'success')
+  selectedRemoteFields.value = new Set()
+  remoteFields.value = []
+}
 </script>
 
 <template>
@@ -314,13 +410,57 @@ const fieldTypes: IntegrationFieldType[] = ['number', 'text', 'badge', 'list', '
         <section>
           <div class="mb-3 flex items-center justify-between">
             <h2 class="text-xs font-semibold uppercase tracking-wide text-text-muted">Data Fields</h2>
-            <button
-              @click="showFieldForm = !showFieldForm"
-              class="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent-hover transition-colors"
-            >{{ showFieldForm ? 'Cancel' : 'Add Field' }}</button>
+            <div class="flex items-center gap-2">
+              <button
+                @click="fetchRemoteSchema"
+                :disabled="fetchingSchema"
+                class="rounded-md border border-accent/40 px-3 py-1.5 text-xs font-medium text-accent hover:bg-accent/10 transition-colors disabled:opacity-50"
+              >{{ fetchingSchema ? 'Fetching...' : 'Fetch from API' }}</button>
+              <button
+                @click="showFieldForm = !showFieldForm; remoteFields = []"
+                class="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent-hover transition-colors"
+              >{{ showFieldForm ? 'Cancel' : 'Add Manually' }}</button>
+            </div>
           </div>
 
-          <!-- Add field form -->
+          <!-- Remote field picker -->
+          <div v-if="remoteFields.length > 0" class="mb-4 rounded-lg border border-accent/30 bg-bg-secondary p-4">
+            <p class="mb-3 text-xs text-text-muted">Select fields to import from the API response:</p>
+            <div class="space-y-1.5">
+              <label
+                v-for="rf in availableRemoteFields"
+                :key="rf.key"
+                class="flex cursor-pointer items-center gap-3 rounded-md px-3 py-2 transition-colors"
+                :class="selectedRemoteFields.has(rf.key) ? 'bg-accent/10' : 'hover:bg-bg-hover'"
+              >
+                <input
+                  type="checkbox"
+                  :checked="selectedRemoteFields.has(rf.key)"
+                  @change="toggleRemoteField(rf.key)"
+                  class="accent-accent"
+                />
+                <span class="rounded bg-bg-tertiary px-1.5 py-0.5 text-[10px] font-mono text-text-muted">{{ rf.key }}</span>
+                <span class="text-sm text-text-primary">{{ rf.label }}</span>
+                <span class="rounded bg-bg-tertiary px-1.5 py-0.5 text-[10px] text-text-muted">{{ rf.type }}</span>
+              </label>
+            </div>
+            <div v-if="remoteFields.length > 0 && availableRemoteFields.length === 0" class="py-2 text-center text-xs text-text-muted">
+              All discovered fields are already registered.
+            </div>
+            <div class="mt-3 flex items-center justify-between">
+              <button
+                @click="remoteFields = []"
+                class="text-xs text-text-muted hover:text-text-primary"
+              >Dismiss</button>
+              <button
+                v-if="selectedRemoteFields.size > 0"
+                @click="importSelectedFields"
+                class="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent-hover transition-colors"
+              >Import {{ selectedRemoteFields.size }} field(s)</button>
+            </div>
+          </div>
+
+          <!-- Manual add field form -->
           <form v-if="showFieldForm" class="mb-4 space-y-3 rounded-lg border border-accent/30 bg-bg-secondary p-4" @submit.prevent="handleAddField">
             <div class="grid grid-cols-2 gap-3">
               <div>
