@@ -225,6 +225,39 @@ Your API Endpoint  <---(GET + Bearer JWT)---  Protosphere Backend
 
 ---
 
+## Local Development Testing
+
+Both Supabase instances run locally with the same default JWT secret, so JWTs are cross-compatible. However, `auth.users` tables are separate — a Protosphere user doesn't automatically exist in the integration's database.
+
+### Setup
+
+1. Start both local Supabase instances and both dev servers
+2. Register/login on Protosphere (note your user UUID from Supabase Studio or browser DevTools)
+3. **Seed test data** in the learning platform for your Protosphere UUID:
+   ```bash
+   cd code-lang-learning/typescript
+   npx tsx scripts/seed-protosphere-user.ts <your-protosphere-uuid>
+   ```
+4. In Protosphere admin, register the integration (API Base URL: `http://localhost:54331`, Data Endpoint: `/functions/v1/protosphere-user-data`)
+5. Click **"Fetch from API"** to import fields, then **Enable**
+6. In Protosphere user Settings, click **Connect**, then **Sync**
+
+### Using the Learning Platform as a Protosphere User
+
+The seed script creates the user in the learning platform's `auth.users`. To also browse the learning platform as that user:
+
+1. Get your Protosphere session tokens from browser DevTools:
+   ```js
+   JSON.parse(localStorage.getItem('sb-127.0.0.1-auth-token'))
+   ```
+2. Visit: `http://localhost:5174/dev/auth?access_token=<token>&refresh_token=<token>`
+
+This dev-only page calls `setSession()` with your Protosphere JWT, authenticating you on the learning platform with the same UUID. Any learning activity you do will be returned by the integration API.
+
+> **Note:** The `/dev/auth` route is only available in dev mode and does not exist in production builds.
+
+---
+
 ## Database Tables (Reference)
 
 These tables are created by migration `050_integrations.sql`:
