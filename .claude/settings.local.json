@@ -15,7 +15,20 @@
       "Bash(gh run:*)",
       "Bash(/c/Users/tobia/scoop/shims/supabase db:*)",
       "Bash(/c/Users/tobia/scoop/shims/supabase migration:*)",
-      "Bash(xargs grep:*)"
+      "Bash(xargs grep:*)",
+      "Bash(grep -r \"theme\" /g/Projects/protocode-chat/vite.config.ts /g/Projects/protocode-chat/postcss.config.* /g/Projects/protocode-chat/tailwind.config.*)",
+      "Bash(cmd.exe /c \"supabase db reset --workdir G:/Projects/protocode-chat\")",
+      "Bash(/c/Users/tobia/scoop/shims/supabase status:*)",
+      "Bash(curl -s http://localhost:54331/functions/v1/protosphere-user-data?schema=true)",
+      "Bash(curl:*)",
+      "Bash(PGPASSWORD=postgres psql -h 127.0.0.1 -p 54322 -U postgres -d postgres -c \"SELECT raw_app_meta_data->'jwt_secret' FROM auth.schema_migrations LIMIT 1;\")",
+      "Bash(PGPASSWORD=postgres psql -h 127.0.0.1 -p 54322 -U postgres -d postgres -c \"SHOW app.settings.jwt_secret;\")",
+      "Bash(PGPASSWORD=postgres psql -h 127.0.0.1 -p 54322 -U postgres -d postgres -c \"SELECT key, value FROM vault.secrets WHERE key LIKE '%jwt%';\")",
+      "Bash(PGPASSWORD=postgres psql -h 127.0.0.1 -p 54332 -U postgres -d postgres -c \"SELECT key, value FROM vault.secrets WHERE key LIKE '%jwt%';\")",
+      "Bash(python3 -m json.tool)",
+      "Bash(ls \"G:/Projects/code-lang-learning/typescript/src/\"*.vue)",
+      "Bash(ls \"G:/Projects/code-lang-learning/typescript/src/App\"*)",
+      "Bash(python3 -c \"import sys,json; data=json.load\\(sys.stdin\\); [print\\(u['id'], u.get\\('email',''\\)\\) for u in data.get\\('users',[]\\)]\")"
     ]
   }
 }
