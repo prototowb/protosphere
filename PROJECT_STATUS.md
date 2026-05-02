@@ -5,12 +5,12 @@
 ## Current State
 
 ```yaml
-project_phase: "Active Development — M25 Complete"
+project_phase: "Active Development — M25 + Integrations Framework Complete"
 protogear_enabled: true
 framework: "Vue 3 + TypeScript 5.9 + Vite 7 + Tailwind CSS 4 + Pinia + Supabase"
 project_type: "Single-Community Communication Platform"
 initialization_date: "2026-02-20"
-current_milestone: "M25 Complete — planning next milestone"
+current_milestone: "Integrations Framework Complete — planning next milestone"
 local_supabase: true
 ```
 
@@ -35,6 +35,35 @@ Backend adapter auto-detects mode via `VITE_SUPABASE_URL` env var. Local mode us
 ---
 
 ## Active Tickets
+
+### Integrations Framework ✅ (post-M25, 2026-05-02)
+
+**Goal:** Allow external apps (e.g. a learning platform) to expose user data to Protosphere via a standard API contract. Admins register integrations, users connect accounts, spaces can mandate fields as join requirements. Data is pulled and cached with TTL.
+
+**Architecture:** Pull-with-cache — Protosphere calls the external API, stores result in `synced_data` JSONB, refreshes on demand or when TTL expires. Three-layer visibility: admin schema → user per-field → space requirements.
+
+| Area | What was built | Status |
+|------|---------------|--------|
+| DB schema | 5 tables: `integrations`, `integration_field_schemas`, `user_integrations`, `user_field_visibility`, `space_integration_requirements` (migration 050) | ✅ Done |
+| DB: api_key | `api_key` column on `integrations` for gateway auth (migration 051) | ✅ Done |
+| Backend (both) | `integrations`, `userIntegrations`, `integrationFieldSchemas`, `spaceRequirements` namespaces; TTL staleness check in `getPublicUserData` | ✅ Done |
+| Types | `Integration`, `UserIntegration`, `IntegrationFieldSchema`, `UserFieldVisibility`, `SpaceIntegrationRequirement` in `types.ts` | ✅ Done |
+| Admin UI | `AdminIntegrationsPage.vue` — list/create/edit integrations; hybrid field discovery (fetch from API or add manually); enable/disable | ✅ Done |
+| User UI | Settings page: connect/disconnect + manual sync per integration; last-synced timestamp | ✅ Done |
+| Profile display | `UserProfilePage.vue` integration data section; per-field visibility badges | ✅ Done |
+| Space requirements | `useSpaceRequirements.ts`; dismissible banner in `ServerPage.vue` showing missing fields | ✅ Done |
+| Docs | `INTEGRATIONS.md` — full guide for external devs; README section | ✅ Done |
+| Local testing | Dev auth bridge (`/dev/auth?user_id=`), seed script, JWKS-based cross-project JWT verification | ✅ Done |
+
+**Migrations:** `050_integrations.sql`, `051_integration_api_key.sql`
+
+**Key technical decisions:**
+- Auth mode `same_domain_cookie` → send Protosphere Bearer JWT + `apikey` header; external API verifies via JWKS
+- `api_key` field stores the external app's publishable key (needed for Supabase Edge Function gateway)
+- `?schema=true` unauthenticated endpoint for admin field discovery
+- Cross-project JWT: ES256 tokens verified via `createRemoteJWKSet` from issuer's JWKS endpoint (`host.docker.internal` locally)
+
+---
 
 ### M21 — Message Retention Policy ✅
 
@@ -278,7 +307,7 @@ M11 (Roles & Permissions) ──┐
 M12 (Spaces & Community) ───┤                       ├─→ M15 (Supabase & Real-time) ──→ M16 (UI Redesign) ──→ M17 (Auth) ──→ M18 (Deploy) ──→ M19 (Social) ──→ M20 (Perf & Notifications)
                              └─→ M14 (Engagement) ──┘                                                                                                                        │
                                                                                                                                                                                ↓
-                                                                                                                                M21 (Message Retention) ──→ M22 (Forum Foundation) ──→ M23 (Forum Page) ──→ M24 (Onboarding Tour)
+                                                                                                                                M21 (Message Retention) ──→ M22 (Forum Foundation) ──→ M23 (Forum Page) ──→ M24 (Onboarding Tour) ──→ M25 (Permissions) ──→ Integrations Framework
 ```
 
 ---
