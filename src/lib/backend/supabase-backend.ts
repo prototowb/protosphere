@@ -1387,6 +1387,7 @@ export function createSupabaseBackend(): Backend {
             description: data.description ?? '',
             icon_url: data.icon_url ?? null,
             api_base_url: data.api_base_url,
+            api_key: data.api_key ?? '',
             auth_mode: data.auth_mode,
             data_endpoint: data.data_endpoint,
             default_ttl_seconds: data.default_ttl_seconds ?? 300,
@@ -1505,10 +1506,14 @@ export function createSupabaseBackend(): Backend {
 
         const userIntegration = ui as UserIntegration & { integration: Integration }
         const integration = userIntegration.integration
-        const url = integration.api_base_url.replace(/\/$/, '') + integration.data_endpoint
+        const url = integration.api_base_url.trim().replace(/\/$/, '') + integration.data_endpoint.trim()
 
         // Build fetch options based on auth mode
         const fetchOpts: RequestInit = { method: 'GET', headers: {} }
+        // Supabase Edge Functions require the project's publishable key as apikey header
+        if (integration.api_key) {
+          (fetchOpts.headers as Record<string, string>)['apikey'] = integration.api_key
+        }
         if (integration.auth_mode === 'token_exchange' && userIntegration.connection_token) {
           (fetchOpts.headers as Record<string, string>)['Authorization'] = `Bearer ${userIntegration.connection_token}`
         } else if (integration.auth_mode === 'same_domain_cookie') {

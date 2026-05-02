@@ -238,23 +238,25 @@ Both Supabase instances run locally with the same default JWT secret, so JWTs ar
    cd code-lang-learning/typescript
    npx tsx scripts/seed-protosphere-user.ts <your-protosphere-uuid>
    ```
-4. In Protosphere admin, register the integration (API Base URL: `http://localhost:54331`, Data Endpoint: `/functions/v1/protosphere-user-data`)
+4. In Protosphere admin, register the integration:
+   - **API Base URL**: `http://127.0.0.1:54331`
+   - **Data Endpoint**: `/functions/v1/protosphere-user-data`
+   - **API Key**: the learning platform's publishable key (from `supabase status`)
+   - **Auth Mode**: Same Domain Cookie
 5. Click **"Fetch from API"** to import fields, then **Enable**
 6. In Protosphere user Settings, click **Connect**, then **Sync**
 
 ### Using the Learning Platform as a Protosphere User
 
-The seed script creates the user in the learning platform's `auth.users`. To also browse the learning platform as that user:
+The seed script creates the user in the learning platform's `auth.users`. To also browse the learning platform as that user, visit:
 
-1. Get your Protosphere session tokens from browser DevTools:
-   ```js
-   JSON.parse(localStorage.getItem('sb-127.0.0.1-auth-token'))
-   ```
-2. Visit: `http://localhost:5174/dev/auth?access_token=<token>&refresh_token=<token>`
+```
+http://localhost:5174/dev/auth?user_id=<your-protosphere-uuid>
+```
 
-This dev-only page calls `setSession()` with your Protosphere JWT, authenticating you on the learning platform with the same UUID. Any learning activity you do will be returned by the integration API.
+The dev auth page calls a local edge function (`dev-sign-in`) that mints a learning platform session for the given UUID. Any learning activity you do will then be returned by the integration API on your next sync.
 
-> **Note:** The `/dev/auth` route is only available in dev mode and does not exist in production builds.
+> **Note:** The `/dev/auth` route and `dev-sign-in` function are dev-only and do not exist in production.
 
 ---
 

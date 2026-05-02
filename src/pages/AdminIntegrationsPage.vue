@@ -32,6 +32,7 @@ const form = ref({
   slug: '',
   description: '',
   api_base_url: '',
+  api_key: '',
   data_endpoint: '',
   auth_mode: 'same_domain_cookie' as Integration['auth_mode'],
   default_ttl_seconds: 300,
@@ -59,7 +60,7 @@ async function handleCreate() {
   try {
     await createIntegration({ ...form.value, created_by: authStore.user.id })
     toastStore.show('Integration created', 'success')
-    form.value = { name: '', slug: '', description: '', api_base_url: '', data_endpoint: '', auth_mode: 'same_domain_cookie', default_ttl_seconds: 300 }
+    form.value = { name: '', slug: '', description: '', api_base_url: '', api_key: '', data_endpoint: '', auth_mode: 'same_domain_cookie', default_ttl_seconds: 300 }
     view.value = 'list'
   } catch (e: unknown) {
     toastStore.show(e instanceof Error ? e.message : 'Failed to create', 'error')
@@ -107,6 +108,7 @@ const editForm = ref({
   name: '',
   description: '',
   api_base_url: '',
+  api_key: '',
   data_endpoint: '',
   auth_mode: 'same_domain_cookie' as Integration['auth_mode'],
   default_ttl_seconds: 300,
@@ -119,6 +121,7 @@ function initEditForm(integration: Integration) {
     name: integration.name,
     description: integration.description,
     api_base_url: integration.api_base_url,
+    api_key: integration.api_key,
     data_endpoint: integration.data_endpoint,
     auth_mode: integration.auth_mode,
     default_ttl_seconds: integration.default_ttl_seconds,
@@ -141,7 +144,7 @@ async function handleSaveDetail() {
 
 async function handleTestConnection() {
   testing.value = true
-  const url = editForm.value.api_base_url.replace(/\/$/, '') + editForm.value.data_endpoint
+  const url = editForm.value.api_base_url.trim().replace(/\/$/, '') + editForm.value.data_endpoint.trim()
   try {
     const resp = await fetch(url, { method: 'HEAD', mode: 'no-cors' })
     // no-cors returns opaque response (status 0) — any non-error means reachable
@@ -187,15 +190,21 @@ async function fetchRemoteSchema() {
   selectedRemoteFields.value = new Set()
 
   const integration = selectedIntegration.value
-  const url = integration.api_base_url.replace(/\/$/, '') + integration.data_endpoint
+  const url = integration.api_base_url.trim().replace(/\/$/, '') + integration.data_endpoint.trim()
 
   try {
+    // Build common headers — Supabase Edge Functions require the apikey header
+    const baseHeaders: Record<string, string> = {}
+    if (integration.api_key) {
+      baseHeaders['apikey'] = integration.api_key
+    }
+
     // Try schema-only mode first (no auth needed, supported by compliant endpoints)
-    let resp = await fetch(url + '?schema=true')
+    let resp = await fetch(url + '?schema=true', { headers: baseHeaders })
 
     if (!resp.ok) {
       // Fall back to authenticated data endpoint
-      const headers: Record<string, string> = {}
+      const headers: Record<string, string> = { ...baseHeaders }
       if (supabase) {
         const { data: { session } } = await supabase.auth.getSession()
         if (session?.access_token) {
@@ -324,6 +333,11 @@ async function importSelectedFields() {
           <p class="mt-1 text-xs text-text-muted">Path appended to base URL when fetching user data.</p>
         </div>
         <div>
+          <label class="mb-1 block text-sm font-medium text-text-secondary">API Key <span class="text-text-muted font-normal">(optional)</span></label>
+          <input v-model="form.api_key" class="w-full rounded border border-bg-tertiary bg-bg-primary px-3 py-2 text-text-primary outline-none focus:border-accent font-mono text-sm" placeholder="sb_publishable_..." />
+          <p class="mt-1 text-xs text-text-muted">Publishable key for the external API (required for Supabase Edge Functions).</p>
+        </div>
+        <div>
           <label class="mb-1 block text-sm font-medium text-text-secondary">Auth Mode</label>
           <div class="grid gap-2 sm:grid-cols-3">
             <label
@@ -384,6 +398,10 @@ async function importSelectedFields() {
             <div>
               <label class="mb-1 block text-xs text-text-muted">Data Endpoint</label>
               <input v-model="editForm.data_endpoint" required class="w-full rounded border border-bg-tertiary bg-bg-primary px-2 py-1.5 text-sm text-text-primary outline-none focus:border-accent font-mono" />
+            </div>
+            <div>
+              <label class="mb-1 block text-xs text-text-muted">API Key</label>
+              <input v-model="editForm.api_key" class="w-full rounded border border-bg-tertiary bg-bg-primary px-2 py-1.5 text-sm text-text-primary outline-none focus:border-accent font-mono" placeholder="sb_publishable_..." />
             </div>
             <div>
               <label class="mb-1 block text-xs text-text-muted">Auth Mode</label>

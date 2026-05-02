@@ -192,8 +192,8 @@ export interface Backend {
     // Admin: manage integration registrations
     list(): Promise<Integration[]>
     get(id: string): Promise<Integration>
-    create(data: { name: string; slug: string; description?: string; icon_url?: string | null; api_base_url: string; auth_mode: Integration['auth_mode']; data_endpoint: string; default_ttl_seconds?: number; created_by: string }): Promise<Integration>
-    update(id: string, updates: Partial<Pick<Integration, 'name' | 'description' | 'icon_url' | 'api_base_url' | 'auth_mode' | 'data_endpoint' | 'default_ttl_seconds' | 'enabled'>>): Promise<Integration>
+    create(data: { name: string; slug: string; description?: string; icon_url?: string | null; api_base_url: string; api_key?: string; auth_mode: Integration['auth_mode']; data_endpoint: string; default_ttl_seconds?: number; created_by: string }): Promise<Integration>
+    update(id: string, updates: Partial<Pick<Integration, 'name' | 'description' | 'icon_url' | 'api_base_url' | 'api_key' | 'auth_mode' | 'data_endpoint' | 'default_ttl_seconds' | 'enabled'>>): Promise<Integration>
     delete(id: string): Promise<void>
     // Admin: manage field schemas
     listFieldSchemas(integrationId: string): Promise<IntegrationFieldSchema[]>
