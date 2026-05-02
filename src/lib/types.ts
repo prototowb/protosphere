@@ -459,6 +459,7 @@ export interface Integration {
   icon_url: string | null
   api_base_url: string
   api_key: string
+  app_url: string | null
   auth_mode: IntegrationAuthMode
   data_endpoint: string
   default_ttl_seconds: number

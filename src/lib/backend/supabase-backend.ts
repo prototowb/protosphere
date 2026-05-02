@@ -1388,6 +1388,7 @@ export function createSupabaseBackend(): Backend {
             icon_url: data.icon_url ?? null,
             api_base_url: data.api_base_url,
             api_key: data.api_key ?? '',
+            app_url: data.app_url ?? null,
             auth_mode: data.auth_mode,
             data_endpoint: data.data_endpoint,
             default_ttl_seconds: data.default_ttl_seconds ?? 300,

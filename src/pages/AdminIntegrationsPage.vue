@@ -33,6 +33,7 @@ const form = ref({
   description: '',
   api_base_url: '',
   api_key: '',
+  app_url: '',
   data_endpoint: '',
   auth_mode: 'same_domain_cookie' as Integration['auth_mode'],
   default_ttl_seconds: 300,
@@ -60,7 +61,7 @@ async function handleCreate() {
   try {
     await createIntegration({ ...form.value, created_by: authStore.user.id })
     toastStore.show('Integration created', 'success')
-    form.value = { name: '', slug: '', description: '', api_base_url: '', api_key: '', data_endpoint: '', auth_mode: 'same_domain_cookie', default_ttl_seconds: 300 }
+    form.value = { name: '', slug: '', description: '', api_base_url: '', api_key: '', app_url: '', data_endpoint: '', auth_mode: 'same_domain_cookie', default_ttl_seconds: 300 }
     view.value = 'list'
   } catch (e: unknown) {
     toastStore.show(e instanceof Error ? e.message : 'Failed to create', 'error')
@@ -109,6 +110,7 @@ const editForm = ref({
   description: '',
   api_base_url: '',
   api_key: '',
+  app_url: '',
   data_endpoint: '',
   auth_mode: 'same_domain_cookie' as Integration['auth_mode'],
   default_ttl_seconds: 300,
@@ -122,6 +124,7 @@ function initEditForm(integration: Integration) {
     description: integration.description,
     api_base_url: integration.api_base_url,
     api_key: integration.api_key,
+    app_url: integration.app_url ?? '',
     data_endpoint: integration.data_endpoint,
     auth_mode: integration.auth_mode,
     default_ttl_seconds: integration.default_ttl_seconds,
@@ -338,6 +341,11 @@ async function importSelectedFields() {
           <p class="mt-1 text-xs text-text-muted">Publishable key for the external API (required for Supabase Edge Functions).</p>
         </div>
         <div>
+          <label class="mb-1 block text-sm font-medium text-text-secondary">App URL <span class="text-text-muted font-normal">(optional, dev only)</span></label>
+          <input v-model="form.app_url" class="w-full rounded border border-bg-tertiary bg-bg-primary px-3 py-2 text-text-primary outline-none focus:border-accent font-mono text-sm" placeholder="http://localhost:5175" />
+          <p class="mt-1 text-xs text-text-muted">Frontend URL of the external app. Enables one-click "Open" in dev mode.</p>
+        </div>
+        <div>
           <label class="mb-1 block text-sm font-medium text-text-secondary">Auth Mode</label>
           <div class="grid gap-2 sm:grid-cols-3">
             <label
@@ -402,6 +410,10 @@ async function importSelectedFields() {
             <div>
               <label class="mb-1 block text-xs text-text-muted">API Key</label>
               <input v-model="editForm.api_key" class="w-full rounded border border-bg-tertiary bg-bg-primary px-2 py-1.5 text-sm text-text-primary outline-none focus:border-accent font-mono" placeholder="sb_publishable_..." />
+            </div>
+            <div>
+              <label class="mb-1 block text-xs text-text-muted">App URL (dev)</label>
+              <input v-model="editForm.app_url" class="w-full rounded border border-bg-tertiary bg-bg-primary px-2 py-1.5 text-sm text-text-primary outline-none focus:border-accent font-mono" placeholder="http://localhost:5175" />
             </div>
             <div>
               <label class="mb-1 block text-xs text-text-muted">Auth Mode</label>

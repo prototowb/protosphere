@@ -246,17 +246,19 @@ Both Supabase instances run locally with the same default JWT secret, so JWTs ar
 5. Click **"Fetch from API"** to import fields, then **Enable**
 6. In Protosphere user Settings, click **Connect**, then **Sync**
 
-### Using the Learning Platform as a Protosphere User
+### Seamless Dev Auth (One-Click "Open")
 
-The seed script creates the user in the learning platform's `auth.users`. To also browse the learning platform as that user, visit:
+Once the integration is connected and has an **App URL (dev)** set (e.g. `http://localhost:5174`), a dev-only **"Open"** button appears next to the Sync button in Settings. Clicking it opens:
 
 ```
-http://localhost:5174/dev/auth?user_id=<your-protosphere-uuid>
+{app_url}/dev/auth?user_id=<your-protosphere-uuid>
 ```
 
-The dev auth page calls a local edge function (`dev-sign-in`) that mints a learning platform session for the given UUID. Any learning activity you do will then be returned by the integration API on your next sync.
+This automatically authenticates you on the external app as the same Protosphere user. Any activity you do there will be returned by the integration API on your next sync.
 
-> **Note:** The `/dev/auth` route and `dev-sign-in` function are dev-only and do not exist in production.
+The "Open" button is tree-shaken from production builds via `import.meta.env.DEV`.
+
+> See [DEV_AUTH_CONTRACT.md](./DEV_AUTH_CONTRACT.md) for the full contract that external apps must implement to support this flow.
 
 ---
 

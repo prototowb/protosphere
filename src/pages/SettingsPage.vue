@@ -21,6 +21,7 @@ const authStore = useAuthStore()
 const { integrations: allIntegrations, fetchIntegrations, listFieldSchemas } = useIntegrations()
 const { myIntegrations, fetchMyIntegrations, connect, disconnect, syncData, setFieldVisibility, isConnected, getVisibility } = useUserIntegrations()
 
+const isDev = import.meta.env.DEV
 const syncing = ref<Record<string, boolean>>({})
 
 const connectDialog = ref<Integration | null>(null)
@@ -356,6 +357,12 @@ async function handleVisibilityChange(fieldSchemaId: string, visibility: FieldVi
                   </div>
                 </div>
                 <div v-if="isConnected(integration.id)" class="flex flex-shrink-0 items-center gap-2">
+                  <a
+                    v-if="isDev && integration.app_url"
+                    :href="`${integration.app_url.replace(/\/$/, '')}/dev/auth?user_id=${authStore.user?.id}`"
+                    target="_blank"
+                    class="rounded-md border border-bg-tertiary px-3 py-1.5 text-xs text-text-secondary hover:bg-bg-hover transition-colors"
+                  >Open</a>
                   <button
                     @click="handleSync(integration.id)"
                     :disabled="syncing[integration.id]"
