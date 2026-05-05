@@ -16,7 +16,7 @@ interface ListItem { name: string; progress?: number; xp?: number }
     <!-- Number -->
     <template v-if="fieldType === 'number'">
       <p class="text-xs text-text-muted">{{ label }}</p>
-      <p class="text-sm font-semibold text-text-primary">{{ typeof value === 'number' ? value.toLocaleString() : value }}</p>
+      <p class="text-sm font-semibold text-text-primary">{{ typeof value === 'number' ? value.toLocaleString() : '—' }}</p>
     </template>
 
     <!-- Text -->
@@ -47,7 +47,7 @@ interface ListItem { name: string; progress?: number; xp?: number }
     </template>
 
     <!-- List -->
-    <template v-else-if="fieldType === 'list'">
+    <template v-else-if="fieldType === 'list' && Array.isArray(value)">
       <p class="text-xs text-text-muted">{{ label }}</p>
       <div class="space-y-1.5">
         <div
@@ -70,7 +70,7 @@ interface ListItem { name: string; progress?: number; xp?: number }
     </template>
 
     <!-- Activity feed -->
-    <template v-else-if="fieldType === 'activity_feed'">
+    <template v-else-if="fieldType === 'activity_feed' && Array.isArray(value)">
       <p class="text-xs text-text-muted">{{ label }}</p>
       <div class="space-y-1">
         <div
@@ -83,6 +83,12 @@ interface ListItem { name: string; progress?: number; xp?: number }
           <span v-if="entry.xp" class="ml-auto flex-shrink-0 text-accent">+{{ entry.xp }}</span>
         </div>
       </div>
+    </template>
+
+    <!-- Fallback for unknown field types -->
+    <template v-else>
+      <p class="text-xs text-text-muted">{{ label }}</p>
+      <p class="text-sm text-text-secondary">{{ value }}</p>
     </template>
   </div>
 </template>

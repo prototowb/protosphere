@@ -52,21 +52,16 @@ async function handleConnect() {
         </div>
       </template>
 
-      <!-- OAuth redirect -->
+      <!-- Auth bridge (coming soon) -->
       <template v-else-if="integration.auth_mode === 'oauth_redirect'">
         <p class="mt-3 text-sm text-text-secondary">
-          You will be redirected to {{ integration.name }} to authorize access. After authorizing, you'll be redirected back.
+          This integration uses an auth bridge that is not yet available. The admin has been notified.
         </p>
-        <div class="mt-5 flex justify-end gap-2">
+        <div class="mt-5 flex justify-end">
           <button
             @click="emit('cancel')"
             class="rounded-md px-3 py-2 text-sm text-text-secondary hover:bg-bg-hover transition-colors"
-          >Cancel</button>
-          <button
-            @click="handleConnect"
-            :disabled="connecting"
-            class="rounded-md bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover transition-colors disabled:opacity-50"
-          >{{ connecting ? 'Connecting...' : 'Authorize' }}</button>
+          >Close</button>
         </div>
       </template>
 

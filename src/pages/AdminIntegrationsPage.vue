@@ -78,7 +78,11 @@ async function openDetail(integration: Integration) {
 }
 
 async function toggleEnabled(integration: Integration) {
-  await updateIntegration(integration.id, { enabled: !integration.enabled })
+  try {
+    await updateIntegration(integration.id, { enabled: !integration.enabled })
+  } catch (e: unknown) {
+    toastStore.show(e instanceof Error ? e.message : 'Failed to toggle', 'error')
+  }
 }
 
 async function handleDelete(id: string) {
@@ -149,12 +153,13 @@ async function handleTestConnection() {
   testing.value = true
   const url = editForm.value.api_base_url.trim().replace(/\/$/, '') + editForm.value.data_endpoint.trim()
   try {
-    const resp = await fetch(url, { method: 'HEAD', mode: 'no-cors' })
-    // no-cors returns opaque response (status 0) — any non-error means reachable
-    if (resp.ok || resp.type === 'opaque') {
-      toastStore.show('Connection successful', 'success')
+    const headers: Record<string, string> = {}
+    if (editForm.value.api_key) headers['apikey'] = editForm.value.api_key
+    const resp = await fetch(url, { method: 'GET', headers })
+    if (resp.ok) {
+      toastStore.show(`Connection successful (${resp.status})`, 'success')
     } else {
-      toastStore.show(`Connection returned ${resp.status}`, 'error')
+      toastStore.show(`Connection returned ${resp.status} ${resp.statusText}`, 'error')
     }
   } catch {
     toastStore.show('Connection failed — check URL and CORS', 'error')
@@ -224,18 +229,22 @@ async function fetchRemoteSchema() {
     if (typeof fields !== 'object' || fields === null) throw new Error('No fields object in response')
 
     const parsed: RemoteField[] = []
+    const unknownTypes: string[] = []
     for (const [key, val] of Object.entries(fields)) {
       const f = val as Record<string, unknown>
-      const type = (typeof f.type === 'string' && fieldTypes.includes(f.type as IntegrationFieldType))
-        ? f.type as IntegrationFieldType
-        : 'text'
+      const rawType = typeof f.type === 'string' ? f.type : null
+      const isKnown = rawType && fieldTypes.includes(rawType as IntegrationFieldType)
+      if (rawType && !isKnown) unknownTypes.push(`'${rawType}'`)
       parsed.push({
         key,
         label: typeof f.label === 'string' ? f.label : key,
-        type,
+        type: isKnown ? rawType as IntegrationFieldType : 'text',
       })
     }
     remoteFields.value = parsed
+    if (unknownTypes.length > 0) {
+      toastStore.show(`Unknown field type${unknownTypes.length > 1 ? 's' : ''} ${unknownTypes.join(', ')} — defaulted to text`, 'info')
+    }
     if (parsed.length === 0) {
       toastStore.show('No fields found in API response', 'info')
     }

@@ -23,6 +23,7 @@ const { myIntegrations, fetchMyIntegrations, connect, disconnect, syncData, setF
 
 const isDev = import.meta.env.DEV
 const syncing = ref<Record<string, boolean>>({})
+const disconnectConfirm = ref<string | null>(null)
 
 const connectDialog = ref<Integration | null>(null)
 const fieldSchemaCache = ref<Record<string, IntegrationFieldSchema[]>>({})
@@ -42,10 +43,10 @@ onMounted(async () => {
   await fetchIntegrations()
   if (authStore.user) {
     await fetchMyIntegrations(authStore.user.id)
-    // Preload field schemas for connected integrations
-    for (const ui of myIntegrations.value) {
+    // Preload field schemas for connected integrations (parallel)
+    await Promise.all(myIntegrations.value.map(async (ui) => {
       fieldSchemaCache.value[ui.integration_id] = await listFieldSchemas(ui.integration_id)
-    }
+    }))
   }
   if (profile.value) {
     username.value = profile.value.username
@@ -115,6 +116,8 @@ async function handleDisconnect(integrationId: string) {
     toastStore.show('Disconnected', 'success')
   } catch (e: unknown) {
     toastStore.show(e instanceof Error ? e.message : 'Failed to disconnect', 'error')
+  } finally {
+    disconnectConfirm.value = null
   }
 }
 
@@ -369,9 +372,20 @@ async function handleVisibilityChange(fieldSchemaId: string, visibility: FieldVi
                     class="rounded-md border border-bg-tertiary px-3 py-1.5 text-xs text-text-secondary hover:bg-bg-hover transition-colors disabled:opacity-50"
                   >{{ syncing[integration.id] ? 'Syncing...' : 'Sync' }}</button>
                   <button
-                    @click="handleDisconnect(integration.id)"
+                    v-if="disconnectConfirm !== integration.id"
+                    @click="disconnectConfirm = integration.id"
                     class="rounded-md border border-red-500/30 px-3 py-1.5 text-xs text-red-400 hover:bg-red-500/10 transition-colors"
                   >Disconnect</button>
+                  <template v-else>
+                    <button
+                      @click="handleDisconnect(integration.id)"
+                      class="rounded-md bg-red-500/20 px-3 py-1.5 text-xs font-medium text-red-400 hover:bg-red-500/30 transition-colors"
+                    >Confirm</button>
+                    <button
+                      @click="disconnectConfirm = null"
+                      class="rounded-md border border-bg-tertiary px-3 py-1.5 text-xs text-text-secondary hover:bg-bg-hover transition-colors"
+                    >Cancel</button>
+                  </template>
                 </div>
                 <button
                   v-else

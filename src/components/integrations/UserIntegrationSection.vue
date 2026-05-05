@@ -24,8 +24,20 @@ onMounted(async () => {
 </script>
 
 <template>
+  <!-- Loading skeleton -->
+  <div v-if="loading" class="mt-3 border-t border-bg-tertiary pt-3 space-y-2 animate-pulse">
+    <div class="flex items-center gap-1.5">
+      <div class="h-3.5 w-3.5 rounded bg-bg-tertiary" />
+      <div class="h-3 w-20 rounded bg-bg-tertiary" />
+    </div>
+    <div class="flex gap-3">
+      <div class="h-8 w-16 rounded bg-bg-tertiary" />
+      <div class="h-8 w-16 rounded bg-bg-tertiary" />
+    </div>
+  </div>
+
   <!-- Only render if there's actual data to show -->
-  <template v-if="!loading && data.length > 0">
+  <template v-else-if="data.length > 0">
     <div
       v-for="entry in data"
       :key="entry.integration.id"

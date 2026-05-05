@@ -46,22 +46,25 @@ Backend adapter auto-detects mode via `VITE_SUPABASE_URL` env var. Local mode us
 |------|---------------|--------|
 | DB schema | 5 tables: `integrations`, `integration_field_schemas`, `user_integrations`, `user_field_visibility`, `space_integration_requirements` (migration 050) | ✅ Done |
 | DB: api_key | `api_key` column on `integrations` for gateway auth (migration 051) | ✅ Done |
+| DB: app_url | `app_url` column on `integrations` for dev auth flow (migration 052) | ✅ Done |
 | Backend (both) | `integrations`, `userIntegrations`, `integrationFieldSchemas`, `spaceRequirements` namespaces; TTL staleness check in `getPublicUserData` | ✅ Done |
 | Types | `Integration`, `UserIntegration`, `IntegrationFieldSchema`, `UserFieldVisibility`, `SpaceIntegrationRequirement` in `types.ts` | ✅ Done |
-| Admin UI | `AdminIntegrationsPage.vue` — list/create/edit integrations; hybrid field discovery (fetch from API or add manually); enable/disable | ✅ Done |
-| User UI | Settings page: connect/disconnect + manual sync per integration; last-synced timestamp | ✅ Done |
-| Profile display | `UserProfilePage.vue` integration data section; per-field visibility badges | ✅ Done |
+| Admin UI | `AdminIntegrationsPage.vue` — list/create/edit integrations; hybrid field discovery (fetch from API or add manually); enable/disable with error handling; test connection with real HTTP status | ✅ Done |
+| User UI | Settings page: connect/disconnect (with confirmation) + manual sync; last-synced timestamp; dev-only "Open" button for seamless app auth | ✅ Done |
+| Profile display | `UserProfilePage.vue` integration data section; per-field visibility; loading skeleton; type-safe field rendering with unknown type fallback | ✅ Done |
 | Space requirements | `useSpaceRequirements.ts`; dismissible banner in `ServerPage.vue` showing missing fields | ✅ Done |
-| Docs | `INTEGRATIONS.md` — full guide for external devs; README section | ✅ Done |
-| Local testing | Dev auth bridge (`/dev/auth?user_id=`), seed script, JWKS-based cross-project JWT verification | ✅ Done |
+| Docs | `INTEGRATIONS.md` — full guide for external devs; `DEV_AUTH_CONTRACT.md` — dev auth handoff contract; README section | ✅ Done |
+| Local testing | Dev auth bridge (`/dev/auth?user_id=`), seed script, JWKS-based cross-project JWT verification, one-click "Open" button | ✅ Done |
 
-**Migrations:** `050_integrations.sql`, `051_integration_api_key.sql`
+**Migrations:** `050_integrations.sql`, `051_integration_api_key.sql`, `052_integration_app_url.sql`
 
 **Key technical decisions:**
 - Auth mode `same_domain_cookie` → send Protosphere Bearer JWT + `apikey` header; external API verifies via JWKS
 - `api_key` field stores the external app's publishable key (needed for Supabase Edge Function gateway)
+- `app_url` field enables one-click dev auth (dev-only "Open" button, tree-shaken from production)
 - `?schema=true` unauthenticated endpoint for admin field discovery
 - Cross-project JWT: ES256 tokens verified via `createRemoteJWKSet` from issuer's JWKS endpoint (`host.docker.internal` locally)
+- `oauth_redirect` auth mode stubbed for future "Auth Bridge" feature (federated account linking via redirect-based signed JWT handoff — see `DEV_AUTH_CONTRACT.md` and plan file for design)
 
 ---
 

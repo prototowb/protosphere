@@ -97,6 +97,8 @@ Your endpoint must return a JSON object with a top-level `fields` key. Each fiel
 | `list` | `Array<{ name: string; progress?: number; xp?: number }>` | List of items, optionally with progress bars |
 | `activity_feed` | `Array<{ text: string; at: string; xp?: number }>` | Timestamped activity entries |
 
+Unrecognized field types are rendered as plain text. The admin will see a warning during schema import if any fields use unknown types.
+
 ### Schema Discovery
 
 When an admin clicks **"Fetch from API"** in the Protosphere integration dashboard, Protosphere calls your data endpoint and reads the `fields` object. The `label` and `type` of each field are extracted and presented to the admin as selectable options. This means:
@@ -104,6 +106,7 @@ When an admin clicks **"Fetch from API"** in the Protosphere integration dashboa
 - Your endpoint doubles as both a data source and a schema definition
 - The admin doesn't need to manually configure field keys, labels, or types
 - Fields not selected by the admin are ignored
+- Unknown field types are flagged and defaulted to `text`
 - If your endpoint is unreachable, admins can still add fields manually
 
 ---
