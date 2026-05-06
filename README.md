@@ -105,7 +105,9 @@ The Supabase CLI is linked to staging by default. Production requires the explic
 
 Protosphere has a generic integrations framework for connecting external apps. Admins register integrations via the dashboard, users link their accounts and control what data is visible on their profile.
 
-See **[INTEGRATIONS.md](INTEGRATIONS.md)** for the full guide on building an integration for Protosphere.
+**Auth Bridge** — integrations using the `auth_bridge` mode support one-click federated login: your app signs a short-lived JWT with a shared secret and redirects the user to `/auth/bridge?token=<jwt>`. Protosphere validates the signature, finds or creates the account, and logs them in automatically.
+
+See **[INTEGRATIONS.md](INTEGRATIONS.md)** for the full guide, including auth modes and the auth bridge JWT format.
 
 ### Testing your integration locally
 

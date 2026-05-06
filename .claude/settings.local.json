@@ -28,7 +28,8 @@
       "Bash(python3 -m json.tool)",
       "Bash(ls \"G:/Projects/code-lang-learning/typescript/src/\"*.vue)",
       "Bash(ls \"G:/Projects/code-lang-learning/typescript/src/App\"*)",
-      "Bash(python3 -c \"import sys,json; data=json.load\\(sys.stdin\\); [print\\(u['id'], u.get\\('email',''\\)\\) for u in data.get\\('users',[]\\)]\")"
+      "Bash(python3 -c \"import sys,json; data=json.load\\(sys.stdin\\); [print\\(u['id'], u.get\\('email',''\\)\\) for u in data.get\\('users',[]\\)]\")",
+      "Bash(pushd \"G:/Projects/code-lang-learning/typescript\")"
     ]
   }
 }
