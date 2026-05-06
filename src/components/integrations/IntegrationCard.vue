@@ -12,7 +12,7 @@ defineEmits<{
 
 const authModeLabels: Record<string, string> = {
   same_domain_cookie: 'SSO (Cookie)',
-  oauth_redirect: 'OAuth',
+  auth_bridge: 'Auth Bridge',
   token_exchange: 'Token',
 }
 </script>

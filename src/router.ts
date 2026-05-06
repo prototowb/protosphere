@@ -1,7 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 
-const publicRoutes = ['login', 'register', 'landing', 'reset-password', 'confirm-email', 'not-found', 'error', 'join-community']
+const publicRoutes = ['login', 'register', 'landing', 'reset-password', 'confirm-email', 'not-found', 'error', 'join-community', 'auth-bridge']
 
 const router = createRouter({
   history: createWebHistory(),
@@ -101,6 +101,11 @@ const router = createRouter({
       path: '/join/:token',
       name: 'join-community',
       component: () => import('@/pages/JoinCommunityPage.vue'),
+    },
+    {
+      path: '/auth/bridge',
+      name: 'auth-bridge',
+      component: () => import('@/pages/AuthBridgePage.vue'),
     },
     {
       path: '/community/members',

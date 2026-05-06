@@ -1729,6 +1729,7 @@ export function createLocalBackend(): Backend {
           api_base_url: data.api_base_url,
           api_key: data.api_key ?? '',
           app_url: data.app_url ?? null,
+          signing_key: data.signing_key ?? null,
           auth_mode: data.auth_mode,
           data_endpoint: data.data_endpoint,
           default_ttl_seconds: data.default_ttl_seconds ?? 300,
@@ -1949,6 +1950,137 @@ export function createLocalBackend(): Backend {
             return { integration, fields }
           })
           .filter((d): d is NonNullable<typeof d> => d !== null)
+      },
+    },
+
+    bridge: {
+      async validate(token: string) {
+        // Local mode: decode JWT payload without signature verification
+        let claims: { sub: string; iss: string; email: string; display_name: string }
+        try {
+          const parts = token.split('.')
+          const payloadPart = parts[1]
+          if (!payloadPart) throw new Error('no payload')
+          claims = JSON.parse(atob(payloadPart))
+        } catch {
+          throw new Error('Malformed token')
+        }
+
+        if (!claims.sub || !claims.iss || !claims.email) {
+          throw new Error('Token missing required claims (sub, iss, email)')
+        }
+
+        const integrations = readJson<Integration[]>(KEYS.integrations, [])
+        const integration = integrations.find((i) => i.slug === claims.iss && i.enabled)
+        if (!integration) throw new Error(`Integration '${claims.iss}' not found or disabled`)
+
+        const uis = readJson<UserIntegration[]>(KEYS.user_integrations, [])
+        const existing = uis.find(
+          (u) => u.integration_id === integration.id && u.external_user_id === claims.sub,
+        )
+
+        if (existing) {
+          // Already linked — log in
+          const users = readJson<StoredUser[]>(KEYS.users, [])
+          const user = users.find((u) => u.id === existing.user_id)
+          if (!user) throw new Error('Linked user not found')
+          setSession({ user: { id: user.id, email: user.email }, access_token: `local_${user.id}` })
+          return {
+            status: 'logged_in' as const,
+            session: { access_token: `local_${user.id}`, refresh_token: '' },
+          }
+        }
+
+        // New user — return claims for onboarding
+        const emailPrefix = claims.email.split('@')[0] ?? claims.email
+        const suggested = claims.display_name
+          ? claims.display_name.toLowerCase().replace(/[^a-z0-9_]/g, '_').slice(0, 32)
+          : emailPrefix.replace(/[^a-z0-9_]/gi, '_').toLowerCase().slice(0, 32)
+
+        return {
+          status: 'new_user' as const,
+          temp_token: token,
+          suggested_username: suggested,
+          email: claims.email,
+          display_name: claims.display_name || '',
+          integration_slug: claims.iss,
+          external_user_id: claims.sub,
+        }
+      },
+
+      async completeRegistration(data: { temp_token: string; username: string }) {
+        // Decode claims from the original token
+        let claims: { sub: string; iss: string; email: string; display_name: string }
+        try {
+          const parts = data.temp_token.split('.')
+          const payloadPart = parts[1]
+          if (!payloadPart) throw new Error('no payload')
+          claims = JSON.parse(atob(payloadPart))
+        } catch {
+          throw new Error('Invalid registration token')
+        }
+
+        if (!/^[a-zA-Z0-9_]{3,32}$/.test(data.username)) {
+          throw new Error('Username must be 3-32 characters, letters/numbers/underscores only')
+        }
+
+        const users = readJson<StoredUser[]>(KEYS.users, [])
+        if (users.some((u) => u.email === claims.email)) {
+          throw new Error('An account with this email already exists. Log in normally and connect the integration from Settings.')
+        }
+        if (users.some((u) => u.username === data.username)) {
+          throw new Error('Username is already taken')
+        }
+
+        // Create user + profile (same pattern as register)
+        const id = crypto.randomUUID()
+        const password = crypto.randomUUID()
+        users.push({ id, email: claims.email, password, username: data.username })
+        writeJson(KEYS.users, users)
+
+        const profiles = readJson<Record<string, Profile>>(KEYS.profiles, {})
+        const now = new Date().toISOString()
+        profiles[id] = {
+          id,
+          username: data.username,
+          display_name: claims.display_name || data.username,
+          avatar_url: null,
+          status: 'online',
+          status_text: '',
+          bio: '',
+          pronouns: '',
+          website: '',
+          location: '',
+          display_banner_url: null,
+          account_status: 'active',
+          meta_points: 0,
+          profile_page: null,
+          onboarding_complete: false,
+          created_at: now,
+          updated_at: now,
+        }
+        writeJson(KEYS.profiles, profiles)
+
+        // Link integration
+        const integrations = readJson<Integration[]>(KEYS.integrations, [])
+        const integration = integrations.find((i) => i.slug === claims.iss)
+        if (integration) {
+          const uis = readJson<UserIntegration[]>(KEYS.user_integrations, [])
+          uis.push({
+            id: crypto.randomUUID(),
+            user_id: id,
+            integration_id: integration.id,
+            external_user_id: claims.sub,
+            connected_at: now,
+            synced_data: null,
+            synced_at: null,
+            connection_token: null,
+          })
+          writeJson(KEYS.user_integrations, uis)
+        }
+
+        setSession({ user: { id, email: claims.email }, access_token: `local_${id}` })
+        return { session: { access_token: `local_${id}`, refresh_token: '' } }
       },
     },
   }

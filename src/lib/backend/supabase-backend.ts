@@ -1389,6 +1389,7 @@ export function createSupabaseBackend(): Backend {
             api_base_url: data.api_base_url,
             api_key: data.api_key ?? '',
             app_url: data.app_url ?? null,
+            signing_key: data.signing_key ?? null,
             auth_mode: data.auth_mode,
             data_endpoint: data.data_endpoint,
             default_ttl_seconds: data.default_ttl_seconds ?? 300,
@@ -1652,6 +1653,42 @@ export function createSupabaseBackend(): Backend {
             return { integration: rec.integration, fields }
           })
           .filter((d): d is NonNullable<typeof d> => d !== null)
+      },
+    },
+
+    bridge: {
+      async validate(token: string) {
+        const resp = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/auth-bridge`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+            },
+            body: JSON.stringify({ action: 'validate', token }),
+          },
+        )
+        const data = await resp.json()
+        if (!resp.ok) throw new Error(data.error || 'Bridge validation failed')
+        return data
+      },
+
+      async completeRegistration(data: { temp_token: string; username: string }) {
+        const resp = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/auth-bridge`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+            },
+            body: JSON.stringify({ action: 'complete', ...data }),
+          },
+        )
+        const result = await resp.json()
+        if (!resp.ok) throw new Error(result.error || 'Bridge registration failed')
+        return result
       },
     },
   }

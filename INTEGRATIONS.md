@@ -36,7 +36,7 @@ Protosphere supports three auth modes. Choose the one that fits your setup:
 | Mode | When to use | How it works |
 |---|---|---|
 | `same_domain_cookie` | Both apps share a parent domain (e.g. `*.protocode.xyz`) and a Supabase JWT secret | Protosphere sends the user's session JWT as `Bearer` token. Your endpoint validates it with the shared secret. |
-| `oauth_redirect` | Your app has its own OAuth flow | User is redirected to your app to authorize, then back to Protosphere. *(Future — not yet implemented)* |
+| `auth_bridge` | Your app has its own auth and you want one-click community access | Your server signs a JWT with a shared secret and redirects the user to Protosphere. |
 | `token_exchange` | No shared auth | User manually pastes a token from your app into Protosphere. Protosphere sends it as `Bearer` token. |
 
 For **same_domain_cookie** (recommended for same-infrastructure apps):
@@ -44,6 +44,63 @@ For **same_domain_cookie** (recommended for same-infrastructure apps):
 - Protosphere sends the user's existing session `access_token`
 - Your endpoint calls `supabase.auth.getUser(jwt)` to identify the caller
 - No extra login step for the user
+
+### Auth Bridge
+
+Auth bridge enables **one-click federated login**. Your app signs a JWT with a shared HMAC secret and redirects the user to Protosphere. Protosphere validates the JWT, finds or creates the user, and logs them in.
+
+**Setup:**
+
+1. In Protosphere Admin > Integrations, create an integration with auth mode **Auth Bridge**
+2. Click **Generate** to create a signing key
+3. Share the signing key securely with the external app developer
+
+**JWT format:**
+
+Your server signs an HMAC-SHA256 JWT with these claims:
+
+| Claim | Type | Description |
+|---|---|---|
+| `sub` | string | The user's ID in your system (external_user_id) |
+| `iss` | string | Your integration's slug (must match exactly) |
+| `email` | string | The user's email address |
+| `display_name` | string | Display name for new accounts |
+| `exp` | number | Expiry (Unix timestamp, recommend now + 5 minutes) |
+
+**Redirect URL:**
+
+```
+{protosphere_url}/auth/bridge?token={signed_jwt}
+```
+
+**What happens:**
+
+- If the user has previously linked via this integration: they're logged in immediately and redirected to the community
+- If this is a new user: they see a lightweight onboarding screen (pick a username), then land in the community
+- If the email already belongs to a Protosphere account: they're told to log in normally and connect the integration from Settings
+
+**Example (Node.js):**
+
+```javascript
+import jwt from 'jsonwebtoken'
+
+const SIGNING_KEY = process.env.PROTOSPHERE_SIGNING_KEY
+const PROTOSPHERE_URL = 'https://community.example.com'
+
+function getProtosphereRedirectUrl(user) {
+  const token = jwt.sign(
+    {
+      sub: user.id,
+      iss: 'my-app',  // must match integration slug
+      email: user.email,
+      display_name: user.displayName,
+    },
+    SIGNING_KEY,
+    { algorithm: 'HS256', expiresIn: '5m' }
+  )
+  return `${PROTOSPHERE_URL}/auth/bridge?token=${token}`
+}
+```
 
 ---
 

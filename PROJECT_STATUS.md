@@ -5,12 +5,12 @@
 ## Current State
 
 ```yaml
-project_phase: "Active Development — M25 + Integrations Framework Complete"
+project_phase: "Active Development — M25 + Integrations Framework + Auth Bridge Complete"
 protogear_enabled: true
 framework: "Vue 3 + TypeScript 5.9 + Vite 7 + Tailwind CSS 4 + Pinia + Supabase"
 project_type: "Single-Community Communication Platform"
 initialization_date: "2026-02-20"
-current_milestone: "Integrations Framework Complete — planning next milestone"
+current_milestone: "Auth Bridge Complete — planning next milestone"
 local_supabase: true
 ```
 
@@ -56,7 +56,7 @@ Backend adapter auto-detects mode via `VITE_SUPABASE_URL` env var. Local mode us
 | Docs | `INTEGRATIONS.md` — full guide for external devs; `DEV_AUTH_CONTRACT.md` — dev auth handoff contract; README section | ✅ Done |
 | Local testing | Dev auth bridge (`/dev/auth?user_id=`), seed script, JWKS-based cross-project JWT verification, one-click "Open" button | ✅ Done |
 
-**Migrations:** `050_integrations.sql`, `051_integration_api_key.sql`, `052_integration_app_url.sql`
+**Migrations:** `050_integrations.sql`, `051_integration_api_key.sql`, `052_integration_app_url.sql`, `053_auth_bridge.sql`
 
 **Key technical decisions:**
 - Auth mode `same_domain_cookie` → send Protosphere Bearer JWT + `apikey` header; external API verifies via JWKS
@@ -64,7 +64,30 @@ Backend adapter auto-detects mode via `VITE_SUPABASE_URL` env var. Local mode us
 - `app_url` field enables one-click dev auth (dev-only "Open" button, tree-shaken from production)
 - `?schema=true` unauthenticated endpoint for admin field discovery
 - Cross-project JWT: ES256 tokens verified via `createRemoteJWKSet` from issuer's JWKS endpoint (`host.docker.internal` locally)
-- `oauth_redirect` auth mode stubbed for future "Auth Bridge" feature (federated account linking via redirect-based signed JWT handoff — see `DEV_AUTH_CONTRACT.md` and plan file for design)
+- `auth_bridge` mode: federated login via HMAC-SHA256 signed JWT redirect (see Auth Bridge section below)
+
+---
+
+### Auth Bridge (post-Integrations, 2026-05-06)
+
+**Goal:** External apps can send their users to Protosphere via a signed JWT redirect. Protosphere validates the JWT, finds or creates the user account, and logs them in — one-click federated login.
+
+| Area | What was built | Status |
+|------|---------------|--------|
+| DB schema | `signing_key` on integrations, `auth_bridge` CHECK value, bridge lookup index (migration 053) | ✅ Done |
+| Edge Function | `supabase/functions/auth-bridge/` — JWT validation, user lookup/creation, session generation via generateLink+verifyOtp | ✅ Done |
+| Types | `AuthBridgeClaims`, `AuthBridgeResult` in `types.ts`; `bridge` namespace in backend interface | ✅ Done |
+| Backend (both) | `bridge.validate()` + `bridge.completeRegistration()` — Supabase calls Edge Function, local simulates without signature verification | ✅ Done |
+| Auth Bridge Page | `AuthBridgePage.vue` at `/auth/bridge?token=` — loading, onboarding (username), error states | ✅ Done |
+| Admin UI | Signing key field with Generate button (conditional on auth_bridge mode); renamed oauth_redirect → auth_bridge labels | ✅ Done |
+| Docs | INTEGRATIONS.md auth bridge section with JWT format, redirect URL, Node.js example | ✅ Done |
+
+**Key technical decisions:**
+- Edge Function (first in project) for server-side JWT validation — signing key never reaches browser
+- Session generation: admin generateLink + verifyOtp pattern (produces real Supabase refresh tokens)
+- New user onboarding: username-only (minimal friction; avatar set later in Settings)
+- Email conflict: error + guidance to log in normally and connect from Settings (prevents account takeover)
+- Separate `bridge` namespace vs extending `connect()` — different UX flows (external→Protosphere vs user-initiated)
 
 ---
 

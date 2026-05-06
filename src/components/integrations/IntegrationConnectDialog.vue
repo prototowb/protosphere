@@ -52,11 +52,18 @@ async function handleConnect() {
         </div>
       </template>
 
-      <!-- Auth bridge (coming soon) -->
-      <template v-else-if="integration.auth_mode === 'oauth_redirect'">
+      <!-- Auth bridge -->
+      <template v-else-if="integration.auth_mode === 'auth_bridge'">
         <p class="mt-3 text-sm text-text-secondary">
-          This integration uses an auth bridge that is not yet available. The admin has been notified.
+          This integration uses federated login. To connect, log in from {{ integration.name }} and you'll be redirected here automatically.
         </p>
+        <a
+          v-if="integration.app_url"
+          :href="integration.app_url"
+          target="_blank"
+          rel="noopener"
+          class="mt-2 inline-block text-sm text-accent hover:underline"
+        >Go to {{ integration.name }} &rarr;</a>
         <div class="mt-5 flex justify-end">
           <button
             @click="emit('cancel')"

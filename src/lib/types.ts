@@ -445,7 +445,7 @@ export interface ForumVote {
 
 // ── Integrations ─────────────────────────────────────────────
 
-export type IntegrationAuthMode = 'same_domain_cookie' | 'oauth_redirect' | 'token_exchange'
+export type IntegrationAuthMode = 'same_domain_cookie' | 'auth_bridge' | 'token_exchange'
 
 export type IntegrationFieldType = 'number' | 'text' | 'badge' | 'list' | 'activity_feed' | 'progress_bar'
 
@@ -460,6 +460,7 @@ export interface Integration {
   api_base_url: string
   api_key: string
   app_url: string | null
+  signing_key: string | null
   auth_mode: IntegrationAuthMode
   data_endpoint: string
   default_ttl_seconds: number
@@ -505,3 +506,16 @@ export interface SpaceIntegrationRequirement {
   required: boolean
   created_at: string
 }
+
+export interface AuthBridgeClaims {
+  sub: string
+  iss: string
+  email: string
+  display_name: string
+  exp: number
+  iat?: number
+}
+
+export type AuthBridgeResult =
+  | { status: 'logged_in'; session: { access_token: string; refresh_token: string } }
+  | { status: 'new_user'; temp_token: string; suggested_username: string; email: string; display_name: string; integration_slug: string; external_user_id: string }

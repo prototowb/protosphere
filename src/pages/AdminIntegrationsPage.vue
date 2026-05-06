@@ -34,6 +34,7 @@ const form = ref({
   api_base_url: '',
   api_key: '',
   app_url: '',
+  signing_key: '',
   data_endpoint: '',
   auth_mode: 'same_domain_cookie' as Integration['auth_mode'],
   default_ttl_seconds: 300,
@@ -61,7 +62,7 @@ async function handleCreate() {
   try {
     await createIntegration({ ...form.value, created_by: authStore.user.id })
     toastStore.show('Integration created', 'success')
-    form.value = { name: '', slug: '', description: '', api_base_url: '', api_key: '', app_url: '', data_endpoint: '', auth_mode: 'same_domain_cookie', default_ttl_seconds: 300 }
+    form.value = { name: '', slug: '', description: '', api_base_url: '', api_key: '', app_url: '', signing_key: '', data_endpoint: '', auth_mode: 'same_domain_cookie', default_ttl_seconds: 300 }
     view.value = 'list'
   } catch (e: unknown) {
     toastStore.show(e instanceof Error ? e.message : 'Failed to create', 'error')
@@ -115,6 +116,7 @@ const editForm = ref({
   api_base_url: '',
   api_key: '',
   app_url: '',
+  signing_key: '',
   data_endpoint: '',
   auth_mode: 'same_domain_cookie' as Integration['auth_mode'],
   default_ttl_seconds: 300,
@@ -129,6 +131,7 @@ function initEditForm(integration: Integration) {
     api_base_url: integration.api_base_url,
     api_key: integration.api_key,
     app_url: integration.app_url ?? '',
+    signing_key: integration.signing_key ?? '',
     data_endpoint: integration.data_endpoint,
     auth_mode: integration.auth_mode,
     default_ttl_seconds: integration.default_ttl_seconds,
@@ -170,11 +173,21 @@ async function handleTestConnection() {
 
 const authModes: { value: Integration['auth_mode']; label: string; desc: string }[] = [
   { value: 'same_domain_cookie', label: 'SSO (Cookie)', desc: 'Automatic login via shared parent domain cookie' },
-  { value: 'oauth_redirect', label: 'OAuth Redirect', desc: 'Redirect to external app for authorization' },
+  { value: 'auth_bridge', label: 'Auth Bridge', desc: 'External app sends users via signed JWT redirect' },
   { value: 'token_exchange', label: 'Token Exchange', desc: 'User pastes a connection token manually' },
 ]
 
 const fieldTypes: IntegrationFieldType[] = ['number', 'text', 'badge', 'list', 'activity_feed', 'progress_bar']
+
+function generateSigningKey(target: 'create' | 'edit') {
+  const bytes = crypto.getRandomValues(new Uint8Array(32))
+  const key = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')
+  if (target === 'create') {
+    form.value.signing_key = key
+  } else {
+    editForm.value.signing_key = key
+  }
+}
 
 // ── Remote schema discovery ──────────────────────────────────
 interface RemoteField {
@@ -354,6 +367,14 @@ async function importSelectedFields() {
           <input v-model="form.app_url" class="w-full rounded border border-bg-tertiary bg-bg-primary px-3 py-2 text-text-primary outline-none focus:border-accent font-mono text-sm" placeholder="http://localhost:5175" />
           <p class="mt-1 text-xs text-text-muted">Frontend URL of the external app. Enables one-click "Open" in dev mode.</p>
         </div>
+        <div v-if="form.auth_mode === 'auth_bridge'">
+          <label class="mb-1 block text-sm font-medium text-text-secondary">Signing Key</label>
+          <div class="flex gap-2">
+            <input v-model="form.signing_key" class="flex-1 rounded border border-bg-tertiary bg-bg-primary px-3 py-2 text-text-primary outline-none focus:border-accent font-mono text-sm" placeholder="Generate or paste a key..." readonly />
+            <button type="button" @click="generateSigningKey('create')" class="shrink-0 rounded bg-bg-tertiary px-3 py-2 text-sm text-text-primary hover:bg-bg-hover transition-colors">Generate</button>
+          </div>
+          <p class="mt-1 text-xs text-text-muted">HMAC-SHA256 secret shared with the external app for signing auth bridge JWTs.</p>
+        </div>
         <div>
           <label class="mb-1 block text-sm font-medium text-text-secondary">Auth Mode</label>
           <div class="grid gap-2 sm:grid-cols-3">
@@ -423,6 +444,14 @@ async function importSelectedFields() {
             <div>
               <label class="mb-1 block text-xs text-text-muted">App URL (dev)</label>
               <input v-model="editForm.app_url" class="w-full rounded border border-bg-tertiary bg-bg-primary px-2 py-1.5 text-sm text-text-primary outline-none focus:border-accent font-mono" placeholder="http://localhost:5175" />
+            </div>
+            <div v-if="editForm.auth_mode === 'auth_bridge'">
+              <label class="mb-1 block text-xs text-text-muted">Signing Key</label>
+              <div class="flex gap-2">
+                <input v-model="editForm.signing_key" class="flex-1 rounded border border-bg-tertiary bg-bg-primary px-2 py-1.5 text-sm text-text-primary outline-none focus:border-accent font-mono" readonly />
+                <button type="button" @click="generateSigningKey('edit')" class="shrink-0 rounded bg-bg-tertiary px-2 py-1.5 text-xs text-text-primary hover:bg-bg-hover transition-colors">Generate</button>
+              </div>
+              <p class="mt-1 text-xs text-text-muted">Share this key securely with the external app developer.</p>
             </div>
             <div>
               <label class="mb-1 block text-xs text-text-muted">Auth Mode</label>
