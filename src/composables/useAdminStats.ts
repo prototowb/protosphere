@@ -4,24 +4,26 @@ import { useAuthStore } from '@/stores/auth'
 
 export function useAdminStats() {
   const authStore = useAuthStore()
-  const stats = ref({ members: 0, pendingApprovals: 0, openReports: 0, spaces: 0 })
+  const stats = ref({ members: 0, pendingApprovals: 0, openReports: 0, spaces: 0, integrations: 0 })
   const loading = ref(false)
 
   async function loadStats() {
     loading.value = true
     try {
       const userId = authStore.user?.id ?? ''
-      const [allProfiles, pending, reports, spaces] = await Promise.all([
+      const [allProfiles, pending, reports, spaces, integrationsList] = await Promise.all([
         backend.profiles.search('', '00000000-0000-0000-0000-000000000000').catch(() => []),
         backend.profiles.listPending().catch(() => []),
         backend.reports.list(null, 'pending').catch(() => []),
         backend.servers.list(userId).catch(() => []),
+        backend.integrations.list().catch(() => []),
       ])
       stats.value = {
         members: allProfiles.length,
         pendingApprovals: pending.length,
         openReports: reports.length,
         spaces: spaces.length,
+        integrations: integrationsList.length,
       }
     } finally {
       loading.value = false

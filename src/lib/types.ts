@@ -442,3 +442,80 @@ export interface ForumVote {
   user_id: string
   value: 1 | -1
 }
+
+// ── Integrations ─────────────────────────────────────────────
+
+export type IntegrationAuthMode = 'same_domain_cookie' | 'auth_bridge' | 'token_exchange'
+
+export type IntegrationFieldType = 'number' | 'text' | 'badge' | 'list' | 'activity_feed' | 'progress_bar'
+
+export type FieldVisibility = 'public' | 'private' | 'hidden'
+
+export interface Integration {
+  id: string
+  name: string
+  slug: string
+  description: string
+  icon_url: string | null
+  api_base_url: string
+  api_key: string
+  app_url: string | null
+  signing_key: string | null
+  auth_mode: IntegrationAuthMode
+  data_endpoint: string
+  default_ttl_seconds: number
+  enabled: boolean
+  created_by: string
+  created_at: string
+  updated_at: string
+}
+
+export interface IntegrationFieldSchema {
+  id: string
+  integration_id: string
+  field_key: string
+  label: string
+  field_type: IntegrationFieldType
+  default_visibility: FieldVisibility
+  sort_order: number
+  created_at: string
+}
+
+export interface UserIntegration {
+  id: string
+  user_id: string
+  integration_id: string
+  external_user_id: string | null
+  connected_at: string
+  synced_data: Record<string, unknown> | null
+  synced_at: string | null
+  connection_token: string | null
+}
+
+export interface UserFieldVisibility {
+  user_id: string
+  field_schema_id: string
+  visibility: FieldVisibility
+}
+
+export interface SpaceIntegrationRequirement {
+  id: string
+  server_id: string
+  integration_id: string
+  field_key: string
+  required: boolean
+  created_at: string
+}
+
+export interface AuthBridgeClaims {
+  sub: string
+  iss: string
+  email: string
+  display_name: string
+  exp: number
+  iat?: number
+}
+
+export type AuthBridgeResult =
+  | { status: 'logged_in'; session: { access_token: string; refresh_token: string } }
+  | { status: 'new_user'; temp_token: string; suggested_username: string; email: string; display_name: string; integration_slug: string; external_user_id: string }

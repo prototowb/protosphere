@@ -101,13 +101,49 @@ The Supabase CLI is linked to staging by default. Production requires the explic
 
 ---
 
+## Integrations
+
+Protosphere has a generic integrations framework for connecting external apps. Admins register integrations via the dashboard, users link their accounts and control what data is visible on their profile.
+
+**Auth Bridge** — integrations using the `auth_bridge` mode support one-click federated login: your app signs a short-lived JWT with a shared secret and redirects the user to `/auth/bridge?token=<jwt>`. Protosphere validates the signature, finds or creates the account, and logs them in automatically.
+
+See **[INTEGRATIONS.md](INTEGRATIONS.md)** for the full guide, including auth modes and the auth bridge JWT format.
+
+### Testing your integration locally
+
+To test an integration end-to-end against a local Protosphere instance:
+
+1. **Start local Protosphere** (see [Run against local Supabase](#run-against-local-supabase) above)
+
+2. **Start your API** on any local port. It needs one endpoint that:
+   - Returns field schema on `GET ?schema=true` (no auth required)
+   - Returns user data on authenticated `GET` with `Authorization: Bearer <jwt>`
+
+3. **Verify the Protosphere JWT** in your API. Protosphere issues ES256 tokens — verify them against its JWKS endpoint:
+   ```
+   GET http://127.0.0.1:54321/auth/v1/.well-known/jwks.json
+   ```
+   The `sub` claim in the verified payload is the Protosphere user's UUID. Use that to look up the user's data in your own database.
+
+4. **Register the integration** in Protosphere's admin panel (`/admin/integrations`):
+   - API Base URL: `http://127.0.0.1:<your-port>`
+   - Data Endpoint: `/your/endpoint`
+   - API Key: leave blank (only needed for Supabase Edge Functions)
+   - Auth Mode: Same Domain Cookie
+
+5. **Fetch fields** with "Fetch from API", then enable the integration
+
+6. **Connect + Sync** in Protosphere user Settings to verify data is returned correctly
+
+---
+
 ## Project Structure
 
 ```
 src/
   assets/         # Global CSS + theme tokens
-  components/     # UI components (layout, messages, moderation, ui/)
-  composables/    # Vue composables (useRealtime, usePermissions, etc.)
+  components/     # UI components (layout, messages, moderation, integrations/, ui/)
+  composables/    # Vue composables (useRealtime, usePermissions, useIntegrations, etc.)
   lib/
     backend/      # Backend adapter (local.ts / supabase-backend.ts)
     permissions.ts
@@ -116,7 +152,7 @@ src/
   router.ts
   stores/         # Pinia stores
 supabase/
-  migrations/     # SQL migrations (001–049)
+  migrations/     # SQL migrations (001–051)
 ```
 
 ---

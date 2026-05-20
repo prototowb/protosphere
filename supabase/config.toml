@@ -323,6 +323,11 @@ enabled = false
 enabled = false
 # project_id = "my-firebase-project"
 
+# ── Edge Functions ──────────────────────────────────────────────
+# Auth bridge: public endpoint (validates its own JWTs, no Supabase auth required)
+[functions.auth-bridge]
+verify_jwt = false
+
 # Use Auth0 as a third-party provider alongside Supabase Auth.
 [auth.third_party.auth0]
 enabled = false

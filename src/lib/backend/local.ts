@@ -1,4 +1,4 @@
-import type { Profile, Server, Channel, ChannelCategory, Member, Message, Attachment, Reaction, Ban, DirectMessageGroup, DirectMessageMember, DirectMessage, Role, UserRole, ChannelRoleOverride, CommunitySettings, AuditLog, Report, Mute, AutomodRule, Poll, PollOption, PollVote, AppEvent, EventRsvp, CommunityInvite, NotificationPreference, DmNotificationPreference, ForumPost, ForumCollaborator, ForumComment, ForumCommentVote, ForumCommentReaction, ForumVote, PageContent } from '@/lib/types'
+import type { Profile, Server, Channel, ChannelCategory, Member, Message, Attachment, Reaction, Ban, DirectMessageGroup, DirectMessageMember, DirectMessage, Role, UserRole, ChannelRoleOverride, CommunitySettings, AuditLog, Report, Mute, AutomodRule, Poll, PollOption, PollVote, AppEvent, EventRsvp, CommunityInvite, NotificationPreference, DmNotificationPreference, ForumPost, ForumCollaborator, ForumComment, ForumCommentVote, ForumCommentReaction, ForumVote, PageContent, Integration, IntegrationFieldSchema, UserIntegration, UserFieldVisibility, SpaceIntegrationRequirement } from '@/lib/types'
 import type { AuthSession, Backend } from './types'
 import { serializePermissions, PermissionPresets, Permission } from '@/lib/permissions'
 
@@ -32,6 +32,11 @@ const KEYS = {
   community_invites: 'protosphere_community_invites',
   notification_prefs: 'protosphere_notification_prefs',
   dm_notif_prefs: 'protosphere_dm_notif_prefs',
+  integrations: 'protosphere_integrations',
+  integration_field_schemas: 'protosphere_integration_field_schemas',
+  user_integrations: 'protosphere_user_integrations',
+  user_field_visibility: 'protosphere_user_field_visibility',
+  space_integration_reqs: 'protosphere_space_integration_reqs',
 } as const
 
 interface StoredUser {
@@ -1696,6 +1701,386 @@ export function createLocalBackend(): Backend {
         const prefs = readJson<Record<string, boolean>>(KEYS.dm_notif_prefs, {})
         prefs[`${userId}:${groupId}`] = muted
         writeJson(KEYS.dm_notif_prefs, prefs)
+      },
+    },
+
+    integrations: {
+      // ── Admin: manage integrations ──────────────────────────────
+
+      async list() {
+        return readJson<Integration[]>(KEYS.integrations, [])
+      },
+
+      async get(id: string) {
+        const all = readJson<Integration[]>(KEYS.integrations, [])
+        const found = all.find((i) => i.id === id)
+        if (!found) throw new Error('Integration not found')
+        return found
+      },
+
+      async create(data) {
+        const all = readJson<Integration[]>(KEYS.integrations, [])
+        const integration: Integration = {
+          id: crypto.randomUUID(),
+          name: data.name,
+          slug: data.slug,
+          description: data.description ?? '',
+          icon_url: data.icon_url ?? null,
+          api_base_url: data.api_base_url,
+          api_key: data.api_key ?? '',
+          app_url: data.app_url ?? null,
+          signing_key: data.signing_key ?? null,
+          auth_mode: data.auth_mode,
+          data_endpoint: data.data_endpoint,
+          default_ttl_seconds: data.default_ttl_seconds ?? 300,
+          enabled: true,
+          created_by: data.created_by,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }
+        all.push(integration)
+        writeJson(KEYS.integrations, all)
+        return integration
+      },
+
+      async update(id, updates) {
+        const all = readJson<Integration[]>(KEYS.integrations, [])
+        const found = all.find((i) => i.id === id)
+        if (!found) throw new Error('Integration not found')
+        Object.assign(found, updates, { updated_at: new Date().toISOString() })
+        writeJson(KEYS.integrations, all)
+        return found
+      },
+
+      async delete(id) {
+        const all = readJson<Integration[]>(KEYS.integrations, [])
+        writeJson(KEYS.integrations, all.filter((i) => i.id !== id))
+        // Cascade: remove field schemas, user integrations, space requirements
+        const schemas = readJson<IntegrationFieldSchema[]>(KEYS.integration_field_schemas, [])
+        writeJson(KEYS.integration_field_schemas, schemas.filter((s) => s.integration_id !== id))
+        const uis = readJson<UserIntegration[]>(KEYS.user_integrations, [])
+        writeJson(KEYS.user_integrations, uis.filter((u) => u.integration_id !== id))
+        const reqs = readJson<SpaceIntegrationRequirement[]>(KEYS.space_integration_reqs, [])
+        writeJson(KEYS.space_integration_reqs, reqs.filter((r) => r.integration_id !== id))
+      },
+
+      // ── Admin: manage field schemas ─────────────────────────────
+
+      async listFieldSchemas(integrationId) {
+        const all = readJson<IntegrationFieldSchema[]>(KEYS.integration_field_schemas, [])
+        return all.filter((s) => s.integration_id === integrationId).sort((a, b) => a.sort_order - b.sort_order)
+      },
+
+      async createFieldSchema(data) {
+        const all = readJson<IntegrationFieldSchema[]>(KEYS.integration_field_schemas, [])
+        const schema: IntegrationFieldSchema = {
+          id: crypto.randomUUID(),
+          integration_id: data.integration_id,
+          field_key: data.field_key,
+          label: data.label,
+          field_type: data.field_type,
+          default_visibility: data.default_visibility ?? 'public',
+          sort_order: data.sort_order ?? 0,
+          created_at: new Date().toISOString(),
+        }
+        all.push(schema)
+        writeJson(KEYS.integration_field_schemas, all)
+        return schema
+      },
+
+      async updateFieldSchema(id, updates) {
+        const all = readJson<IntegrationFieldSchema[]>(KEYS.integration_field_schemas, [])
+        const found = all.find((s) => s.id === id)
+        if (!found) throw new Error('Field schema not found')
+        Object.assign(found, updates)
+        writeJson(KEYS.integration_field_schemas, all)
+        return found
+      },
+
+      async deleteFieldSchema(id) {
+        const all = readJson<IntegrationFieldSchema[]>(KEYS.integration_field_schemas, [])
+        writeJson(KEYS.integration_field_schemas, all.filter((s) => s.id !== id))
+        // Cascade: remove visibility overrides for this field
+        const vis = readJson<UserFieldVisibility[]>(KEYS.user_field_visibility, [])
+        writeJson(KEYS.user_field_visibility, vis.filter((v) => v.field_schema_id !== id))
+      },
+
+      // ── User: connect/disconnect ────────────────────────────────
+
+      async listUserIntegrations(userId) {
+        const all = readJson<UserIntegration[]>(KEYS.user_integrations, [])
+        return all.filter((u) => u.user_id === userId)
+      },
+
+      async connect(userId, integrationId, token?) {
+        const all = readJson<UserIntegration[]>(KEYS.user_integrations, [])
+        const existing = all.find((u) => u.user_id === userId && u.integration_id === integrationId)
+        if (existing) return existing
+
+        // In local mode, generate mock synced data for dev/testing
+        const schemas = readJson<IntegrationFieldSchema[]>(KEYS.integration_field_schemas, [])
+          .filter((s) => s.integration_id === integrationId)
+        const mockData: Record<string, unknown> = {}
+        for (const schema of schemas) {
+          switch (schema.field_type) {
+            case 'number': mockData[schema.field_key] = { label: schema.label, type: 'number', value: Math.floor(Math.random() * 5000) }; break
+            case 'text': mockData[schema.field_key] = { label: schema.label, type: 'text', value: 'Sample text' }; break
+            case 'badge': mockData[schema.field_key] = { label: schema.label, type: 'badge', value: 'Active' }; break
+            case 'progress_bar': mockData[schema.field_key] = { label: schema.label, type: 'progress_bar', value: Math.random() * 100 | 0 }; break
+            case 'list': mockData[schema.field_key] = { label: schema.label, type: 'list', value: [{ name: 'Sample Course', progress: 0.65, xp: 1200 }] }; break
+            case 'activity_feed': mockData[schema.field_key] = { label: schema.label, type: 'activity_feed', value: [{ text: 'Completed a lesson', at: new Date().toISOString(), xp: 50 }] }; break
+          }
+        }
+
+        const ui: UserIntegration = {
+          id: crypto.randomUUID(),
+          user_id: userId,
+          integration_id: integrationId,
+          external_user_id: null,
+          connected_at: new Date().toISOString(),
+          synced_data: mockData,
+          synced_at: new Date().toISOString(),
+          connection_token: token ?? null,
+        }
+        all.push(ui)
+        writeJson(KEYS.user_integrations, all)
+        return ui
+      },
+
+      async disconnect(userId, integrationId) {
+        const all = readJson<UserIntegration[]>(KEYS.user_integrations, [])
+        writeJson(KEYS.user_integrations, all.filter((u) => !(u.user_id === userId && u.integration_id === integrationId)))
+      },
+
+      async syncData(userIntegrationId) {
+        // In local mode, no real external API — just refresh synced_at
+        const all = readJson<UserIntegration[]>(KEYS.user_integrations, [])
+        const found = all.find((u) => u.id === userIntegrationId)
+        if (!found) throw new Error('User integration not found')
+        found.synced_at = new Date().toISOString()
+        writeJson(KEYS.user_integrations, all)
+        return found
+      },
+
+      // ── User: field visibility ──────────────────────────────────
+
+      async getFieldVisibility(userId) {
+        const all = readJson<UserFieldVisibility[]>(KEYS.user_field_visibility, [])
+        return all.filter((v) => v.user_id === userId)
+      },
+
+      async setFieldVisibility(userId, fieldSchemaId, visibility) {
+        const all = readJson<UserFieldVisibility[]>(KEYS.user_field_visibility, [])
+        const existing = all.find((v) => v.user_id === userId && v.field_schema_id === fieldSchemaId)
+        if (existing) {
+          existing.visibility = visibility
+        } else {
+          all.push({ user_id: userId, field_schema_id: fieldSchemaId, visibility })
+        }
+        writeJson(KEYS.user_field_visibility, all)
+        return { user_id: userId, field_schema_id: fieldSchemaId, visibility }
+      },
+
+      // ── Space requirements ──────────────────────────────────────
+
+      async listSpaceRequirements(serverId) {
+        const all = readJson<SpaceIntegrationRequirement[]>(KEYS.space_integration_reqs, [])
+        return all.filter((r) => r.server_id === serverId)
+      },
+
+      async setSpaceRequirement(data) {
+        const all = readJson<SpaceIntegrationRequirement[]>(KEYS.space_integration_reqs, [])
+        const existing = all.find((r) => r.server_id === data.server_id && r.integration_id === data.integration_id && r.field_key === data.field_key)
+        if (existing) {
+          existing.required = data.required
+          writeJson(KEYS.space_integration_reqs, all)
+          return existing
+        }
+        const req: SpaceIntegrationRequirement = {
+          id: crypto.randomUUID(),
+          server_id: data.server_id,
+          integration_id: data.integration_id,
+          field_key: data.field_key,
+          required: data.required,
+          created_at: new Date().toISOString(),
+        }
+        all.push(req)
+        writeJson(KEYS.space_integration_reqs, all)
+        return req
+      },
+
+      async removeSpaceRequirement(id) {
+        const all = readJson<SpaceIntegrationRequirement[]>(KEYS.space_integration_reqs, [])
+        writeJson(KEYS.space_integration_reqs, all.filter((r) => r.id !== id))
+      },
+
+      // ── Profile display ─────────────────────────────────────────
+
+      async getPublicUserData(userId) {
+        const integrations = readJson<Integration[]>(KEYS.integrations, []).filter((i) => i.enabled)
+        let userIntegrations = readJson<UserIntegration[]>(KEYS.user_integrations, []).filter((u) => u.user_id === userId)
+
+        // Auto-sync stale integrations
+        const now = Date.now()
+        for (const ui of userIntegrations) {
+          const integration = integrations.find((i) => i.id === ui.integration_id)
+          if (!integration) continue
+          const syncedAt = ui.synced_at ? new Date(ui.synced_at).getTime() : 0
+          if (now - syncedAt > integration.default_ttl_seconds * 1000) {
+            try { await this.syncData(ui.id) } catch { /* non-critical */ }
+          }
+        }
+        // Re-read after potential syncs
+        userIntegrations = readJson<UserIntegration[]>(KEYS.user_integrations, []).filter((u) => u.user_id === userId)
+
+        const allSchemas = readJson<IntegrationFieldSchema[]>(KEYS.integration_field_schemas, [])
+        const visOverrides = readJson<UserFieldVisibility[]>(KEYS.user_field_visibility, []).filter((v) => v.user_id === userId)
+
+        return userIntegrations
+          .map((ui) => {
+            const integration = integrations.find((i) => i.id === ui.integration_id)
+            if (!integration) return null
+            const schemas = allSchemas.filter((s) => s.integration_id === integration.id).sort((a, b) => a.sort_order - b.sort_order)
+            const fields = schemas.map((schema) => {
+              const override = visOverrides.find((v) => v.field_schema_id === schema.id)
+              const visibility = override?.visibility ?? schema.default_visibility
+              const fieldData = ui.synced_data?.[schema.field_key] as Record<string, unknown> | undefined
+              return { ...schema, value: fieldData?.value ?? null, visibility }
+            }).filter((f) => f.visibility !== 'hidden')
+            return { integration, fields }
+          })
+          .filter((d): d is NonNullable<typeof d> => d !== null)
+      },
+    },
+
+    bridge: {
+      async validate(token: string) {
+        // Local mode: decode JWT payload without signature verification
+        let claims: { sub: string; iss: string; email: string; display_name: string }
+        try {
+          const parts = token.split('.')
+          const payloadPart = parts[1]
+          if (!payloadPart) throw new Error('no payload')
+          claims = JSON.parse(atob(payloadPart))
+        } catch {
+          throw new Error('Malformed token')
+        }
+
+        if (!claims.sub || !claims.iss || !claims.email) {
+          throw new Error('Token missing required claims (sub, iss, email)')
+        }
+
+        const integrations = readJson<Integration[]>(KEYS.integrations, [])
+        const integration = integrations.find((i) => i.slug === claims.iss && i.enabled)
+        if (!integration) throw new Error(`Integration '${claims.iss}' not found or disabled`)
+
+        const uis = readJson<UserIntegration[]>(KEYS.user_integrations, [])
+        const existing = uis.find(
+          (u) => u.integration_id === integration.id && u.external_user_id === claims.sub,
+        )
+
+        if (existing) {
+          // Already linked — log in
+          const users = readJson<StoredUser[]>(KEYS.users, [])
+          const user = users.find((u) => u.id === existing.user_id)
+          if (!user) throw new Error('Linked user not found')
+          setSession({ user: { id: user.id, email: user.email }, access_token: `local_${user.id}` })
+          return {
+            status: 'logged_in' as const,
+            session: { access_token: `local_${user.id}`, refresh_token: '' },
+          }
+        }
+
+        // New user — return claims for onboarding
+        const emailPrefix = claims.email.split('@')[0] ?? claims.email
+        const suggested = claims.display_name
+          ? claims.display_name.toLowerCase().replace(/[^a-z0-9_]/g, '_').slice(0, 32)
+          : emailPrefix.replace(/[^a-z0-9_]/gi, '_').toLowerCase().slice(0, 32)
+
+        return {
+          status: 'new_user' as const,
+          temp_token: token,
+          suggested_username: suggested,
+          email: claims.email,
+          display_name: claims.display_name || '',
+          integration_slug: claims.iss,
+          external_user_id: claims.sub,
+        }
+      },
+
+      async completeRegistration(data: { temp_token: string; username: string }) {
+        // Decode claims from the original token
+        let claims: { sub: string; iss: string; email: string; display_name: string }
+        try {
+          const parts = data.temp_token.split('.')
+          const payloadPart = parts[1]
+          if (!payloadPart) throw new Error('no payload')
+          claims = JSON.parse(atob(payloadPart))
+        } catch {
+          throw new Error('Invalid registration token')
+        }
+
+        if (!/^[a-zA-Z0-9_]{3,32}$/.test(data.username)) {
+          throw new Error('Username must be 3-32 characters, letters/numbers/underscores only')
+        }
+
+        const users = readJson<StoredUser[]>(KEYS.users, [])
+        if (users.some((u) => u.email === claims.email)) {
+          throw new Error('An account with this email already exists. Log in normally and connect the integration from Settings.')
+        }
+        if (users.some((u) => u.username === data.username)) {
+          throw new Error('Username is already taken')
+        }
+
+        // Create user + profile (same pattern as register)
+        const id = crypto.randomUUID()
+        const password = crypto.randomUUID()
+        users.push({ id, email: claims.email, password, username: data.username })
+        writeJson(KEYS.users, users)
+
+        const profiles = readJson<Record<string, Profile>>(KEYS.profiles, {})
+        const now = new Date().toISOString()
+        profiles[id] = {
+          id,
+          username: data.username,
+          display_name: claims.display_name || data.username,
+          avatar_url: null,
+          status: 'online',
+          status_text: '',
+          bio: '',
+          pronouns: '',
+          website: '',
+          location: '',
+          display_banner_url: null,
+          account_status: 'active',
+          meta_points: 0,
+          profile_page: null,
+          onboarding_complete: false,
+          created_at: now,
+          updated_at: now,
+        }
+        writeJson(KEYS.profiles, profiles)
+
+        // Link integration
+        const integrations = readJson<Integration[]>(KEYS.integrations, [])
+        const integration = integrations.find((i) => i.slug === claims.iss)
+        if (integration) {
+          const uis = readJson<UserIntegration[]>(KEYS.user_integrations, [])
+          uis.push({
+            id: crypto.randomUUID(),
+            user_id: id,
+            integration_id: integration.id,
+            external_user_id: claims.sub,
+            connected_at: now,
+            synced_data: null,
+            synced_at: null,
+            connection_token: null,
+          })
+          writeJson(KEYS.user_integrations, uis)
+        }
+
+        setSession({ user: { id, email: claims.email }, access_token: `local_${id}` })
+        return { session: { access_token: `local_${id}`, refresh_token: '' } }
       },
     },
   }

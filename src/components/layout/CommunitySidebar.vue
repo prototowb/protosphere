@@ -369,6 +369,19 @@ function copyInviteCode() {
         </svg>
         <span>Community Settings</span>
       </router-link>
+
+      <!-- Integrations (owners only) -->
+      <router-link
+        v-if="isAnyOwner"
+        to="/admin/integrations"
+        @click="mobileMenuOpen = false"
+        class="flex items-center gap-2.5 rounded-md px-3 py-2.5 text-sm text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
+      >
+        <svg class="h-4 w-4 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+        </svg>
+        <span>Integrations</span>
+      </router-link>
     </nav>
   </div>
 

@@ -1,4 +1,4 @@
-import type { Profile, Server, Channel, ChannelCategory, Member, Message, Attachment, Reaction, Ban, DirectMessageGroup, DirectMessage, Role, UserRole, ChannelRoleOverride, CommunitySettings, SpaceVisibility, SpaceType, AuditLog, AuditLogAction, Report, ReportCategory, ReportStatus, Mute, AutomodRule, Poll, PollOption, PollVote, PollWithResults, AppEvent, EventRsvp, RsvpStatus, CommunityInvite, CommunityInviteUsage, NotificationPreference, NotificationLevel, DmNotificationPreference, ForumPost, ForumPostType, ForumCollaborator, ForumComment, ForumCommentVote, ForumCommentReaction, ForumVote, PageContent } from '@/lib/types'
+import type { Profile, Server, Channel, ChannelCategory, Member, Message, Attachment, Reaction, Ban, DirectMessageGroup, DirectMessage, Role, UserRole, ChannelRoleOverride, CommunitySettings, SpaceVisibility, SpaceType, AuditLog, AuditLogAction, Report, ReportCategory, ReportStatus, Mute, AutomodRule, Poll, PollOption, PollVote, PollWithResults, AppEvent, EventRsvp, RsvpStatus, CommunityInvite, CommunityInviteUsage, NotificationPreference, NotificationLevel, DmNotificationPreference, ForumPost, ForumPostType, ForumCollaborator, ForumComment, ForumCommentVote, ForumCommentReaction, ForumVote, PageContent, Integration, IntegrationFieldSchema, UserIntegration, UserFieldVisibility, FieldVisibility, SpaceIntegrationRequirement, AuthBridgeResult } from '@/lib/types'
 
 export interface AuthUser {
   id: string
@@ -188,4 +188,40 @@ export interface Backend {
     get(userId: string, groupId: string): Promise<DmNotificationPreference | null>
     set(userId: string, groupId: string, muted: boolean): Promise<void>
   }
+  integrations: {
+    // Admin: manage integration registrations
+    list(): Promise<Integration[]>
+    get(id: string): Promise<Integration>
+    create(data: { name: string; slug: string; description?: string; icon_url?: string | null; api_base_url: string; api_key?: string; app_url?: string | null; signing_key?: string | null; auth_mode: Integration['auth_mode']; data_endpoint: string; default_ttl_seconds?: number; created_by: string }): Promise<Integration>
+    update(id: string, updates: Partial<Pick<Integration, 'name' | 'description' | 'icon_url' | 'api_base_url' | 'api_key' | 'app_url' | 'signing_key' | 'auth_mode' | 'data_endpoint' | 'default_ttl_seconds' | 'enabled'>>): Promise<Integration>
+    delete(id: string): Promise<void>
+    // Admin: manage field schemas
+    listFieldSchemas(integrationId: string): Promise<IntegrationFieldSchema[]>
+    createFieldSchema(data: { integration_id: string; field_key: string; label: string; field_type: IntegrationFieldSchema['field_type']; default_visibility?: FieldVisibility; sort_order?: number }): Promise<IntegrationFieldSchema>
+    updateFieldSchema(id: string, updates: Partial<Pick<IntegrationFieldSchema, 'label' | 'field_type' | 'default_visibility' | 'sort_order'>>): Promise<IntegrationFieldSchema>
+    deleteFieldSchema(id: string): Promise<void>
+    // User: connect/disconnect integrations
+    listUserIntegrations(userId: string): Promise<UserIntegration[]>
+    connect(userId: string, integrationId: string, token?: string): Promise<UserIntegration>
+    disconnect(userId: string, integrationId: string): Promise<void>
+    syncData(userIntegrationId: string): Promise<UserIntegration>
+    // User: per-field visibility
+    getFieldVisibility(userId: string): Promise<UserFieldVisibility[]>
+    setFieldVisibility(userId: string, fieldSchemaId: string, visibility: FieldVisibility): Promise<UserFieldVisibility>
+    // Space requirements
+    listSpaceRequirements(serverId: string): Promise<SpaceIntegrationRequirement[]>
+    setSpaceRequirement(data: { server_id: string; integration_id: string; field_key: string; required: boolean }): Promise<SpaceIntegrationRequirement>
+    removeSpaceRequirement(id: string): Promise<void>
+    // Profile display: resolved integration data respecting visibility
+    getPublicUserData(userId: string): Promise<PublicIntegrationData[]>
+  }
+  bridge: {
+    validate(token: string): Promise<AuthBridgeResult>
+    completeRegistration(data: { temp_token: string; username: string }): Promise<{ session: { access_token: string; refresh_token: string } }>
+  }
+}
+
+export interface PublicIntegrationData {
+  integration: Integration
+  fields: Array<IntegrationFieldSchema & { value: unknown; visibility: FieldVisibility }>
 }

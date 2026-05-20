@@ -1,4 +1,4 @@
-import type { Profile, Server, Channel, ChannelCategory, Member, Message, Attachment, Reaction, Ban, DirectMessageGroup, DirectMessage, Role, UserRole, ChannelRoleOverride, CommunitySettings, AuditLog, Report, Mute, AutomodRule, Poll, PollOption, PollVote, AppEvent, EventRsvp, CommunityInvite, NotificationPreference, DmNotificationPreference, ForumPost, ForumCollaborator, ForumComment, ForumCommentVote, ForumCommentReaction, ForumVote, PageContent } from '@/lib/types'
+import type { Profile, Server, Channel, ChannelCategory, Member, Message, Attachment, Reaction, Ban, DirectMessageGroup, DirectMessage, Role, UserRole, ChannelRoleOverride, CommunitySettings, AuditLog, Report, Mute, AutomodRule, Poll, PollOption, PollVote, AppEvent, EventRsvp, CommunityInvite, NotificationPreference, DmNotificationPreference, ForumPost, ForumCollaborator, ForumComment, ForumCommentVote, ForumCommentReaction, ForumVote, PageContent, Integration, IntegrationFieldSchema, UserIntegration, UserFieldVisibility, SpaceIntegrationRequirement } from '@/lib/types'
 import type { Backend } from './types'
 import { supabase } from '@/lib/supabase'
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -1360,6 +1360,335 @@ export function createSupabaseBackend(): Backend {
           .from('dm_notification_preferences')
           .upsert({ user_id: userId, group_id: groupId, muted })
         if (error) throw error
+      },
+    },
+
+    integrations: {
+      // ── Admin: manage integrations ──────────────────────────────
+
+      async list() {
+        const { data, error } = await client.from('integrations').select('*').order('created_at', { ascending: false })
+        if (error) throw error
+        return data as Integration[]
+      },
+
+      async get(id: string) {
+        const { data, error } = await client.from('integrations').select('*').eq('id', id).single()
+        if (error) throw error
+        return data as Integration
+      },
+
+      async create(data) {
+        const { data: row, error } = await client
+          .from('integrations')
+          .insert({
+            name: data.name,
+            slug: data.slug,
+            description: data.description ?? '',
+            icon_url: data.icon_url ?? null,
+            api_base_url: data.api_base_url,
+            api_key: data.api_key ?? '',
+            app_url: data.app_url ?? null,
+            signing_key: data.signing_key ?? null,
+            auth_mode: data.auth_mode,
+            data_endpoint: data.data_endpoint,
+            default_ttl_seconds: data.default_ttl_seconds ?? 300,
+            created_by: data.created_by,
+          })
+          .select()
+          .single()
+        if (error) throw error
+        return row as Integration
+      },
+
+      async update(id, updates) {
+        const { data, error } = await client
+          .from('integrations')
+          .update({ ...updates, updated_at: new Date().toISOString() })
+          .eq('id', id)
+          .select()
+          .single()
+        if (error) throw error
+        return data as Integration
+      },
+
+      async delete(id) {
+        const { error } = await client.from('integrations').delete().eq('id', id)
+        if (error) throw error
+      },
+
+      // ── Admin: manage field schemas ─────────────────────────────
+
+      async listFieldSchemas(integrationId) {
+        const { data, error } = await client
+          .from('integration_field_schemas')
+          .select('*')
+          .eq('integration_id', integrationId)
+          .order('sort_order')
+        if (error) throw error
+        return data as IntegrationFieldSchema[]
+      },
+
+      async createFieldSchema(data) {
+        const { data: row, error } = await client
+          .from('integration_field_schemas')
+          .insert({
+            integration_id: data.integration_id,
+            field_key: data.field_key,
+            label: data.label,
+            field_type: data.field_type,
+            default_visibility: data.default_visibility ?? 'public',
+            sort_order: data.sort_order ?? 0,
+          })
+          .select()
+          .single()
+        if (error) throw error
+        return row as IntegrationFieldSchema
+      },
+
+      async updateFieldSchema(id, updates) {
+        const { data, error } = await client
+          .from('integration_field_schemas')
+          .update(updates)
+          .eq('id', id)
+          .select()
+          .single()
+        if (error) throw error
+        return data as IntegrationFieldSchema
+      },
+
+      async deleteFieldSchema(id) {
+        const { error } = await client.from('integration_field_schemas').delete().eq('id', id)
+        if (error) throw error
+      },
+
+      // ── User: connect/disconnect ────────────────────────────────
+
+      async listUserIntegrations(userId) {
+        const { data, error } = await client
+          .from('user_integrations')
+          .select('*')
+          .eq('user_id', userId)
+        if (error) throw error
+        return data as UserIntegration[]
+      },
+
+      async connect(userId, integrationId, token?) {
+        const { data, error } = await client
+          .from('user_integrations')
+          .upsert({
+            user_id: userId,
+            integration_id: integrationId,
+            connection_token: token ?? null,
+            connected_at: new Date().toISOString(),
+          }, { onConflict: 'user_id,integration_id' })
+          .select()
+          .single()
+        if (error) throw error
+        return data as UserIntegration
+      },
+
+      async disconnect(userId, integrationId) {
+        const { error } = await client
+          .from('user_integrations')
+          .delete()
+          .eq('user_id', userId)
+          .eq('integration_id', integrationId)
+        if (error) throw error
+      },
+
+      async syncData(userIntegrationId) {
+        // Fetch the user integration + its parent integration config
+        const { data: ui, error: uiErr } = await client
+          .from('user_integrations')
+          .select('*, integration:integrations(*)')
+          .eq('id', userIntegrationId)
+          .single()
+        if (uiErr) throw uiErr
+
+        const userIntegration = ui as UserIntegration & { integration: Integration }
+        const integration = userIntegration.integration
+        const url = integration.api_base_url.trim().replace(/\/$/, '') + integration.data_endpoint.trim()
+
+        // Build fetch options based on auth mode
+        const fetchOpts: RequestInit = { method: 'GET', headers: {} }
+        // Supabase Edge Functions require the project's publishable key as apikey header
+        if (integration.api_key) {
+          (fetchOpts.headers as Record<string, string>)['apikey'] = integration.api_key
+        }
+        if (integration.auth_mode === 'token_exchange' && userIntegration.connection_token) {
+          (fetchOpts.headers as Record<string, string>)['Authorization'] = `Bearer ${userIntegration.connection_token}`
+        } else if (integration.auth_mode === 'same_domain_cookie') {
+          // Both Supabase projects share the same JWT secret, so the current
+          // session's access_token is accepted by the external API natively.
+          // We send it as Bearer rather than relying on cookie propagation,
+          // which breaks for cross-origin endpoints (e.g. *.supabase.co).
+          const { data: { session } } = await client.auth.getSession()
+          if (session?.access_token) {
+            (fetchOpts.headers as Record<string, string>)['Authorization'] = `Bearer ${session.access_token}`
+          }
+        }
+
+        const resp = await fetch(url, fetchOpts)
+        if (!resp.ok) throw new Error(`Integration API returned ${resp.status}`)
+        const payload = await resp.json()
+
+        // Store synced data
+        const { data: updated, error: updateErr } = await client
+          .from('user_integrations')
+          .update({ synced_data: payload.fields ?? payload, synced_at: new Date().toISOString() })
+          .eq('id', userIntegrationId)
+          .select()
+          .single()
+        if (updateErr) throw updateErr
+        return updated as UserIntegration
+      },
+
+      // ── User: field visibility ──────────────────────────────────
+
+      async getFieldVisibility(userId) {
+        const { data, error } = await client
+          .from('user_field_visibility')
+          .select('*')
+          .eq('user_id', userId)
+        if (error) throw error
+        return data as UserFieldVisibility[]
+      },
+
+      async setFieldVisibility(userId, fieldSchemaId, visibility) {
+        const { data, error } = await client
+          .from('user_field_visibility')
+          .upsert({ user_id: userId, field_schema_id: fieldSchemaId, visibility })
+          .select()
+          .single()
+        if (error) throw error
+        return data as UserFieldVisibility
+      },
+
+      // ── Space requirements ──────────────────────────────────────
+
+      async listSpaceRequirements(serverId) {
+        const { data, error } = await client
+          .from('space_integration_requirements')
+          .select('*')
+          .eq('server_id', serverId)
+        if (error) throw error
+        return data as SpaceIntegrationRequirement[]
+      },
+
+      async setSpaceRequirement(data) {
+        const { data: row, error } = await client
+          .from('space_integration_requirements')
+          .upsert({
+            server_id: data.server_id,
+            integration_id: data.integration_id,
+            field_key: data.field_key,
+            required: data.required,
+          }, { onConflict: 'server_id,integration_id,field_key' })
+          .select()
+          .single()
+        if (error) throw error
+        return row as SpaceIntegrationRequirement
+      },
+
+      async removeSpaceRequirement(id) {
+        const { error } = await client.from('space_integration_requirements').delete().eq('id', id)
+        if (error) throw error
+      },
+
+      // ── Profile display ─────────────────────────────────────────
+
+      async getPublicUserData(userId) {
+        // Fetch user's connected integrations with nested integration data
+        const { data: userIntegrations, error: uiErr } = await client
+          .from('user_integrations')
+          .select('*, integration:integrations(*)')
+          .eq('user_id', userId)
+        if (uiErr) throw uiErr
+
+        if (!userIntegrations?.length) return []
+
+        // Auto-sync stale integrations
+        const now = Date.now()
+        for (const ui of userIntegrations) {
+          const rec = ui as unknown as UserIntegration & { integration: Integration }
+          if (!rec.integration.enabled) continue
+          const syncedAt = rec.synced_at ? new Date(rec.synced_at).getTime() : 0
+          if (now - syncedAt > rec.integration.default_ttl_seconds * 1000) {
+            try {
+              const refreshed = await this.syncData(rec.id)
+              // Update in-memory record so we don't need to re-fetch
+              Object.assign(ui, { synced_data: refreshed.synced_data, synced_at: refreshed.synced_at })
+            } catch { /* non-critical — use stale data */ }
+          }
+        }
+
+        // Fetch all field schemas for connected integrations
+        const integrationIds = userIntegrations.map((ui) => (ui as unknown as { integration: Integration }).integration.id)
+        const { data: schemas, error: schemaErr } = await client
+          .from('integration_field_schemas')
+          .select('*')
+          .in('integration_id', integrationIds)
+          .order('sort_order')
+        if (schemaErr) throw schemaErr
+
+        // Fetch user's visibility overrides
+        const { data: visOverrides } = await client
+          .from('user_field_visibility')
+          .select('*')
+          .eq('user_id', userId)
+
+        const visMap = new Map((visOverrides ?? []).map((v) => [v.field_schema_id, v.visibility]))
+
+        return userIntegrations
+          .map((ui) => {
+            const rec = ui as unknown as UserIntegration & { integration: Integration }
+            if (!rec.integration.enabled) return null
+            const fieldSchemas = (schemas as IntegrationFieldSchema[]).filter((s) => s.integration_id === rec.integration.id)
+            const fields = fieldSchemas.map((schema) => {
+              const visibility = visMap.get(schema.id) ?? schema.default_visibility
+              const fieldData = rec.synced_data?.[schema.field_key] as Record<string, unknown> | undefined
+              return { ...schema, value: fieldData?.value ?? null, visibility }
+            }).filter((f) => f.visibility !== 'hidden')
+            return { integration: rec.integration, fields }
+          })
+          .filter((d): d is NonNullable<typeof d> => d !== null)
+      },
+    },
+
+    bridge: {
+      async validate(token: string) {
+        const resp = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/auth-bridge`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+            },
+            body: JSON.stringify({ action: 'validate', token }),
+          },
+        )
+        const data = await resp.json()
+        if (!resp.ok) throw new Error(data.error || 'Bridge validation failed')
+        return data
+      },
+
+      async completeRegistration(data: { temp_token: string; username: string }) {
+        const resp = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/auth-bridge`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+            },
+            body: JSON.stringify({ action: 'complete', ...data }),
+          },
+        )
+        const result = await resp.json()
+        if (!resp.ok) throw new Error(result.error || 'Bridge registration failed')
+        return result
       },
     },
   }

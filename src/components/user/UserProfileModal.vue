@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { backend } from '@/lib/backend'
 import { usePresenceStore } from '@/stores/presence'
 import UserAvatar from '@/components/user/UserAvatar.vue'
+import UserIntegrationSection from '@/components/integrations/UserIntegrationSection.vue'
 import type { Profile } from '@/lib/types'
 
 const props = defineProps<{
@@ -88,6 +89,9 @@ onMounted(async () => {
             <a v-if="profile.website" :href="profile.website" target="_blank" rel="noopener noreferrer" class="block text-xs text-accent hover:underline truncate">{{ profile.website }}</a>
             <p v-if="profile.location" class="text-xs text-text-secondary">📍 {{ profile.location }}</p>
           </div>
+
+          <!-- Integration data -->
+          <UserIntegrationSection :user-id="userId" />
 
           <div class="mt-3 flex items-center justify-between border-t border-bg-tertiary pt-3">
             <span class="text-xs text-text-muted">Member since {{ new Date(profile.created_at).toLocaleDateString() }}</span>

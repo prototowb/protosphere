@@ -8,6 +8,7 @@ import { usePresenceStore } from '@/stores/presence'
 import UserAvatar from '@/components/user/UserAvatar.vue'
 import BlockRenderer from '@/components/editor/BlockRenderer.vue'
 import BlockEditor from '@/components/editor/BlockEditor.vue'
+import UserIntegrationSection from '@/components/integrations/UserIntegrationSection.vue'
 import type { Profile, PageContent } from '@/lib/types'
 
 const route = useRoute()
@@ -107,6 +108,11 @@ function cancelEdit() {
             </div>
           </div>
         </div>
+      </div>
+
+      <!-- Integration data -->
+      <div class="mx-auto max-w-4xl px-6 pt-4">
+        <UserIntegrationSection :user-id="profile.id" />
       </div>
 
       <!-- Page content -->
