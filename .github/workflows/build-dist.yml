@@ -69,14 +69,18 @@ jobs:
             exit 1
           fi
 
-      - name: Commit dist
+      - name: Publish dist to deploy branch
+        env:
+          DEPLOY_BRANCH: dist-${{ github.base_ref || github.ref_name }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          set -euo pipefail
+          cd dist
+          git init -q -b "$DEPLOY_BRANCH"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add -A -f dist
-          if git diff --staged --quiet; then
-            echo "No dist changes to commit."
-            exit 0
-          fi
-          git commit -m "chore(dist): update build output [skip ci]"
-          git push origin ${{ github.base_ref || github.ref_name }}
+          git add -A
+          git commit -q -m "build($DEPLOY_BRANCH): from ${GITHUB_SHA}"
+          git push --force \
+            "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
+            "HEAD:refs/heads/$DEPLOY_BRANCH"
