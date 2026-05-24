@@ -1,1 +1,6 @@
 dist/** linguist-generated=true
+
+# Apache rejects CRLF in .htaccess on some shared-hosting configs.
+# Force LF so the file stays LF even on Windows checkouts.
+*.htaccess text eol=lf
+.htaccess text eol=lf
