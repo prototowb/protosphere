@@ -11,32 +11,77 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undef
  * subdomains (typescript.protocode.xyz, learn.protocode.xyz, etc.) can
  * then read the same cookie and call `setSession()` to share the auth.
  *
+ * Cookie values are chunked across multiple cookies (`<key>.0`, `<key>.1`,
+ * ...) when the encoded value would exceed the browser's per-cookie 4KB
+ * limit. Supabase session payloads regularly approach that limit when the
+ * user has linked identities or extensive metadata, so chunking is not
+ * optional. Same approach as @supabase/ssr.
+ *
  * Off-domain (localhost dev, vercel previews, etc.) this falls back to
  * undefined → supabase-js defaults to localStorage. No behavior change.
- *
- * Cookie size note: Supabase JS chunks the session into multiple cookies
- * if needed (sb-<ref>-auth-token, sb-<ref>-auth-token.0, .1, ...) so the
- * 4KB-per-cookie limit is not a concern for typical session payloads.
  */
+const CHUNK_SIZE = 3180
+
 function makeCookieStorage(domain: string) {
+  const baseAttrs = [
+    'path=/',
+    `domain=${domain}`,
+    'max-age=31536000',
+    'SameSite=Lax',
+    location.protocol === 'https:' ? 'Secure' : '',
+  ].filter(Boolean).join('; ')
+
+  const expireAttrs = ['path=/', `domain=${domain}`, 'max-age=0'].join('; ')
+
+  function readMap(): Map<string, string> {
+    const map = new Map<string, string>()
+    for (const row of document.cookie.split('; ')) {
+      const eq = row.indexOf('=')
+      if (eq < 0) continue
+      try {
+        map.set(row.slice(0, eq), decodeURIComponent(row.slice(eq + 1)))
+      } catch {
+        // Skip values with malformed percent-encoding
+      }
+    }
+    return map
+  }
+
+  function clearChunks(key: string) {
+    const map = readMap()
+    for (let i = 0; map.has(`${key}.${i}`); i++) {
+      document.cookie = `${key}.${i}=; ${expireAttrs}`
+    }
+  }
+
   return {
     getItem(key: string): string | null {
-      const match = document.cookie.split('; ').find((row) => row.startsWith(`${key}=`))
-      return match ? decodeURIComponent(match.split('=').slice(1).join('=')) : null
+      const map = readMap()
+      if (map.has(key)) return map.get(key)!
+      if (!map.has(`${key}.0`)) return null
+      let result = ''
+      for (let i = 0; map.has(`${key}.${i}`); i++) {
+        result += map.get(`${key}.${i}`)!
+      }
+      return result
     },
     setItem(key: string, value: string): void {
-      const opts = [
-        'path=/',
-        `domain=${domain}`,
-        'max-age=31536000',
-        'SameSite=Lax',
-        location.protocol === 'https:' ? 'Secure' : '',
-      ].filter(Boolean).join('; ')
-      document.cookie = `${key}=${encodeURIComponent(value)}; ${opts}`
+      // Migrate cleanly between modes: clear both unchunked and chunked variants first.
+      document.cookie = `${key}=; ${expireAttrs}`
+      clearChunks(key)
+
+      if (value.length <= CHUNK_SIZE) {
+        document.cookie = `${key}=${encodeURIComponent(value)}; ${baseAttrs}`
+        return
+      }
+      for (let i = 0, off = 0; off < value.length; i++, off += CHUNK_SIZE) {
+        const chunk = value.slice(off, off + CHUNK_SIZE)
+        document.cookie = `${key}.${i}=${encodeURIComponent(chunk)}; ${baseAttrs}`
+      }
     },
     removeItem(key: string): void {
-      const opts = ['path=/', `domain=${domain}`, 'max-age=0'].join('; ')
-      document.cookie = `${key}=; ${opts}`
+      document.cookie = `${key}=; ${expireAttrs}`
+      clearChunks(key)
     },
   }
 }
