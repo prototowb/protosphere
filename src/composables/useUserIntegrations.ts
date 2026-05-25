@@ -7,14 +7,41 @@ const myIntegrations = ref<UserIntegration[]>([])
 const myVisibility = ref<UserFieldVisibility[]>([])
 const loading = ref(false)
 
+// Fallback TTL when an integration's `default_ttl_seconds` isn't reachable
+// from this composable. The DB column is also `300` by default, so this
+// mostly serves as a safety net.
+const DEFAULT_TTL_SECONDS = 300
+
 export function useUserIntegrations() {
-  async function fetchMyIntegrations(userId: string) {
+  async function fetchMyIntegrations(userId: string, options?: { autoRefresh?: boolean }) {
     loading.value = true
     try {
       myIntegrations.value = await backend.integrations.listUserIntegrations(userId)
       myVisibility.value = await backend.integrations.getFieldVisibility(userId)
+      if (options?.autoRefresh !== false) {
+        // Fire-and-forget background refresh for stale entries. We don't
+        // await — cached `synced_data` is rendered immediately and the
+        // updated row swaps in when the sync resolves.
+        refreshStaleIntegrations()
+      }
     } finally {
       loading.value = false
+    }
+  }
+
+  /**
+   * For each loaded user_integration whose `synced_at` is older than the
+   * integration's TTL (or never synced), trigger `syncData` in the
+   * background. Stale-while-revalidate.
+   */
+  function refreshStaleIntegrations() {
+    const now = Date.now()
+    const ttlMs = DEFAULT_TTL_SECONDS * 1000
+    for (const ui of myIntegrations.value) {
+      const lastSync = ui.synced_at ? new Date(ui.synced_at).getTime() : 0
+      if (now - lastSync > ttlMs) {
+        syncData(ui.id).catch(() => { /* best effort; cached data stays */ })
+      }
     }
   }
 
@@ -63,6 +90,7 @@ export function useUserIntegrations() {
     myVisibility,
     loading,
     fetchMyIntegrations,
+    refreshStaleIntegrations,
     connect,
     disconnect,
     syncData,
