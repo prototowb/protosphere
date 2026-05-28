@@ -5,14 +5,17 @@
 ## Current State
 
 ```yaml
-project_phase: "Active Development — M25 + Integrations Framework + Auth Bridge Complete"
+project_phase: "Active Development — Integrations Framework Live + Cross-Subdomain SSO Shipped"
 protogear_enabled: true
 framework: "Vue 3 + TypeScript 5.9 + Vite 7 + Tailwind CSS 4 + Pinia + Supabase"
 project_type: "Single-Community Communication Platform"
 initialization_date: "2026-02-20"
-current_milestone: "Auth Bridge Complete — planning next milestone"
+current_milestone: "Cross-subdomain SSO + Protocode Learn integration live on prod"
 local_supabase: true
+session_handoff: "SESSION_HANDOFF.md — short, rolling, read first each session"
 ```
+
+**Latest deploy state (2026-05-29)**: chat.protocode.xyz + staging-chat.protocode.xyz are running hybrid-storage auth (full session in `localStorage`, compact session in `.protocode.xyz` cookie). CI publishes builds to orphan `dist-development` / `dist-main` branches; Netcup pulls from those. The Protocode Learn integration is registered on both environments and surfaces XP / streak / course progress via TTL-refresh. Migrations 050–053 (integrations framework) applied to both projects. See `SESSION_HANDOFF.md` for the rolling work-in-progress state.
 
 ## Vision Pivot (2026-02-22)
 
