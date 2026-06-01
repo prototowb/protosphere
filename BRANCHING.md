@@ -69,11 +69,11 @@ This document defines the branching model and commit conventions for Protosphere
 - **Purpose**: Production-ready code — stable releases only
 - **Status**: Always stable, deployable
 - **Protection**: No direct commits; only promoted from `development` via PR
-- **dist**: Includes pre-built `dist/` (committed by CI on `development`, carried over in the PR)
+- **dist**: Source branch does **not** contain `dist/`. CI publishes the build to the orphan `dist-main` branch; Netcup pulls from there.
 
 #### `development`
 - **Purpose**: Primary integration branch — all work lands here
-- **Status**: Should always build; CI auto-commits updated `dist/` on every push
+- **Status**: Should always build; CI publishes updated `dist/` to the orphan `dist-development` branch on every push
 - **Merges from**: Feature, bugfix branches
 - **Merges to**: `main` via PR at release points (see [Promoting to main](#promoting-development-to-main))
 
@@ -189,8 +189,9 @@ gh run watch $(gh run list --branch development --limit 1 --json databaseId -q '
 ### CI / dist workflow
 
 - CI (`build-dist.yml`) triggers on every push to `development`
-- Bot rebuilds `dist/` and commits it back to `development` with `[skip ci]`
-- `main` always receives an up-to-date `dist/` when the PR is merged
+- Bot builds the SPA and **force-pushes to the orphan branch** `dist-development` (source branches never contain build artifacts)
+- When `development` is merged to `main`, CI similarly publishes to `dist-main`
+- Netcup serves `dist-development` for staging and `dist-main` for production
 
 ---
 
@@ -332,7 +333,7 @@ Fixes PTSPH-089
 3. **Update from development**: `git rebase development` (if behind)
 
 
-4. **Merge locally**: `git checkout {{DEV_BRANCH}} && git merge feature-branch --no-ff`
+4. **Merge locally**: `git checkout development && git merge feature-branch --no-ff`
 
 ---
 
@@ -347,7 +348,7 @@ When working with AI assistants (Claude, GPT, etc.), ensure they:
 - Use descriptive branch names
 - Write clear commit messages following convention
 - Reference ticket numbers (PTSPH-XXX)
-- Test changes before committing{{REMOTE_PUSH_REGULARLY}}
+- Test changes before committing
 - Update documentation when behavior changes
 
 ❌ **DON'T**:
@@ -355,7 +356,7 @@ When working with AI assistants (Claude, GPT, etc.), ensure they:
 - Commit directly to `development` for features
 - Use vague commit messages
 - Skip testing
-- Make huge commits without breaking them down{{REMOTE_FORCE_PUSH}}
+- Make huge commits without breaking them down
 
 ### AI Agent Communication
 
@@ -367,34 +368,9 @@ I'm going to:
 2. Implement the feature
 3. Write tests
 4. Commit with message: "feat(scope): add feature"
-
-6. Merge locally to {{DEV_BRANCH}}
+5. Merge locally to development
 
 Does this approach work for you?
-```
-
-## Local Development (No Remote)
-
-This project does not have a remote repository configured.
-
-### Local Workflow
-```bash
-# Work on your branch
-git checkout -b feature/{{TICKET_PREFIX}}-XXX-description
-
-# When done, merge to development
-git checkout {{DEV_BRANCH}}
-git merge feature/{{TICKET_PREFIX}}-XXX-description --no-ff
-
-# Delete feature branch
-git branch -d feature/{{TICKET_PREFIX}}-XXX-description
-```
-
-### Adding a Remote Later
-If you want to add a remote repository:
-```bash
-git remote add origin <repository-url>
-git push -u origin {{DEV_BRANCH}}
 ```
 
 ---
@@ -452,50 +428,9 @@ NEVER:
 
 ---
 
-## Automated Branch Enforcement
-
-### Branch Creation Pattern
-
-When creating tickets, branches should be automatically created following the naming convention:
-
-```python
-def enforce_branching_strategy(ticket):
-    """
-    Ensures proper branch creation and management.
-    MANDATORY: Called automatically when any ticket is created.
-    """
-    ticket_id = ticket['id']
-
-    # Determine branch name based on ticket type
-    if ticket['type'] == 'feature':
-        branch = f"feature/{ticket_id}-{ticket['slug']}"
-    elif ticket['type'] == 'bugfix':
-        branch = f"bugfix/{ticket_id}-{ticket['slug']}"
-    elif ticket['type'] == 'hotfix':
-        branch = f"hotfix/{ticket_id}-{ticket['slug']}"
-    else:
-        branch = f"task/{ticket_id}-{ticket['slug']}"
-
-    # Create branch from development
-    execute_command("git checkout main")
-    execute_command(f"git checkout -b {branch}")
-
-    # Update ticket with branch info
-    ticket['branch'] = branch
-    ticket['branch_created'] = True
-
-    print(f"Created branch: {branch}")
-    return branch
-```
-
-### Enforcement Rules
+## Branch Enforcement Rules
 
 1. **Every ticket gets a branch** — no exceptions
 2. **Branch names follow the convention** — `{type}/{ticket_id}-{slug}`
 3. **Branches created from `development`** — never from `main` (except hotfixes)
 4. **Branches deleted after merge** — keep the branch list clean
-5. **Test structure created alongside branch** — see TESTING.md for test enforcement
-
----
-
-*This branching strategy was generated by Proto Gear to help maintain consistency in AI-assisted development. Customize this file to match your team's specific needs.*
