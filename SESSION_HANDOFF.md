@@ -3,67 +3,86 @@
 > **Rolling document.** Replace contents each session — this is "what the next session needs to know," not a permanent log. For long-term project state, see `PROJECT_STATUS.md`.
 
 **Updated**: 2026-06-02
-**Last session focus**: TDD/DDD foundation + dev env improvements
+**Last session focus**: TDD/DDD foundation + dev env toolchain
 
 ---
 
 ## What shipped this session
 
-### TDD/DDD infrastructure (branch: `docs/session-handoff`)
+All work landed on `development` (merged from `docs/session-handoff`).
 
-| Commit | What |
+### Testing infrastructure
+- **260 tests, all green.** `npm run test:unit` (lib-only, ~700ms) / `npm run test:run` (full, ~3s) / `npm run test:ui` (browser UI)
+- Vitest coverage: per-file thresholds 90–95% on domain layer; global baseline 8%
+- 8 new test files in `src/test/lib/`: automod, permissions, formatters, mentions, unread, messageSearch, roles, mutes, backend-contract (49 contract tests covering auth, community, invites, profiles, servers, channels, members, messages)
+
+### DDD domain extractions (composables/stores → lib/)
+All violations listed in `docs/DDD_CONVENTIONS.md` resolved:
+
+| New lib function | Extracted from |
 |---|---|
-| `e6b4de4` | 126 lib unit tests, coverage config, 5 DDD domain function extractions |
-| `da50155` | Fixed all pre-existing test failures (3 files → 0) |
-| `babc118` | Coverage thresholds finalised + PROJECT_STATUS updated |
+| `resolveEffectivePermissions()` in `permissions.ts` | `usePermissions.ts` |
+| `isChannelUnread()` in `unread.ts` | `useUnread` + `useDmUnread` (de-duped) |
+| `TYPING_EXPIRE_MS` / `STOP_AFTER_MS` in `typing.ts` | `useTyping.ts` |
+| `messageMatchesQuery()` in `messageSearch.ts` | `useMessageSearch.ts` |
+| `roleUpdateAuditAction()` in `roles.ts` | `useRoles.ts` |
+| `isMuteActive()` in `mutes.ts` | `stores/mutes.ts` |
 
-**Test suite**: 226 tests, 26 files, all green. `npm run test:unit` runs lib-only in ~700ms.
+### Dev env toolchain
+- **ESLint**: `eslint.config.ts` (flat config); `npm run lint` / `npm run lint:fix`; 0 errors, 6 warnings (all `v-html` — intentional)
+- **@vitest/ui**: `npm run test:ui` launches browser test dashboard
+- **Pre-commit hook**: `simple-git-hooks` + `lint-staged` — ESLint runs on staged `.ts`/`.vue` before every commit
+- **CI quality gate**: `.github/workflows/quality.yml` — lint → type-check → tests on every push/PR to development
+- **VS Code**: `.vscode/settings.json` (ESLint + Vitest integration, TypeScript workspace SDK); `.vscode/extensions.json` (Volar, ESLint, Vitest Explorer)
 
-**Coverage**: Per-file thresholds on domain layer (90–95%). Global baseline at 8%/7%/10% — raise as coverage expands.
-
-**Domain extractions (composables → lib/)**:
-- `lib/permissions.ts` — added `resolveEffectivePermissions()` ← `usePermissions.ts`
-- `lib/unread.ts` — new: `isChannelUnread()`, de-duped from `useUnread` + `useDmUnread`
-- `lib/typing.ts` — new: `TYPING_EXPIRE_MS` / `STOP_AFTER_MS` constants
-- `lib/messageSearch.ts` — new: `messageMatchesQuery()` ← `useMessageSearch.ts`
-- `lib/roles.ts` — new: `roleUpdateAuditAction()` ← `useRoles.ts`
-
-**Bug fixed**: `local.ts` `community_invites.create()` — `single_use` invites now set `max_uses: 1` so `validate()` returns null after use.
-
-**Docs**: `docs/DDD_CONVENTIONS.md` — layer map + migration reference (all 5 listed violations resolved).
+### Bug fixed
+- `local.ts` `community_invites.create()` — `single_use` invites now set `max_uses: 1` so `validate()` returns null after use
 
 ---
 
 ## Active / pending
 
-- **Branch `docs/session-handoff`** — has the TDD/DDD commits above + the earlier docs-only commits. Consider whether to PR this into `development` or cherry-pick.
-- **PR #24** (from previous session) — `dist/` untracking. Still open; check if it needs rebase.
-- **Backend contract test** — `src/test/lib/backend-contract.test.ts` covers auth, community, community_invites on the local backend. Structured to extend to Supabase when a test fixture is available.
-- **automod.ts line 66** — the `default:` branch is unreachable by design (TypeScript exhaustiveness check) but shows as uncovered. Not a problem; note it if the threshold starts failing.
+- **Push to remote**: `development` is ahead of `origin/development` — push when ready to trigger CI
+- **PR #24** (from previous session) — `dist/` untracking — check if still open / needs rebase
+- **Backend contract test**: covers local backend; Supabase extension is documented in comments but requires a test fixture
+- **`any` warnings** (6 remaining `vue/no-v-html`): intentional — `v-html` used for markdown with DOMPurify-style sanitization in `renderMessage()`; warnings serve as a reminder
+
+## Quality baseline (as of this session)
+```
+npm run test:run   → 260 passed (26 files)
+npm run type-check → clean
+npm run lint       → 0 errors, 6 warnings (v-html only)
+```
+
+---
 
 ## Conventions established / reinforced this session
 
 ### Testing
-- `src/test/lib/` — pure domain function tests only (no Vue, no mocks, fast)
-- `src/test/composables/` — composable tests, mocking `@/lib/backend` wholesale
-- `src/test/pages/` + `src/test/components/` — component tests with `@vue/test-utils`
-- When mocking composables that return `Ref<T>`, use async factory + `await import('vue')` to get real `ref()` — plain `{ value: [] }` breaks Vue template auto-unwrap
-- Mock ALL composables that transitively import `@/lib/backend` to prevent Supabase client initialization in tests
+- `src/test/lib/` — pure domain function tests (no Vue, no mocks, <800ms)
+- Mock ALL composables that transitively import `@/lib/backend` to prevent Supabase client initialization
+- When mocking composables returning `Ref<T>`, use async factory + `await import('vue')` to get real `ref()` — plain `{ value: [] }` breaks Vue template auto-unwrap
 
 ### DDD layering
-- `lib/` is the domain layer — pure functions, types, Backend contract
-- `composables/` is the application layer — no domain logic, delegates to lib/
-- See `docs/DDD_CONVENTIONS.md` for the full layer map
+- `lib/` = domain (pure functions, types, Backend contract)
+- `composables/` = application layer (no domain logic)
+- `stores/` = state only (no business logic, no backend calls)
+- See `docs/DDD_CONVENTIONS.md` for the layer map
 
-### Supabase MCP (unchanged)
-- Per-repo `.mcp.json` (gitignored), PAT in `Authorization: Bearer ${SUPABASE_CHAT_TOKEN}` header
+### ESLint
+- `eslint.config.ts` (flat config, ESLint 9)
+- HTML formatting rules disabled (project uses compact style)
+- `type` imports enforced via `consistent-type-imports`
+- `script-setup` SFC style enforced
+
+### Supabase MCP
+- Per-repo `.mcp.json` (gitignored); `Authorization: Bearer ${SUPABASE_CHAT_TOKEN}` header
 - Two servers: `supabase-chat-prod` (porlhhdajfaamvggcrbi) and `supabase-chat-staging` (pysitxxjzejhvkawacit)
-- Set tokens at Windows User scope and launch Claude Code from a fresh PowerShell
+- Set tokens at Windows User scope; launch Claude Code from fresh PowerShell
 
 ---
 
 ## How to use this file
-
-- **End of session**: replace the contents with the new state. Keep it short (~150 lines max).
+- **End of session**: replace contents with new state. Keep it short (~150 lines max).
 - **Start of next session**: read this file first.
-- **Don't append history** — `git log` is the audit trail. This file is "what's true right now."
+- **Don't append history** — `git log` is the audit trail.
