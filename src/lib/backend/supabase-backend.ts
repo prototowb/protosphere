@@ -863,7 +863,8 @@ export function createSupabaseBackend(): Backend {
         if (status) query = query.eq('status', status)
         const { data, error } = await query.order('created_at', { ascending: false }).range(offset, offset + limit - 1)
         if (error) throw error
-        return (data as any[]).map((r) => ({ ...r, reporter_profile: r.reporter_profile as Profile, reviewer_profile: r.reviewer_profile as Profile | null }))
+        type RawReport = Report & { reporter_profile: Profile; reviewer_profile: Profile | null }
+        return (data as RawReport[]).map((r) => ({ ...r, reporter_profile: r.reporter_profile, reviewer_profile: r.reviewer_profile }))
       },
 
       async create(data) {
@@ -889,7 +890,8 @@ export function createSupabaseBackend(): Backend {
           .eq('server_id', serverId)
           .or(`expires_at.is.null,expires_at.gt.${now}`)
         if (error) throw error
-        return (data as any[]).map((m) => ({ ...m, user_profile: m.user_profile as Profile, muted_by_profile: m.muted_by_profile as Profile }))
+        type RawMute = Mute & { user_profile: Profile; muted_by_profile: Profile }
+        return (data as RawMute[]).map((m) => ({ ...m, user_profile: m.user_profile, muted_by_profile: m.muted_by_profile }))
       },
 
       async add(serverId, userId, mutedBy, reason = '', expiresAt = null) {
