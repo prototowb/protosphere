@@ -2,59 +2,63 @@
 
 > **Rolling document.** Replace contents each session — this is "what the next session needs to know," not a permanent log. For long-term project state, see `PROJECT_STATUS.md`.
 
-**Updated**: 2026-05-29
-**Last session focus**: Productionising the Protocode Learn integration + cross-subdomain auth + deploy hygiene
+**Updated**: 2026-06-02
+**Last session focus**: TDD/DDD foundation + dev env improvements
 
 ---
 
 ## What shipped this session
 
-| PR | Outcome |
+### TDD/DDD infrastructure (branch: `docs/session-handoff`)
+
+| Commit | What |
 |---|---|
-| [#19](https://github.com/prototowb/protosphere/pull/19) | CI publishes built dist to orphan `dist-development` / `dist-main` branches via force-push. Source branches no longer carry build artifacts in PR diffs. |
-| [#20](https://github.com/prototowb/protosphere/pull/20) | (Superseded) Initial chunked cookie storage — added auth, but bloated request headers. |
-| [#21](https://github.com/prototowb/protosphere/pull/21) | Hybrid auth storage: full session in `localStorage`, compact session (no `identities`/`metadata`) in `.protocode.xyz` cookie. Fixes Apache 400s from Netcup's `LimitRequestFieldSize`. |
-| [#22](https://github.com/prototowb/protosphere/pull/22) | Lazy TTL refresh in `useUserIntegrations` — stale-while-revalidate, 300s default. Integration data auto-refreshes in background. |
-| [#23](https://github.com/prototowb/protosphere/pull/23) | Release: hybrid auth + TTL refresh + orphan deploys → chat.protocode.xyz (prod). Netcup reconfigured to pull `dist-main`. |
-| [#24](https://github.com/prototowb/protosphere/pull/24) | Untrack `dist/` from `development` and `main` (open). |
+| `e6b4de4` | 126 lib unit tests, coverage config, 5 DDD domain function extractions |
+| `da50155` | Fixed all pre-existing test failures (3 files → 0) |
+| `babc118` | Coverage thresholds finalised + PROJECT_STATUS updated |
 
-**Schema migrations applied to chat (prod)**:
-- 050–053 (integrations framework + `api_key` + `app_url` + auth bridge) applied via Supabase Management API + PAT inside a subagent
-- Integration creation on chat.protocode.xyz now works end-to-end
+**Test suite**: 226 tests, 26 files, all green. `npm run test:unit` runs lib-only in ~700ms.
 
-**Netcup config**:
-- `staging-chat.protocode.xyz` → pulls `dist-development`
-- `chat.protocode.xyz` → pulls `dist-main`
+**Coverage**: Per-file thresholds on domain layer (90–95%). Global baseline at 8%/7%/10% — raise as coverage expands.
+
+**Domain extractions (composables → lib/)**:
+- `lib/permissions.ts` — added `resolveEffectivePermissions()` ← `usePermissions.ts`
+- `lib/unread.ts` — new: `isChannelUnread()`, de-duped from `useUnread` + `useDmUnread`
+- `lib/typing.ts` — new: `TYPING_EXPIRE_MS` / `STOP_AFTER_MS` constants
+- `lib/messageSearch.ts` — new: `messageMatchesQuery()` ← `useMessageSearch.ts`
+- `lib/roles.ts` — new: `roleUpdateAuditAction()` ← `useRoles.ts`
+
+**Bug fixed**: `local.ts` `community_invites.create()` — `single_use` invites now set `max_uses: 1` so `validate()` returns null after use.
+
+**Docs**: `docs/DDD_CONVENTIONS.md` — layer map + migration reference (all 5 listed violations resolved).
 
 ---
 
 ## Active / pending
 
-- **PR #24** — review + merge to development → main
-- After #24 merges to main, the `dist/` tree disappears from both source branches entirely. Verify Netcup still serves correctly (it should — Netcup pulls `dist-main`, not `main`).
+- **Branch `docs/session-handoff`** — has the TDD/DDD commits above + the earlier docs-only commits. Consider whether to PR this into `development` or cherry-pick.
+- **PR #24** (from previous session) — `dist/` untracking. Still open; check if it needs rebase.
+- **Backend contract test** — `src/test/lib/backend-contract.test.ts` covers auth, community, community_invites on the local backend. Structured to extend to Supabase when a test fixture is available.
+- **automod.ts line 66** — the `default:` branch is unreachable by design (TypeScript exhaustiveness check) but shows as uncovered. Not a problem; note it if the threshold starts failing.
 
-## Conventions established this session — keep going forward
+## Conventions established / reinforced this session
 
-### Branch flow
-- **Every development → main merge goes through a PR.** No direct local merges.
-- Feature branches → development → main, via PR each step.
+### Testing
+- `src/test/lib/` — pure domain function tests only (no Vue, no mocks, fast)
+- `src/test/composables/` — composable tests, mocking `@/lib/backend` wholesale
+- `src/test/pages/` + `src/test/components/` — component tests with `@vue/test-utils`
+- When mocking composables that return `Ref<T>`, use async factory + `await import('vue')` to get real `ref()` — plain `{ value: [] }` breaks Vue template auto-unwrap
+- Mock ALL composables that transitively import `@/lib/backend` to prevent Supabase client initialization in tests
 
-### Deploy model
-- Source branches never contain `dist/`.
-- CI build-dist workflow force-pushes the build to `dist-${ref}` orphan branches.
-- Netcup pulls the orphan branch directly.
+### DDD layering
+- `lib/` is the domain layer — pure functions, types, Backend contract
+- `composables/` is the application layer — no domain logic, delegates to lib/
+- See `docs/DDD_CONVENTIONS.md` for the full layer map
 
-### Cross-subdomain auth on `.protocode.xyz`
-- Hybrid storage (`src/lib/supabase.ts`):
-  - `localStorage` — full session for this origin
-  - `.protocode.xyz` cookie — compact session (no `identities`/`metadata`) for sibling subdomains
-- The learning platform's auth-bridge reads the cookie, calls the **`protosphere-sso-exchange`** Edge Function on learn's Supabase, gets a learn-native session in exchange, and `setSession()`s with that. Supabase doesn't natively trust JWTs from another Supabase project, hence the exchange.
-
-### Supabase MCP setup (cross-org, simultaneous access)
-- Per-repo `.mcp.json` (gitignored), PAT in `Authorization: Bearer ${SUPABASE_CHAT_TOKEN}` header.
-- Two servers in this repo: `supabase-chat-prod` (porlhhdajfaamvggcrbi) and `supabase-chat-staging` (pysitxxjzejhvkawacit).
-- Use `${VAR}` syntax for env expansion (`$VAR` is treated as a literal).
-- Set tokens at Windows User scope and launch Claude Code from a fresh PowerShell to inherit them.
+### Supabase MCP (unchanged)
+- Per-repo `.mcp.json` (gitignored), PAT in `Authorization: Bearer ${SUPABASE_CHAT_TOKEN}` header
+- Two servers: `supabase-chat-prod` (porlhhdajfaamvggcrbi) and `supabase-chat-staging` (pysitxxjzejhvkawacit)
+- Set tokens at Windows User scope and launch Claude Code from a fresh PowerShell
 
 ---
 
