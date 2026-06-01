@@ -12,6 +12,8 @@
     "type-check": "vue-tsc --noEmit",
     "test": "vitest",
     "test:run": "vitest run",
+    "test:watch": "vitest --watch",
+    "test:unit": "vitest run src/test/lib",
     "test:coverage": "vitest run --coverage",
     "sync:emoji": "node scripts/sync-twemoji.mjs"
   },

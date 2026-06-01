@@ -2,6 +2,7 @@ import { ref } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useDmsStore } from '@/stores/dms'
 import { useDmNotificationPreferences } from '@/composables/useDmNotificationPreferences'
+import { isChannelUnread } from '@/lib/unread'
 
 const DM_READ_STATE_KEY = 'protosphere_dm_read_state'
 
@@ -47,15 +48,10 @@ export function useDmUnread() {
       // Skip muted DM groups
       if (isMuted(group.id)) continue
 
-      const lastRead = userState[group.id]
       const msgs = dmsStore.messagesByGroup[group.id]
       if (!msgs || msgs.length === 0) continue
 
-      const hasUnread = lastRead
-        ? msgs.some((m) => m.author_id !== userId && m.created_at > lastRead)
-        : msgs.some((m) => m.author_id !== userId)
-
-      if (hasUnread) unread.add(group.id)
+      if (isChannelUnread(msgs, userState[group.id], userId)) unread.add(group.id)
     }
 
     unreadDmGroupIds.value = unread

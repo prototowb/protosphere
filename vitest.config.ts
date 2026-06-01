@@ -8,6 +8,18 @@ export default defineConfig({
     environment: 'happy-dom',
     globals: true,
     setupFiles: ['./src/test/setup.ts'],
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'json', 'html'],
+      include: ['src/**/*.{ts,vue}'],
+      exclude: ['src/test/**', 'src/lib/emojiMap.ts', 'src/lib/emojiNames.ts'],
+      thresholds: {
+        lines: 25,
+        functions: 30,
+        branches: 20,
+        statements: 25,
+      },
+    },
   },
   resolve: {
     alias: {

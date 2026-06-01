@@ -1,9 +1,8 @@
 import { ref, onUnmounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
+import { TYPING_EXPIRE_MS, STOP_AFTER_MS } from '@/lib/typing'
 
 const TYPING_KEY = 'protosphere_typing'
-const TYPING_EXPIRE_MS = 2000
-const STOP_AFTER_MS = 1500
 
 type TypingEntry = { displayName: string; ts: number }
 type TypingMap = Record<string, Record<string, TypingEntry>>
