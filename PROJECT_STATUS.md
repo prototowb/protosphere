@@ -31,9 +31,14 @@ Protosphere is evolving from a generic multi-server Discord clone into **the cen
 
 ```
 composables → backend (interface) → local.ts | supabase-backend.ts
+lib/         ← domain layer: pure functions, types, repository contract
 ```
 
 Backend adapter auto-detects mode via `VITE_SUPABASE_URL` env var. Local mode uses localStorage, Supabase mode wraps the real client. Composables are backend-agnostic. Local Supabase via Docker for dev.
+
+**DDD layering** (see `docs/DDD_CONVENTIONS.md`): `src/lib/` = domain services and types; `src/composables/` = application layer; `src/stores/` = state; `src/components/` + `src/pages/` = presentation.
+
+**Testing:** Vitest + @vue/test-utils + happy-dom. `npm run test:unit` (fast, lib-only) / `npm run test:run` (full suite). Coverage enforced per-file on domain functions (90–95%). 226 tests, all green. Backend contract test in `src/test/lib/backend-contract.test.ts` covers local backend; structured to extend to Supabase once a test fixture is available.
 
 ---
 
@@ -577,6 +582,15 @@ src/lib/
   types.ts              — all TypeScript types matching DB schema
   permissions.ts        — Permission bitfield constants, hasPermission(), computePermissions()
   automod.ts            — pure checkAutomod() engine (word/link/caps/spam filters)
+  unread.ts             — isChannelUnread() pure domain function (used by useUnread + useDmUnread)
+  messageSearch.ts      — messageMatchesQuery() pure function
+  roles.ts              — roleUpdateAuditAction() pure function
+  typing.ts             — TYPING_EXPIRE_MS / STOP_AFTER_MS protocol constants
+  formatters.ts         — formatTime/Date/DateTime/Short/Full, escapeHtml, isExpiringSoon
+  mentions.ts           — renderMessage(), extractMentionedUsernames()
+
+src/test/lib/           — domain layer unit tests (126 tests, ~95% coverage on tested files)
+docs/DDD_CONVENTIONS.md — layer map, DDD pattern reference, migration history
 
 supabase/migrations/    — 001–053
 supabase/functions/
@@ -584,6 +598,8 @@ supabase/functions/
 ```
 
 ## Recent Updates
+
+- 2026-06-02: TDD/DDD foundation established. 226 tests, all green. (1) Vitest coverage config with per-file thresholds on domain layer (90–95%); `test:unit` / `test:watch` scripts. (2) 126 new tests in `src/test/lib/` covering automod, permissions, formatters, mentions, unread, messageSearch, roles, and the local backend (contract test). (3) 5 domain function extractions: `resolveEffectivePermissions`, `isChannelUnread`, `messageMatchesQuery`, `roleUpdateAuditAction`, typing constants — composables now delegate domain logic to `lib/`. (4) Bug: single_use community invites now set `max_uses=1` on create so `validate()` returns null after use. (5) `docs/DDD_CONVENTIONS.md` layer map and migration reference. (6) Pre-existing test failures fixed: stale CommunitySidebar Members-link assertion, SettingsPage missing integration mocks, `supabase.ts` null-safety on `window.location?.hostname`.
 
 - 2026-04-10: DM tabs + split view (PTSPH-205). Individual conversation tabs in the global top bar (context-aware: spaces view shows spaces nav, DM view shows conversation tabs). Clicking the community identity logo navigates back to spaces when in DM view. Drag a tab onto the DM content area to open a split pane with two conversations side-by-side (`DmConversationPane.vue`). Backend fixes: `listGroups` `.single()` → `.maybeSingle()` (406 on orphaned groups); `getOrCreate` member inserts changed to `upsert/ignoreDuplicates` to avoid 409 from the auto-join trigger (migration 024). Presence overhauled: replaced per-server presence channel with a persistent `presence:community` global channel started in AppShell on login (`startGlobalPresence`); DMPage now reads live status from `presenceStore` instead of the DB snapshot.
 - 2026-03-30: M23 complete (PTSPH-192–195). Block editor fully integrated with forum page posts: locked Hero block (editable title 300 char, background image, text alignment), pinned source message block (quote variant, auto-seeded in view + edit mode), ForumCommentsPanel in AppShell right sidebar (self-contained, compact layout for w-60 space), comments metric button in hero toggles sidebar, hero count sourced from panel for live sync. BlockRenderer supports pinned text block variants. AppShell member slot uses overflow-hidden for sticky-footer panels. PTSPH-196 (user profile pages) carried to next session.
