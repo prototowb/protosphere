@@ -142,10 +142,10 @@ function makeHybridStorage(domain: string) {
   }
 }
 
-const cookieDomain = typeof window !== 'undefined'
-  && (window.location.hostname.endsWith('.protocode.xyz') || window.location.hostname === 'protocode.xyz')
-    ? '.protocode.xyz'
-    : null
+const hostname = typeof window !== 'undefined' ? window.location?.hostname : undefined
+const cookieDomain = hostname && (hostname.endsWith('.protocode.xyz') || hostname === 'protocode.xyz')
+  ? '.protocode.xyz'
+  : null
 
 export const supabase: SupabaseClient | null =
   supabaseUrl && supabaseAnonKey

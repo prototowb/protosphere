@@ -1628,7 +1628,7 @@ export function createLocalBackend(): Backend {
           token: Math.random().toString(36).substring(2, 18),
           created_by: data.created_by,
           usage: data.usage ?? 'single_use',
-          max_uses: data.max_uses ?? null,
+          max_uses: data.max_uses ?? (data.usage === 'single_use' ? 1 : null),
           use_count: 0,
           expires_at: data.expires_at ?? null,
           created_at: new Date().toISOString(),

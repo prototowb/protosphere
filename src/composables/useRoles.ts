@@ -1,6 +1,7 @@
 import { backend } from '@/lib/backend'
 import { useAuthStore } from '@/stores/auth'
 import { useRolesStore } from '@/stores/roles'
+import { roleUpdateAuditAction } from '@/lib/roles'
 import type { Role } from '@/lib/types'
 
 export function useRoles() {
@@ -33,9 +34,7 @@ export function useRoles() {
     const role = await backend.roles.update(id, updates)
     store.setServerRoles(serverId, store.getServerRoles(serverId).map((r) => (r.id === id ? role : r)))
     if (authStore.user?.id) {
-      const action = updates.permissions !== undefined && updates.permissions !== oldRole?.permissions
-        ? 'role.permissions_changed' as const
-        : 'role.update' as const
+      const action = roleUpdateAuditAction(updates, oldRole?.permissions)
       backend.audit_log.log(serverId, authStore.user.id, action, 'role', id, updates as Record<string, unknown>).catch(() => {})
     }
     return role

@@ -152,7 +152,7 @@ src/
   router.ts
   stores/         # Pinia stores
 supabase/
-  migrations/     # SQL migrations (001–051)
+  migrations/     # SQL migrations (001–053)
 ```
 
 ---

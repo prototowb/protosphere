@@ -85,7 +85,7 @@ describe('CommunitySidebar — nav links', () => {
     setActivePinia(createPinia())
   })
 
-  it('shows Members link in nav', async () => {
+  it('shows DMs link in nav (always visible)', async () => {
     const pinia = createPinia()
     setActivePinia(pinia)
     const router = makeRouter()
@@ -95,8 +95,8 @@ describe('CommunitySidebar — nav links', () => {
     })
     await router.isReady()
 
-    expect(wrapper.html()).toContain('/community/members')
-    expect(wrapper.text()).toContain('Members')
+    expect(wrapper.html()).toContain('/channels/@me')
+    expect(wrapper.text()).toContain('DMs')
   })
 
   it('shows Approvals link when owner and registration_mode=approval', async () => {

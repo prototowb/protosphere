@@ -144,6 +144,22 @@ export function deserializePermissions(value: string | number): PermissionBits {
 }
 
 /**
+ * Compute a user's effective permissions from their assigned roles,
+ * falling back to the legacy role string if no custom roles are present.
+ * Pure domain logic — no Vue/Pinia dependencies.
+ */
+export function resolveEffectivePermissions(
+  userRoles: { permissions: string }[],
+  legacyRole?: string,
+): PermissionBits {
+  if (userRoles.length > 0) {
+    return computePermissions(userRoles.map((r) => deserializePermissions(r.permissions)))
+  }
+  if (legacyRole) return legacyRoleToPermissions(legacyRole)
+  return 0n
+}
+
+/**
  * Map a legacy MemberRole string to a permission bitfield.
  * Used as a fallback when a user has no custom roles assigned yet.
  */

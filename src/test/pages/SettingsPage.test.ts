@@ -39,6 +39,44 @@ vi.mock('@/components/user/UserAvatar.vue', () => ({
   default: { template: '<div class="user-avatar"/>' },
 }))
 
+vi.mock('@/composables/useIntegrations', async () => {
+  const { ref } = await import('vue')
+  return {
+    useIntegrations: () => ({
+      integrations: ref([]),
+      loading: ref(false),
+      fetchIntegrations: vi.fn(),
+      listFieldSchemas: vi.fn().mockResolvedValue([]),
+    }),
+  }
+})
+
+vi.mock('@/composables/useUserIntegrations', async () => {
+  const { ref } = await import('vue')
+  return {
+    useUserIntegrations: () => ({
+      myIntegrations: ref([]),
+      loading: ref(false),
+      fetchMyIntegrations: vi.fn(),
+      connect: vi.fn(),
+      disconnect: vi.fn(),
+      syncData: vi.fn(),
+      isConnected: vi.fn().mockReturnValue(false),
+      getVisibility: vi.fn().mockReturnValue('public'),
+      setFieldVisibility: vi.fn(),
+      fieldVisibility: ref([]),
+    }),
+  }
+})
+
+vi.mock('@/components/integrations/IntegrationConnectDialog.vue', () => ({
+  default: { template: '<div/>' },
+}))
+
+vi.mock('@/components/integrations/FieldVisibilityControl.vue', () => ({
+  default: { template: '<div/>' },
+}))
+
 import SettingsPage from '@/pages/SettingsPage.vue'
 
 const fakeProfile = (): Profile => ({
