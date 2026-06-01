@@ -59,7 +59,7 @@ import { backend, isLocalMode } from '@/lib/backend'
 import { formatDate } from '@/lib/formatters'
 import { useRealtime } from '@/composables/useRealtime'
 import { usePresenceStore } from '@/stores/presence'
-import type { Message, Profile, Member, MemberRole, Channel, ChannelCategory, AutomodRule, RsvpStatus, UserStatus, NotificationLevel, Attachment, ForumPost, ForumPostType } from '@/lib/types'
+import type { Message, Profile, Member, MemberRole, Channel, ChannelCategory, AutomodRule, RsvpStatus, UserStatus, NotificationLevel, Attachment, ForumPost, ForumPostType, ReportCategory } from '@/lib/types'
 import { useNotificationPreferences } from '@/composables/useNotificationPreferences'
 import { useSpaceRequirements, type MissingRequirement } from '@/composables/useSpaceRequirements'
 
@@ -939,7 +939,7 @@ async function handleReportSubmit(data: { category: string; description: string 
     reported_type: reportDialogType.value,
     reported_id: reportDialogTargetId.value,
     server_id: serverId.value || null,
-    category: data.category as import('@/lib/types').ReportCategory,
+    category: data.category as ReportCategory,
     description: data.description,
   })
   showReportDialog.value = false
