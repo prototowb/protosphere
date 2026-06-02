@@ -58,3 +58,4 @@ temp/
 .turbo/
 
 # Twemoji SVG assets committed to repo; run `npm run sync:emoji` to update
+.mcp.json
