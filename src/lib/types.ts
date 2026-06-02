@@ -517,5 +517,5 @@ export interface AuthBridgeClaims {
 }
 
 export type AuthBridgeResult =
-  | { status: 'logged_in'; session: { access_token: string; refresh_token: string } }
+  | { status: 'logged_in'; session: { access_token: string; refresh_token: string }; external_user_id: string }
   | { status: 'new_user'; temp_token: string; suggested_username: string; email: string; display_name: string; integration_slug: string; external_user_id: string }

@@ -217,7 +217,7 @@ export interface Backend {
   }
   bridge: {
     validate(token: string): Promise<AuthBridgeResult>
-    completeRegistration(data: { temp_token: string; username: string }): Promise<{ session: { access_token: string; refresh_token: string } }>
+    completeRegistration(data: { temp_token: string; username: string }): Promise<{ session: { access_token: string; refresh_token: string }; external_user_id: string }>
   }
 }
 

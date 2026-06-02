@@ -123,6 +123,7 @@ async function handleValidate(
     return jsonResponse({
       status: 'logged_in',
       session,
+      external_user_id: claims.sub,
     })
   }
 
@@ -255,7 +256,7 @@ async function handleComplete(
     return errorResponse('Account created but session generation failed. Please log in normally.', 500)
   }
 
-  return jsonResponse({ session })
+  return jsonResponse({ session, external_user_id: claims.sub })
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────

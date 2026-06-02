@@ -1988,6 +1988,7 @@ export function createLocalBackend(): Backend {
           return {
             status: 'logged_in' as const,
             session: { access_token: `local_${user.id}`, refresh_token: '' },
+            external_user_id: claims.sub,
           }
         }
 
@@ -2080,7 +2081,7 @@ export function createLocalBackend(): Backend {
         }
 
         setSession({ user: { id, email: claims.email }, access_token: `local_${id}` })
-        return { session: { access_token: `local_${id}`, refresh_token: '' } }
+        return { session: { access_token: `local_${id}`, refresh_token: '' }, external_user_id: claims.sub }
       },
     },
   }
