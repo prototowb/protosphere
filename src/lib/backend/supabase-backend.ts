@@ -4,8 +4,8 @@ import { supabase } from '@/lib/supabase'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { serializePermissions, PermissionPresets, Permission } from '@/lib/permissions'
 
-export function createSupabaseBackend(): Backend {
-  const client = supabase as SupabaseClient
+export function createSupabaseBackend(injectedClient?: SupabaseClient): Backend {
+  const client = injectedClient ?? (supabase as SupabaseClient)
 
   return {
     auth: {
@@ -183,9 +183,10 @@ export function createSupabaseBackend(): Backend {
       },
 
       async create(input, ownerId) {
+        const invite_code = Math.random().toString(36).substring(2, 10)
         const { data, error } = await client
           .from('servers')
-          .insert({ ...input, owner_id: ownerId })
+          .insert({ ...input, owner_id: ownerId, invite_code })
           .select()
           .single()
         if (error) throw error

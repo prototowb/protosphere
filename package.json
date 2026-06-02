@@ -16,6 +16,7 @@
     "test:unit": "vitest run src/test/lib",
     "test:coverage": "vitest run --coverage",
     "test:ui": "vitest --ui",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
     "lint": "eslint src",
     "lint:fix": "eslint src --fix",
     "sync:emoji": "node scripts/sync-twemoji.mjs",

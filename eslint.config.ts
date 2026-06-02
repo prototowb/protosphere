@@ -61,6 +61,7 @@ export default [
     rules: {
       '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/no-floating-promises': 'off',
+      'no-console': 'off',
     },
   },
 
