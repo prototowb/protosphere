@@ -3,23 +3,31 @@
 > **Rolling document.** Replace contents each session — this is "what the next session needs to know," not a permanent log. For long-term project state, see `PROJECT_STATUS.md`.
 
 **Updated**: 2026-06-02
-**Last session focus**: TDD/DDD foundation + dev env toolchain
+**Last session focus**: TDD/DDD foundation + dev env toolchain + Supabase integration tests
 
 ---
 
 ## What shipped this session
 
-All work landed on `development` (merged from `docs/session-handoff`).
+All work is on `development`, pushed to origin.
 
 ### Testing infrastructure
-- **260 tests, all green.** `npm run test:unit` (lib-only, ~700ms) / `npm run test:run` (full, ~3s) / `npm run test:ui` (browser UI)
-- Vitest coverage: per-file thresholds 90–95% on domain layer; global baseline 8%
-- 8 new test files in `src/test/lib/`: automod, permissions, formatters, mentions, unread, messageSearch, roles, mutes, backend-contract (49 contract tests covering auth, community, invites, profiles, servers, channels, members, messages)
+| Script | What it runs |
+|---|---|
+| `npm run test:unit` | lib-only pure tests, ~700ms |
+| `npm run test:run` | full unit suite, ~3s |
+| `npm run test:ui` | browser Vitest UI |
+| `npm run test:coverage` | with per-file thresholds on domain layer |
+| `npm run test:integration` | Supabase integration suite (needs `supabase start`) |
+
+**Unit suite**: 260 tests, 26 files, all green.
+
+**Integration suite**: 18 tests against live local Supabase — auth, profile trigger, community bootstrap, servers, messages, RLS. Run after `supabase start`; the global setup calls `supabase db reset` automatically.
 
 ### DDD domain extractions (composables/stores → lib/)
-All violations listed in `docs/DDD_CONVENTIONS.md` resolved:
+All violations from `docs/DDD_CONVENTIONS.md` resolved:
 
-| New lib function | Extracted from |
+| lib/ function | Extracted from |
 |---|---|
 | `resolveEffectivePermissions()` in `permissions.ts` | `usePermissions.ts` |
 | `isChannelUnread()` in `unread.ts` | `useUnread` + `useDmUnread` (de-duped) |
@@ -29,60 +37,75 @@ All violations listed in `docs/DDD_CONVENTIONS.md` resolved:
 | `isMuteActive()` in `mutes.ts` | `stores/mutes.ts` |
 
 ### Dev env toolchain
-- **ESLint**: `eslint.config.ts` (flat config); `npm run lint` / `npm run lint:fix`; 0 errors, 6 warnings (all `v-html` — intentional)
-- **@vitest/ui**: `npm run test:ui` launches browser test dashboard
-- **Pre-commit hook**: `simple-git-hooks` + `lint-staged` — ESLint runs on staged `.ts`/`.vue` before every commit
-- **CI quality gate**: `.github/workflows/quality.yml` — lint → type-check → tests on every push/PR to development
+- **ESLint**: `eslint.config.ts` (flat config, ESLint 9); `npm run lint` / `lint:fix`; 0 errors, 6 warnings (all intentional `v-html`)
+- **Pre-commit hook**: `simple-git-hooks` + `lint-staged` — ESLint on staged `.ts`/`.vue` before every commit
+- **CI quality gate**: `.github/workflows/quality.yml` — lint → type-check → tests on every push/PR to `development`
 - **VS Code**: `.vscode/settings.json` (ESLint + Vitest integration, TypeScript workspace SDK); `.vscode/extensions.json` (Volar, ESLint, Vitest Explorer)
+- **`@vitest/ui`**: `npm run test:ui` for browser test dashboard
 
-### Bug fixed
-- `local.ts` `community_invites.create()` — `single_use` invites now set `max_uses: 1` so `validate()` returns null after use
+### Bugs found and fixed
+- `local.ts` `community_invites.create()` — `single_use` invites now set `max_uses: 1` (validate was not returning null after use)
+- `supabase-backend.ts` `servers.create()` — now generates `invite_code` (was null)
+- `supabase-backend.ts` `createSupabaseBackend()` — accepts optional injected `SupabaseClient` for DI in tests
+- `supabase-backend.ts` `reports.list` / `mutes.list` — replaced `(data as any[])` with typed intersection types (`RawReport`, `RawMute`)
+- `supabase.ts` — `window.location?.hostname` null-safety guard (was crashing in happy-dom test environment)
+
+### Housekeeping
+- Merged PR #24 (`dist/` untracking) — `dist/` is now completely untracked from source branches
+- `development` is fully pushed to origin
+
+---
+
+## Quality baseline
+```
+npm run test:run        → 260 passed (26 files), ~3s
+npm run test:integration → 18 passed (needs supabase start)
+npm run type-check      → clean
+npm run lint            → 0 errors · 6 warnings (vue/no-v-html, intentional)
+```
 
 ---
 
 ## Active / pending
 
-- **Push to remote**: `development` is ahead of `origin/development` — push when ready to trigger CI
-- **PR #24** (from previous session) — `dist/` untracking — check if still open / needs rebase
-- **Backend contract test**: covers local backend; Supabase extension is documented in comments but requires a test fixture
-- **`any` warnings** (6 remaining `vue/no-v-html`): intentional — `v-html` used for markdown with DOMPurify-style sanitization in `renderMessage()`; warnings serve as a reminder
-
-## Quality baseline (as of this session)
-```
-npm run test:run   → 260 passed (26 files)
-npm run type-check → clean
-npm run lint       → 0 errors, 6 warnings (v-html only)
-```
+- No open PRs
+- Next feature work: no M26 planned yet — decide direction before next session (see PROJECT_STATUS.md for candidates: notifications, forum improvements, search, mobile/PWA)
+- Integration test suite does NOT run in CI (Supabase not available in GitHub Actions) — run manually before significant DB schema changes
 
 ---
 
-## Conventions established / reinforced this session
+## Conventions
 
 ### Testing
-- `src/test/lib/` — pure domain function tests (no Vue, no mocks, <800ms)
-- Mock ALL composables that transitively import `@/lib/backend` to prevent Supabase client initialization
-- When mocking composables returning `Ref<T>`, use async factory + `await import('vue')` to get real `ref()` — plain `{ value: [] }` breaks Vue template auto-unwrap
+- `src/test/lib/` — pure domain tests, no mocks, no Vue
+- `src/test/integration/` — live Supabase tests; `makeBackend()` creates a fresh client per test; `currentUserId()` reads from live session
+- When mocking composables returning `Ref<T>`, use async factory + `await import('vue')` — plain `{ value: [] }` breaks Vue template auto-unwrap
+- Mock ALL composables that transitively import `@/lib/backend` to prevent Supabase client initialization in unit tests
 
 ### DDD layering
 - `lib/` = domain (pure functions, types, Backend contract)
-- `composables/` = application layer (no domain logic)
-- `stores/` = state only (no business logic, no backend calls)
-- See `docs/DDD_CONVENTIONS.md` for the layer map
+- `composables/` = application layer (no domain logic, delegates to lib/)
+- `stores/` = state only (no business logic)
+- See `docs/DDD_CONVENTIONS.md` — all listed violations resolved
 
 ### ESLint
-- `eslint.config.ts` (flat config, ESLint 9)
-- HTML formatting rules disabled (project uses compact style)
-- `type` imports enforced via `consistent-type-imports`
-- `script-setup` SFC style enforced
+- Flat config (`eslint.config.ts`, ESLint 9)
+- HTML formatting rules disabled (compact style is intentional)
+- `consistent-type-imports` + `script-setup` enforced
+- Test files: `no-explicit-any`, `no-floating-promises`, `no-console` all off
+
+### Supabase username constraint
+- `^[a-zA-Z0-9_]{3,32}$` — no hyphens, no dots; test usernames must follow this format
+- `handle_new_user` trigger uses `raw_user_meta_data->>'username'` from `signUp()` options
 
 ### Supabase MCP
-- Per-repo `.mcp.json` (gitignored); `Authorization: Bearer ${SUPABASE_CHAT_TOKEN}` header
-- Two servers: `supabase-chat-prod` (porlhhdajfaamvggcrbi) and `supabase-chat-staging` (pysitxxjzejhvkawacit)
+- Per-repo `.mcp.json` (gitignored); `Authorization: Bearer ${SUPABASE_CHAT_TOKEN}`
+- Two servers: prod (`porlhhdajfaamvggcrbi`) and staging (`pysitxxjzejhvkawacit`)
 - Set tokens at Windows User scope; launch Claude Code from fresh PowerShell
 
 ---
 
 ## How to use this file
-- **End of session**: replace contents with new state. Keep it short (~150 lines max).
+- **End of session**: replace contents with new state. Keep it under ~150 lines.
 - **Start of next session**: read this file first.
 - **Don't append history** — `git log` is the audit trail.
