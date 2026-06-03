@@ -1,5 +1,6 @@
 import { ref, watch, type Ref } from 'vue'
 import { backend } from '@/lib/backend'
+import { messageMatchesQuery } from '@/lib/messageSearch'
 import type { Profile, Message } from '@/lib/types'
 
 interface SearchableMessage {
@@ -43,10 +44,7 @@ export function useMessageSearch<T extends SearchableMessage>(
         results.value = []
         return
       }
-      const lower = q.toLowerCase()
-      results.value = source().filter((m: T) =>
-        m.content.toLowerCase().includes(lower)
-      )
+      results.value = source().filter((m: T) => messageMatchesQuery(m.content, q))
     })
   } else {
     // Server-side search (channels)

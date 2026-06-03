@@ -5,14 +5,17 @@
 ## Current State
 
 ```yaml
-project_phase: "Active Development — M25 + Integrations Framework + Auth Bridge Complete"
+project_phase: "Active Development — Integrations Framework Live + Cross-Subdomain SSO Shipped"
 protogear_enabled: true
 framework: "Vue 3 + TypeScript 5.9 + Vite 7 + Tailwind CSS 4 + Pinia + Supabase"
 project_type: "Single-Community Communication Platform"
 initialization_date: "2026-02-20"
-current_milestone: "Auth Bridge Complete — planning next milestone"
+current_milestone: "Cross-subdomain SSO + Protocode Learn integration live on prod"
 local_supabase: true
+session_handoff: "SESSION_HANDOFF.md — short, rolling, read first each session"
 ```
+
+**Latest deploy state (2026-05-29)**: chat.protocode.xyz + staging-chat.protocode.xyz are running hybrid-storage auth (full session in `localStorage`, compact session in `.protocode.xyz` cookie). CI publishes builds to orphan `dist-development` / `dist-main` branches; Netcup pulls from those. The Protocode Learn integration is registered on both environments and surfaces XP / streak / course progress via TTL-refresh. Migrations 050–053 (integrations framework) applied to both projects. See `SESSION_HANDOFF.md` for the rolling work-in-progress state.
 
 ## Vision Pivot (2026-02-22)
 
@@ -28,9 +31,14 @@ Protosphere is evolving from a generic multi-server Discord clone into **the cen
 
 ```
 composables → backend (interface) → local.ts | supabase-backend.ts
+lib/         ← domain layer: pure functions, types, repository contract
 ```
 
 Backend adapter auto-detects mode via `VITE_SUPABASE_URL` env var. Local mode uses localStorage, Supabase mode wraps the real client. Composables are backend-agnostic. Local Supabase via Docker for dev.
+
+**DDD layering** (see `docs/DDD_CONVENTIONS.md`): `src/lib/` = domain services and types; `src/composables/` = application layer; `src/stores/` = state; `src/components/` + `src/pages/` = presentation.
+
+**Testing:** Vitest + @vue/test-utils + happy-dom. `npm run test:unit` (fast, lib-only) / `npm run test:run` (full suite). Coverage enforced per-file on domain functions (90–95%). 226 tests, all green. Backend contract test in `src/test/lib/backend-contract.test.ts` covers local backend; structured to extend to Supabase once a test fixture is available.
 
 ---
 
@@ -524,53 +532,74 @@ src/composables/
   useUnread.ts          — unread tracking, mark-as-read
   useDMs.ts             — DM groups, messages, user search
   useDmUnread.ts        — DM unread tracking (localStorage-based)
-  useMessageSearch.ts   — Client-side message search composable
-  useCategories.ts      — Channel category CRUD
+  useMessageSearch.ts   — dual-mode: server-side (Ref<string>) or client-side (getter)
+  useCategories.ts      — channel category CRUD
+  useRealtime.ts        — Supabase Realtime subscriptions (messages, DMs, presence, typing)
+  useRoles.ts           — role CRUD, user role assignments
+  usePermissions.ts     — can(bit) / check(bit) per space/channel
+  useCommunity.ts       — community settings CRUD
+  useMutes.ts           — mute/unmute with audit log
+  usePolls.ts           — poll CRUD + voting
+  useEvents.ts          — events CRUD + RSVP
+  useForumPosts.ts      — forum post CRUD, promote message to forum post
+  useForumComments.ts   — comment CRUD + voting
+  useIntegrations.ts    — admin integration management
+  useUserIntegrations.ts — user connect/disconnect/sync, TTL refresh
+  useSpaceRequirements.ts — per-space integration requirement banners
+  useSidebarPanel.ts    — openPanel / openThread / closeOnChannelChange
+  useSessionSync.ts     — BroadcastChannel tab sync for logout/login
+  useAdminStats.ts      — member/pending/reports/spaces counts for dashboard
+  useNotificationPreferences.ts — per-channel notification level
+  useDmNotificationPreferences.ts — DM mute toggle
 
 src/stores/
   auth.ts               — user, session, isAuthenticated (backend-agnostic types)
   servers.ts, channels.ts, messages.ts, dms.ts, ui.ts, reactions.ts, mentions.ts
-  categories.ts         — channel categories
-  toast.ts              — global toast notification state
-  contextMenu.ts        — context menu state (position, items, visibility)
+  categories.ts, toast.ts, contextMenu.ts, roles.ts, community.ts, presence.ts
+  polls.ts, events.ts, reports.ts, dmTabs.ts
 
 src/pages/
-  LoginPage.vue         — email/password form, OAuth (hidden in local mode)
-  RegisterPage.vue      — registration form, auth watcher redirect
-  DMPage.vue            — DM conversations + chat
-  SettingsPage.vue      — profile editor (avatar, name, bio, status)
-  ServerPage.vue        — channel sidebar, member list, server actions, message list + input
-  ServerSettingsPage.vue — edit server name/description, ban list, delete
-  InvitePage.vue        — join server via invite code
+  LoginPage.vue, RegisterPage.vue, DMPage.vue, SettingsPage.vue
+  ServerPage.vue, ServerSettingsPage.vue, InvitePage.vue, LandingPage.vue
+  CommunitySettingsPage.vue, ModQueuePage.vue, AdminApprovalsPage.vue
+  AdminDashboardPage.vue, AdminIntegrationsPage.vue
+  ResetPasswordPage.vue, ConfirmEmailPage.vue, AuthBridgePage.vue
+  JoinCommunityPage.vue, MemberDirectoryPage.vue, UserProfilePage.vue
+  NotFoundPage.vue, ErrorPage.vue
 
 src/components/
-  layout/AppShell.vue   — master layout: server sidebar + channel sidebar + content + member sidebar
-  chat/EmojiPicker.vue  — emoji-mart wrapper, lazy-loaded
-  chat/MessageSearch.vue — search input + results panel
-  ui/ToastContainer.vue — global toasts
-  ui/ContextMenu.vue    — right-click context menus
-  ui/ConfirmDialog.vue  — confirmation modals
-  user/UserAvatar.vue   — avatar + presence dot
-  user/PresenceIndicator.vue — status dot
-  server/CreateServerDialog.vue
-  server/JoinServerDialog.vue
+  layout/AppShell.vue   — master layout with collapsible sidebars, mobile overlay
+  layout/CommunitySidebar.vue — h-12 top bar: community identity + space nav + DM tabs
+  forum/BlockEditor.vue — visual block editor (Hero, Text, Image, Columns, Callout, Divider, LinkCard)
+  forum/BlockRenderer.vue — read-only block renderer with variant support
+  forum/ForumCommentsPanel.vue — self-contained sidebar comments (load/post/vote/react)
+  chat/MessageAttachments.vue — inline image + file chip with download
+  integrations/         — integration admin + user settings sub-components
+  ui/SkeletonLoader.vue, EmptyState.vue, ContextMenu.vue, ToastContainer.vue
 
 src/lib/
-  supabase.ts           — conditional client (null if no env vars)
-  types.ts              — TypeScript types matching DB schema
-  markdown.ts           — markdown-to-HTML renderer
-  mentions.ts           — renderMessage pipeline, mention extraction
-  contextMenuItems.ts   — factory functions for context menu items
+  supabase.ts           — conditional client with hybrid localStorage + cookie storage
+  types.ts              — all TypeScript types matching DB schema
+  permissions.ts        — Permission bitfield constants, hasPermission(), computePermissions()
+  automod.ts            — pure checkAutomod() engine (word/link/caps/spam filters)
+  unread.ts             — isChannelUnread() pure domain function (used by useUnread + useDmUnread)
+  messageSearch.ts      — messageMatchesQuery() pure function
+  roles.ts              — roleUpdateAuditAction() pure function
+  typing.ts             — TYPING_EXPIRE_MS / STOP_AFTER_MS protocol constants
+  formatters.ts         — formatTime/Date/DateTime/Short/Full, escapeHtml, isExpiringSoon
+  mentions.ts           — renderMessage(), extractMentionedUsernames()
 
-supabase/migrations/
-  001_initial_schema.sql  — 11 tables with constraints
-  002_rls_policies.sql    — RLS policies + helper functions
-  003_profile_trigger.sql — auto-create profile on signup
-  004_fix_profile_trigger.sql — read username from signup metadata
-  005_fix_dm_members_rls.sql  — fix recursive RLS with security definer function
+src/test/lib/           — domain layer unit tests (126 tests, ~95% coverage on tested files)
+docs/DDD_CONVENTIONS.md — layer map, DDD pattern reference, migration history
+
+supabase/migrations/    — 001–053
+supabase/functions/
+  auth-bridge/          — Edge Function: JWT validation, user lookup/creation, session generation
 ```
 
 ## Recent Updates
+
+- 2026-06-02: TDD/DDD foundation established. 226 tests, all green. (1) Vitest coverage config with per-file thresholds on domain layer (90–95%); `test:unit` / `test:watch` scripts. (2) 126 new tests in `src/test/lib/` covering automod, permissions, formatters, mentions, unread, messageSearch, roles, and the local backend (contract test). (3) 5 domain function extractions: `resolveEffectivePermissions`, `isChannelUnread`, `messageMatchesQuery`, `roleUpdateAuditAction`, typing constants — composables now delegate domain logic to `lib/`. (4) Bug: single_use community invites now set `max_uses=1` on create so `validate()` returns null after use. (5) `docs/DDD_CONVENTIONS.md` layer map and migration reference. (6) Pre-existing test failures fixed: stale CommunitySidebar Members-link assertion, SettingsPage missing integration mocks, `supabase.ts` null-safety on `window.location?.hostname`.
 
 - 2026-04-10: DM tabs + split view (PTSPH-205). Individual conversation tabs in the global top bar (context-aware: spaces view shows spaces nav, DM view shows conversation tabs). Clicking the community identity logo navigates back to spaces when in DM view. Drag a tab onto the DM content area to open a split pane with two conversations side-by-side (`DmConversationPane.vue`). Backend fixes: `listGroups` `.single()` → `.maybeSingle()` (406 on orphaned groups); `getOrCreate` member inserts changed to `upsert/ignoreDuplicates` to avoid 409 from the auto-join trigger (migration 024). Presence overhauled: replaced per-server presence channel with a persistent `presence:community` global channel started in AppShell on login (`startGlobalPresence`); DMPage now reads live status from `presenceStore` instead of the DB snapshot.
 - 2026-03-30: M23 complete (PTSPH-192–195). Block editor fully integrated with forum page posts: locked Hero block (editable title 300 char, background image, text alignment), pinned source message block (quote variant, auto-seeded in view + edit mode), ForumCommentsPanel in AppShell right sidebar (self-contained, compact layout for w-60 space), comments metric button in hero toggles sidebar, hero count sourced from panel for live sync. BlockRenderer supports pinned text block variants. AppShell member slot uses overflow-hidden for sticky-footer panels. PTSPH-196 (user profile pages) carried to next session.

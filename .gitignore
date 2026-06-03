@@ -16,8 +16,11 @@ dist/
 .env.staging
 
 # IDE & Editor
-.vscode/
 .idea/
+# Track project-level VS Code config (settings.json, extensions.json)
+# but ignore personal/machine-specific overrides
+.vscode/*.local.json
+.vscode/launch.json
 *.swp
 *.swo
 *~
@@ -55,3 +58,4 @@ temp/
 .turbo/
 
 # Twemoji SVG assets committed to repo; run `npm run sync:emoji` to update
+.mcp.json

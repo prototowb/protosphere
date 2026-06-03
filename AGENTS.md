@@ -8,7 +8,9 @@
 
 **READ THESE FILES FIRST** using the Read tool before proceeding with any task:
 
-1. **`PROJECT_STATUS.md`** (REQUIRED) - Current project state, active tickets, sprint info
+1. **`SESSION_HANDOFF.md`** (REQUIRED, READ FIRST) - Rolling handoff from the previous session. What just shipped, what's pending, conventions in force. **Replace contents at the end of each session** — this is "what's true right now," not an append-only log.
+
+2. **`PROJECT_STATUS.md`** (REQUIRED) - Current project state, active tickets, sprint info
    - **Update this file** when completing tickets or changing project state
 
 2. **`BRANCHING.md`** (REQUIRED if git repo) - Git workflow and commit conventions

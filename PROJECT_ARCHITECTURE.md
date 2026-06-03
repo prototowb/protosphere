@@ -119,6 +119,40 @@ The central communication hub for a single online community. Protosphere provide
 | `events` | Community events | server_id, title, starts_at, ends_at, location |
 | `event_rsvps` | Event RSVPs | event_id, user_id, status (going/maybe/not_going) |
 
+### Forum Tables (M22–M23)
+
+| Table | Purpose | Key Fields |
+|-------|---------|------------|
+| `forum_posts` | Forum posts (meta or page type) | server_id, channel_id, author_id, title, post_type, content (JSONB), vote_score |
+| `forum_comments` | Threaded comments on forum posts | post_id, author_id, content, parent_comment_id, vote_score, is_deleted |
+| `forum_post_votes` | Up/down votes on posts | post_id, user_id, value (+1/-1) |
+
+### Retention & Notifications (M20–M21)
+
+| Table | Purpose | Key Fields |
+|-------|---------|------------|
+| `message_attachments` | File attachments metadata | message_id, filename, content_type, storage_path, public_url |
+| `dm_notification_preferences` | DM mute settings per user | dm_group_id, user_id, mute_level |
+| `notification_preferences` | Per-channel notification level | channel_id, user_id, level |
+
+### Auth & Identity (M17–M19 + post-M25)
+
+| Table | Purpose | Key Fields |
+|-------|---------|------------|
+| `community_invites` | Invite tokens for invite-only mode | token, created_by, used_by, expires_at |
+| `direct_message_groups` | DM conversations | id, name, is_group |
+| `direct_message_members` | DM group membership | dm_group_id, user_id |
+
+### Integrations Framework (post-M25)
+
+| Table | Purpose | Key Fields |
+|-------|---------|------------|
+| `integrations` | Registered external apps | name, slug, api_base_url, data_endpoint, auth_mode, ttl_seconds, api_key, app_url, signing_key, enabled |
+| `integration_field_schemas` | Fields defined per integration | integration_id, field_key, label, type, visibility_default |
+| `user_integrations` | Per-user account connections | integration_id, user_id, synced_data (JSONB), synced_at, external_user_id |
+| `user_field_visibility` | Per-user per-field visibility | user_integration_id, field_key, visibility (public/private/hidden) |
+| `space_integration_requirements` | Per-space recommended integrations | server_id, integration_id |
+
 ### Key Indexes
 
 - `messages(channel_id, created_at DESC)` — primary query pattern
@@ -199,12 +233,12 @@ Admin:      ADMINISTRATOR (bypasses all checks)
 
 ### Supabase Realtime Channels (M15)
 
-| Purpose | Mechanism | Pattern |
-|---------|-----------|---------|
-| Channel messages | Postgres Changes (INSERT/UPDATE/DELETE on `messages`) | `realtime:messages:channel_id=<uuid>` |
-| Presence | Supabase Presence | `realtime:presence:server_id=<uuid>` |
-| Typing indicators | Supabase Broadcast (ephemeral) | `realtime:typing:channel_id=<uuid>` |
-| DM messages | Postgres Changes on `direct_messages` | `realtime:dm:dm_group_id=<uuid>` |
+| Purpose | Mechanism | Channel name |
+|---------|-----------|-------------|
+| Channel messages | Postgres Changes (INSERT/UPDATE/DELETE on `messages`) | `messages:{channelId}` |
+| DM messages | Postgres Changes on `direct_messages` | `dm_messages:{groupId}` |
+| Global presence | Supabase Presence (started once in AppShell on login) | `presence:community` |
+| Typing indicators | Supabase Broadcast (ephemeral, per-channel) | `typing:{channelId}` |
 
 ### Connection Strategy
 
@@ -301,35 +335,47 @@ RLS policies will use `user_has_permission(server_id, user_id, permission_bit)` 
 ```
 src/
 ├── components/
-│   ├── layout/          -- AppShell, CommunitySidebar (M12), ChannelSidebar, MemberSidebar
-│   ├── chat/            -- EmojiPicker, MessageSearch, ThreadPanel (M14), PollEmbed (M14)
-│   ├── server/          -- CreateServerDialog, JoinServerDialog
-│   ├── user/            -- UserAvatar, PresenceIndicator
-│   ├── community/       -- WelcomeScreen (M12), EventCard (M14)
-│   ├── moderation/      -- AuditLogViewer (M13), ReportDialog (M13)
-│   └── ui/              -- ContextMenu, ToastContainer, ConfirmDialog
+│   ├── layout/          -- AppShell, CommunitySidebar, ChannelSidebar, MemberSidebar
+│   ├── chat/            -- EmojiPicker, MessageSearch, MessageAttachments
+│   ├── dm/              -- DmConversationPane
+│   ├── forum/           -- ForumPostCard, ForumCommentsPanel, ForumCommentTree, BlockEditor, BlockRenderer
+│   ├── server/          -- CreateServerDialog, JoinServerDialog, ChannelPermissionsPanel
+│   ├── user/            -- UserAvatar, PresenceIndicator, UserProfileModal, SetupWizard, OnboardingTour
+│   ├── moderation/      -- AuditLogViewer, ReportDialog
+│   ├── integrations/    -- AdminIntegrationsPage sub-components
+│   └── ui/              -- ContextMenu, ToastContainer, ConfirmDialog, SkeletonLoader, EmptyState
 ├── composables/
 │   ├── useAuth.ts, useProfile.ts, useServers.ts, useChannels.ts, useMessages.ts
 │   ├── usePresence.ts, useTyping.ts, useReactions.ts, useUnread.ts, useDMs.ts
 │   ├── useMembers.ts, useCategories.ts, useMentions.ts, useMessageSearch.ts, useDmUnread.ts
-│   ├── useRoles.ts (M11), usePermissions.ts (M11)
-│   ├── useCommunity.ts (M12)
-│   ├── useAuditLog.ts (M13), useReports.ts (M13), useMutes.ts (M13)
-│   └── useThreads.ts (M14), usePolls.ts (M14), useEvents.ts (M14)
+│   ├── useRoles.ts, usePermissions.ts
+│   ├── useCommunity.ts
+│   ├── useAuditLog.ts, useReports.ts, useMutes.ts
+│   ├── usePolls.ts, useEvents.ts
+│   ├── useRealtime.ts, useSidebarPanel.ts, useSessionSync.ts
+│   ├── useForumPosts.ts, useForumComments.ts
+│   ├── useIntegrations.ts, useUserIntegrations.ts, useSpaceRequirements.ts
+│   ├── useNotificationPreferences.ts, useDmNotificationPreferences.ts
+│   └── useAdminStats.ts
 ├── stores/
 │   ├── auth.ts, servers.ts, channels.ts, messages.ts, dms.ts, ui.ts
 │   ├── reactions.ts, mentions.ts, categories.ts, toast.ts, contextMenu.ts
-│   ├── roles.ts (M11), community.ts (M12), reports.ts (M13)
-│   └── threads.ts (M14), polls.ts (M14), events.ts (M14)
+│   ├── roles.ts, community.ts, reports.ts, presence.ts, dmTabs.ts
+│   └── polls.ts, events.ts
 ├── lib/
 │   ├── supabase.ts, types.ts, markdown.ts, mentions.ts, contextMenuItems.ts
-│   ├── permissions.ts (M11), auditLog.ts (M13), automod.ts (M13)
+│   ├── permissions.ts, auditLog.ts, automod.ts
 │   └── backend/ -- types.ts, index.ts, local.ts, supabase-backend.ts
 ├── pages/
 │   ├── LoginPage.vue, RegisterPage.vue, DMPage.vue, SettingsPage.vue
 │   ├── ServerPage.vue, ServerSettingsPage.vue, InvitePage.vue
-│   ├── LandingPage.vue (M12), CommunitySettingsPage.vue (M12)
-│   └── ModQueuePage.vue (M13)
+│   ├── LandingPage.vue, CommunitySettingsPage.vue
+│   ├── ModQueuePage.vue, AdminApprovalsPage.vue, AdminDashboardPage.vue
+│   ├── AdminIntegrationsPage.vue
+│   ├── ResetPasswordPage.vue, ConfirmEmailPage.vue, AuthBridgePage.vue
+│   ├── JoinCommunityPage.vue, MemberDirectoryPage.vue
+│   ├── UserProfilePage.vue
+│   └── NotFoundPage.vue, ErrorPage.vue
 └── router.ts
 ```
 
@@ -337,33 +383,31 @@ src/
 
 ## Routing
 
-### Current
-
-```
-/login                              -- login page
-/register                           -- registration page
-/channels/@me                       -- DM list (home)
-/channels/@me/:dmGroupId            -- DM conversation
-/channels/:serverId/:channelId      -- server channel view
-/settings                           -- user settings
-/servers/:serverId/settings         -- server settings
-/invite/:code                       -- join via invite
-```
-
-### After M12 (Space rename)
+### Current Routes
 
 ```
 /                                   -- landing page (public)
 /login                              -- login page
 /register                           -- registration page
+/reset-password                     -- password reset completion
+/confirm-email                      -- email verification handler
+/auth/bridge                        -- auth bridge federated login
 /channels/@me                       -- DM list (home)
 /channels/@me/:dmGroupId            -- DM conversation
 /spaces/:spaceId/:channelId         -- space channel view
 /settings                           -- user settings
 /spaces/:spaceId/settings           -- space settings
-/admin/community                    -- community settings
-/admin/modqueue                     -- mod queue (M13)
 /invite/:code                       -- join via invite
+/join/:token                        -- join via community invite token
+/community/members                  -- member directory
+/u/:username                        -- user profile page
+/admin                              -- admin dashboard
+/admin/community                    -- community settings
+/admin/modqueue                     -- mod queue
+/admin/approvals                    -- registration approvals
+/admin/integrations                 -- integrations management
+/404                                -- not found page
+* → /404                            -- catch-all
 ```
 
 ---
@@ -373,7 +417,7 @@ src/
 ```
 M11 (Roles & Permissions) ──┐
                              ├─→ M13 (Moderation) ──┐
-M12 (Spaces & Community) ───┤                       ├─→ M15 (Supabase & Real-time)
+M12 (Spaces & Community) ───┤                       ├─→ M15 (Real-time) ──→ M16–M19 ──→ M20 ──→ M21 ──→ M22 ──→ M23 ──→ M24 ──→ M25 ──→ Integrations
                              └─→ M14 (Engagement) ──┘
 ```
 

@@ -4,8 +4,8 @@ import { supabase } from '@/lib/supabase'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { serializePermissions, PermissionPresets, Permission } from '@/lib/permissions'
 
-export function createSupabaseBackend(): Backend {
-  const client = supabase as SupabaseClient
+export function createSupabaseBackend(injectedClient?: SupabaseClient): Backend {
+  const client = injectedClient ?? (supabase as SupabaseClient)
 
   return {
     auth: {
@@ -183,9 +183,10 @@ export function createSupabaseBackend(): Backend {
       },
 
       async create(input, ownerId) {
+        const invite_code = Math.random().toString(36).substring(2, 10)
         const { data, error } = await client
           .from('servers')
-          .insert({ ...input, owner_id: ownerId })
+          .insert({ ...input, owner_id: ownerId, invite_code })
           .select()
           .single()
         if (error) throw error
@@ -863,7 +864,8 @@ export function createSupabaseBackend(): Backend {
         if (status) query = query.eq('status', status)
         const { data, error } = await query.order('created_at', { ascending: false }).range(offset, offset + limit - 1)
         if (error) throw error
-        return (data as any[]).map((r) => ({ ...r, reporter_profile: r.reporter_profile as Profile, reviewer_profile: r.reviewer_profile as Profile | null }))
+        type RawReport = Report & { reporter_profile: Profile; reviewer_profile: Profile | null }
+        return (data as RawReport[]).map((r) => ({ ...r, reporter_profile: r.reporter_profile, reviewer_profile: r.reviewer_profile }))
       },
 
       async create(data) {
@@ -889,7 +891,8 @@ export function createSupabaseBackend(): Backend {
           .eq('server_id', serverId)
           .or(`expires_at.is.null,expires_at.gt.${now}`)
         if (error) throw error
-        return (data as any[]).map((m) => ({ ...m, user_profile: m.user_profile as Profile, muted_by_profile: m.muted_by_profile as Profile }))
+        type RawMute = Mute & { user_profile: Profile; muted_by_profile: Profile }
+        return (data as RawMute[]).map((m) => ({ ...m, user_profile: m.user_profile, muted_by_profile: m.muted_by_profile }))
       },
 
       async add(serverId, userId, mutedBy, reason = '', expiresAt = null) {
@@ -1508,7 +1511,10 @@ export function createSupabaseBackend(): Backend {
 
         const userIntegration = ui as UserIntegration & { integration: Integration }
         const integration = userIntegration.integration
-        const url = integration.api_base_url.trim().replace(/\/$/, '') + integration.data_endpoint.trim()
+        let url = integration.api_base_url.trim().replace(/\/$/, '') + integration.data_endpoint.trim()
+        if (integration.auth_mode === 'auth_bridge' && userIntegration.external_user_id) {
+          url += (url.includes('?') ? '&' : '?') + `external_user_id=${encodeURIComponent(userIntegration.external_user_id)}`
+        }
 
         // Build fetch options based on auth mode
         const fetchOpts: RequestInit = { method: 'GET', headers: {} }

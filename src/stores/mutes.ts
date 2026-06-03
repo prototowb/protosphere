@@ -1,6 +1,7 @@
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
 import type { Mute } from '@/lib/types'
+import { isMuteActive } from '@/lib/mutes'
 
 export const useMutesStore = defineStore('mutes', () => {
   const mutesByServer = ref<Record<string, Mute[]>>({})
@@ -23,11 +24,8 @@ export const useMutesStore = defineStore('mutes', () => {
   }
 
   function isMuted(serverId: string, userId: string): boolean {
-    const list = mutesByServer.value[serverId] ?? []
-    const mute = list.find((m) => m.user_id === userId)
-    if (!mute) return false
-    if (mute.expires_at && new Date(mute.expires_at) <= new Date()) return false
-    return true
+    const mute = (mutesByServer.value[serverId] ?? []).find((m) => m.user_id === userId)
+    return mute ? isMuteActive(mute) : false
   }
 
   return { mutesByServer, setMutes, addMute, removeMute, isMuted }

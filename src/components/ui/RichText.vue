@@ -18,6 +18,7 @@ const segments = computed<Segment[]>(() => {
   const result: Segment[] = []
   let lastIndex = 0
 
+  // eslint-disable-next-line vue/no-side-effects-in-computed-properties -- stateful regex must be reset before each use
   EMOJI_RE.lastIndex = 0
   let match: RegExpExecArray | null
 

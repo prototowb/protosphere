@@ -2,6 +2,7 @@ import { ref } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useMessagesStore } from '@/stores/messages'
 import { useNotificationPreferences } from '@/composables/useNotificationPreferences'
+import { isChannelUnread } from '@/lib/unread'
 
 const READ_STATE_KEY = 'protosphere_read_state'
 
@@ -45,19 +46,10 @@ export function useUnread() {
       // Skip channels with notifications muted
       if (getCached(channelId) === 'none') continue
 
-      const lastRead = userState[channelId]
       const msgs = messagesStore.messagesByChannel[channelId]
       if (!msgs || msgs.length === 0) continue
 
-      if (!lastRead) {
-        // Never visited — only unread if there are messages from others
-        if (msgs.some((m) => m.author_id !== userId)) unread.add(channelId)
-      } else {
-        // Unread if any message from others is newer than last read
-        if (msgs.some((m) => m.author_id !== userId && m.created_at > lastRead)) {
-          unread.add(channelId)
-        }
-      }
+      if (isChannelUnread(msgs, userState[channelId], userId)) unread.add(channelId)
     }
     unreadChannelIds.value = unread
   }

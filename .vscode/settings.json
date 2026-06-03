@@ -1,3 +1,28 @@
 {
-    "snyk.advanced.autoSelectOrganization": true
+  "snyk.advanced.autoSelectOrganization": true,
+
+  // ── ESLint ──────────────────────────────────────────────────────────────────
+  "eslint.validate": ["javascript", "typescript", "vue"],
+  "eslint.useFlatConfig": true,
+  "editor.codeActionsOnSave": {
+    "source.fixAll.eslint": "explicit"
+  },
+
+  // ── TypeScript ───────────────────────────────────────────────────────────────
+  "typescript.tsdk": "node_modules/typescript/lib",
+  "typescript.enablePromptUseWorkspaceTsdk": true,
+
+  // ── Vue ──────────────────────────────────────────────────────────────────────
+  "vue.server.hybridMode": true,
+
+  // ── Editor ───────────────────────────────────────────────────────────────────
+  "editor.formatOnSave": false,
+  "editor.tabSize": 2,
+  "editor.insertSpaces": true,
+  "files.trimTrailingWhitespace": true,
+  "files.insertFinalNewline": true,
+
+  // ── Vitest ───────────────────────────────────────────────────────────────────
+  "vitest.enable": true,
+  "vitest.commandLine": "npx vitest"
 }

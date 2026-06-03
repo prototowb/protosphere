@@ -1628,7 +1628,7 @@ export function createLocalBackend(): Backend {
           token: Math.random().toString(36).substring(2, 18),
           created_by: data.created_by,
           usage: data.usage ?? 'single_use',
-          max_uses: data.max_uses ?? null,
+          max_uses: data.max_uses ?? (data.usage === 'single_use' ? 1 : null),
           use_count: 0,
           expires_at: data.expires_at ?? null,
           created_at: new Date().toISOString(),
@@ -1988,6 +1988,7 @@ export function createLocalBackend(): Backend {
           return {
             status: 'logged_in' as const,
             session: { access_token: `local_${user.id}`, refresh_token: '' },
+            external_user_id: claims.sub,
           }
         }
 
@@ -2080,7 +2081,7 @@ export function createLocalBackend(): Backend {
         }
 
         setSession({ user: { id, email: claims.email }, access_token: `local_${id}` })
-        return { session: { access_token: `local_${id}`, refresh_token: '' } }
+        return { session: { access_token: `local_${id}`, refresh_token: '' }, external_user_id: claims.sub }
       },
     },
   }

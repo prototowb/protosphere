@@ -4,9 +4,7 @@ import { useRolesStore } from '@/stores/roles'
 import { useAuthStore } from '@/stores/auth'
 import {
   hasPermission,
-  computePermissions,
-  deserializePermissions,
-  legacyRoleToPermissions,
+  resolveEffectivePermissions,
   type PermissionBits,
 } from '@/lib/permissions'
 
@@ -26,18 +24,10 @@ export function usePermissions(
   const resolvedPermissions = computed((): PermissionBits => {
     const uid = authStore.user?.id
     if (!uid || !serverId.value) return 0n
-
-    const userRoles = rolesStore.getUserRoles(serverId.value, uid)
-    if (userRoles.length > 0) {
-      return computePermissions(userRoles.map((r) => deserializePermissions(r.permissions)))
-    }
-
-    // Fallback to legacy role string when no custom roles are loaded yet
-    if (memberRole?.value) {
-      return legacyRoleToPermissions(memberRole.value)
-    }
-
-    return 0n
+    return resolveEffectivePermissions(
+      rolesStore.getUserRoles(serverId.value, uid),
+      memberRole?.value,
+    )
   })
 
   /**
