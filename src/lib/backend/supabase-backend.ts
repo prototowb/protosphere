@@ -1511,7 +1511,10 @@ export function createSupabaseBackend(injectedClient?: SupabaseClient): Backend 
 
         const userIntegration = ui as UserIntegration & { integration: Integration }
         const integration = userIntegration.integration
-        const url = integration.api_base_url.trim().replace(/\/$/, '') + integration.data_endpoint.trim()
+        let url = integration.api_base_url.trim().replace(/\/$/, '') + integration.data_endpoint.trim()
+        if (integration.auth_mode === 'auth_bridge' && userIntegration.external_user_id) {
+          url += (url.includes('?') ? '&' : '?') + `external_user_id=${encodeURIComponent(userIntegration.external_user_id)}`
+        }
 
         // Build fetch options based on auth mode
         const fetchOpts: RequestInit = { method: 'GET', headers: {} }
