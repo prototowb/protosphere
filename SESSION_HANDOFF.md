@@ -2,110 +2,68 @@
 
 > **Rolling document.** Replace contents each session — this is "what the next session needs to know," not a permanent log. For long-term project state, see `PROJECT_STATUS.md`.
 
-**Updated**: 2026-06-02
-**Last session focus**: TDD/DDD foundation + dev env toolchain + Supabase integration tests
+**Updated**: 2026-06-04
+**Last session focus**: SSO auth debugging + integration sync fixes
 
 ---
 
 ## What shipped this session
 
-All work is on `development`, pushed to origin.
+### Auth bridge — `external_user_id` in responses
+Both `validate` (existing user) and `completeRegistration` (new user) now return `external_user_id: claims.sub` alongside the session. The learn platform uses this to query their own tables by the correct OAuth UUID instead of decoding the Protosphere JWT sub (which is a different UUID namespace).
 
-### Testing infrastructure
-| Script | What it runs |
-|---|---|
-| `npm run test:unit` | lib-only pure tests, ~700ms |
-| `npm run test:run` | full unit suite, ~3s |
-| `npm run test:ui` | browser Vitest UI |
-| `npm run test:coverage` | with per-file thresholds on domain layer |
-| `npm run test:integration` | Supabase integration suite (needs `supabase start`) |
+Edge function deployed to both staging and production.
 
-**Unit suite**: 260 tests, 26 files, all green.
+### Integration sync — `external_user_id` param for all auth modes
+`syncData` in `supabase-backend.ts` now appends `?external_user_id=<uuid>` for **any** auth mode when `user_integrations.external_user_id` is set (previously only for `auth_bridge`). The `protocode-learn` integration uses `same_domain_cookie` mode, so this fix was needed there too.
 
-**Integration suite**: 18 tests against live local Supabase — auth, profile trigger, community bootstrap, servers, messages, RLS. Run after `supabase start`; the global setup calls `supabase db reset` automatically.
+Production DB patched directly: `user_integrations.external_user_id = '5028a487-3285-4ecf-8321-64ddc1375208'` for the existing user.
 
-### DDD domain extractions (composables/stores → lib/)
-All violations from `docs/DDD_CONVENTIONS.md` resolved:
+### CI fix
+Integration tests excluded from default `test:run` (they require a live Supabase instance and were failing on every CI push). Run explicitly via `npm run test:integration`.
 
-| lib/ function | Extracted from |
-|---|---|
-| `resolveEffectivePermissions()` in `permissions.ts` | `usePermissions.ts` |
-| `isChannelUnread()` in `unread.ts` | `useUnread` + `useDmUnread` (de-duped) |
-| `TYPING_EXPIRE_MS` / `STOP_AFTER_MS` in `typing.ts` | `useTyping.ts` |
-| `messageMatchesQuery()` in `messageSearch.ts` | `useMessageSearch.ts` |
-| `roleUpdateAuditAction()` in `roles.ts` | `useRoles.ts` |
-| `isMuteActive()` in `mutes.ts` | `stores/mutes.ts` |
-
-### Dev env toolchain
-- **ESLint**: `eslint.config.ts` (flat config, ESLint 9); `npm run lint` / `lint:fix`; 0 errors, 6 warnings (all intentional `v-html`)
-- **Pre-commit hook**: `simple-git-hooks` + `lint-staged` — ESLint on staged `.ts`/`.vue` before every commit
-- **CI quality gate**: `.github/workflows/quality.yml` — lint → type-check → tests on every push/PR to `development`
-- **VS Code**: `.vscode/settings.json` (ESLint + Vitest integration, TypeScript workspace SDK); `.vscode/extensions.json` (Volar, ESLint, Vitest Explorer)
-- **`@vitest/ui`**: `npm run test:ui` for browser test dashboard
-
-### Bugs found and fixed
-- `local.ts` `community_invites.create()` — `single_use` invites now set `max_uses: 1` (validate was not returning null after use)
-- `supabase-backend.ts` `servers.create()` — now generates `invite_code` (was null)
-- `supabase-backend.ts` `createSupabaseBackend()` — accepts optional injected `SupabaseClient` for DI in tests
-- `supabase-backend.ts` `reports.list` / `mutes.list` — replaced `(data as any[])` with typed intersection types (`RawReport`, `RawMute`)
-- `supabase.ts` — `window.location?.hostname` null-safety guard (was crashing in happy-dom test environment)
-
-### Housekeeping
-- Merged PR #24 (`dist/` untracking) — `dist/` is now completely untracked from source branches
-- `development` is fully pushed to origin
+### PRs
+- PR #26 merged: TDD foundation + auth-bridge external_user_id + CI fix
+- PR #27 open: sync external_user_id for all auth modes (pending merge → triggers production build)
 
 ---
 
-## Quality baseline
-```
-npm run test:run        → 260 passed (26 files), ~3s
-npm run test:integration → 18 passed (needs supabase start)
-npm run type-check      → clean
-npm run lint            → 0 errors · 6 warnings (vue/no-v-html, intentional)
-```
+## Open architectural debt — integration auth
+
+The `protocode-learn` integration is configured as `same_domain_cookie` but the two platforms have **different UUID namespaces** (Protosphere UUIDs ≠ OAuth/Google UUIDs on the learn side). This is the wrong auth mode for independent platforms. The symptoms were: sync returning all-zeros because the learn endpoint received a Protosphere UUID it couldn't match.
+
+### Architecturally correct target setup
+
+**Login direction** (`auth_bridge`):
+- Learn platform redirects user to `chat.protocode.xyz/auth/bridge?token={signed_jwt}`
+- JWT `sub` = learn OAuth UUID
+- Protosphere creates/links account, stores `user_integrations.external_user_id = claims.sub`
+- UUID mapping is explicit and permanent
+
+**Sync direction** (needs both):
+1. Send the Protosphere access token as `Authorization: Bearer {token}` — cryptographic proof of who is making the request
+2. Also append `?external_user_id={learn_uuid}` — tells the endpoint which learn user to look up
+
+Currently `auth_bridge` sync sends **no Bearer token** (neither `token_exchange` nor `same_domain_cookie` branch fires). This means learn data is queryable by anyone with the API key + any valid UUID — no user-identity proof. Fix: add a third branch in `syncData` for `auth_bridge` that sends the current Protosphere access token as Bearer alongside the `external_user_id` param.
+
+### What needs to happen
+1. Merge PR #27 → production dist gets the all-auth-modes fix
+2. Switch `protocode-learn` `auth_mode` from `same_domain_cookie` → `auth_bridge` (requires signing key on the integration + learn platform sending signed JWTs)
+3. Add Bearer token to `auth_bridge` sync requests in `syncData`
+4. Learn platform: wire up their `protosphere-user-data` function to verify the Bearer token OR accept it as proof-of-session alongside `external_user_id`
 
 ---
 
-## Active / pending
+## Cross-subdomain SSO (cookie layer)
 
-- No open PRs
-- Next feature work: no M26 planned yet — decide direction before next session (see PROJECT_STATUS.md for candidates: notifications, forum improvements, search, mobile/PWA)
-- Integration test suite does NOT run in CI (Supabase not available in GitHub Actions) — run manually before significant DB schema changes
+`src/lib/supabase.ts` — `makeHybridStorage`: when on `*.protocode.xyz`, writes session to both `localStorage` (origin-scoped) AND a compact cookie at `.protocode.xyz`. Sibling subdomains read the cookie to restore the session.
 
----
-
-## Conventions
-
-### Testing
-- `src/test/lib/` — pure domain tests, no mocks, no Vue
-- `src/test/integration/` — live Supabase tests; `makeBackend()` creates a fresh client per test; `currentUserId()` reads from live session
-- When mocking composables returning `Ref<T>`, use async factory + `await import('vue')` — plain `{ value: [] }` breaks Vue template auto-unwrap
-- Mock ALL composables that transitively import `@/lib/backend` to prevent Supabase client initialization in unit tests
-
-### DDD layering
-- `lib/` = domain (pure functions, types, Backend contract)
-- `composables/` = application layer (no domain logic, delegates to lib/)
-- `stores/` = state only (no business logic)
-- See `docs/DDD_CONVENTIONS.md` — all listed violations resolved
-
-### ESLint
-- Flat config (`eslint.config.ts`, ESLint 9)
-- HTML formatting rules disabled (compact style is intentional)
-- `consistent-type-imports` + `script-setup` enforced
-- Test files: `no-explicit-any`, `no-floating-promises`, `no-console` all off
-
-### Supabase username constraint
-- `^[a-zA-Z0-9_]{3,32}$` — no hyphens, no dots; test usernames must follow this format
-- `handle_new_user` trigger uses `raw_user_meta_data->>'username'` from `signUp()` options
-
-### Supabase MCP
-- Per-repo `.mcp.json` (gitignored); `Authorization: Bearer ${SUPABASE_CHAT_TOKEN}`
-- Two servers: prod (`porlhhdajfaamvggcrbi`) and staging (`pysitxxjzejhvkawacit`)
-- Set tokens at Windows User scope; launch Claude Code from fresh PowerShell
+- Cookie key: `sb-porlhhdajfaamvggcrbi-auth-token` (derived from production Supabase URL)
+- Cookie value: full session JSON minus `identities`, `user_metadata`, `app_metadata` (~1.2 KB)
+- `typescript.protocode.xyz` needs the same hybrid storage configured to read the cookie into its own localStorage on first load
 
 ---
 
-## How to use this file
-- **End of session**: replace contents with new state. Keep it under ~150 lines.
-- **Start of next session**: read this file first.
-- **Don't append history** — `git log` is the audit trail.
+## MCP access
+
+`.mcp.json` defines `supabase-chat-prod` and `supabase-chat-staging` HTTP MCP servers. Requires `SUPABASE_CHAT_TOKEN` (Supabase personal access token) in the OS environment — set via Windows System Properties. Claude Code must be started **after** the env var is set for the MCP to connect.
