@@ -19,6 +19,21 @@ export function useIntegrations() {
     }
   }
 
+  // Member-facing: enabled integrations only, no secret columns. Use this
+  // (not fetchIntegrations) anywhere non-admins need the integrations list,
+  // e.g. the connect flow in SettingsPage.
+  async function fetchConnectableIntegrations() {
+    loading.value = true
+    error.value = ''
+    try {
+      integrations.value = await backend.integrations.listConnectable()
+    } catch (e: unknown) {
+      error.value = e instanceof Error ? e.message : 'Failed to load integrations'
+    } finally {
+      loading.value = false
+    }
+  }
+
   async function getIntegration(id: string) {
     return backend.integrations.get(id)
   }
@@ -70,6 +85,7 @@ export function useIntegrations() {
     loading,
     error,
     fetchIntegrations,
+    fetchConnectableIntegrations,
     getIntegration,
     createIntegration,
     updateIntegration,

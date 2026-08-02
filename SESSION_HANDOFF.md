@@ -2,55 +2,86 @@
 
 > **Rolling document.** Replace contents each session — this is "what the next session needs to know," not a permanent log. For long-term project state, see `PROJECT_STATUS.md`.
 
-**Updated**: 2026-06-04
-**Last session focus**: SSO auth debugging + integration sync fixes
+**Updated**: 2026-07-31
+**Last session focus**: Cross-platform auth review — found and fixed a live data-leak vulnerability, corrected prior session's architectural plan
 
 ---
 
-## What shipped this session
+## What happened this session
 
-### Auth bridge — `external_user_id` in responses
-Both `validate` (existing user) and `completeRegistration` (new user) now return `external_user_id: claims.sub` alongside the session. The learn platform uses this to query their own tables by the correct OAuth UUID instead of decoding the Protosphere JWT sub (which is a different UUID namespace).
+Reviewed the cross-platform auth plan from the 2026-06-04/05 sessions (flip `protocode-learn` to
+`auth_mode = 'auth_bridge'`, add Bearer token to sync). That plan turned out to be based on an
+incomplete picture — see "Auth architecture — current understanding" below for what's actually
+true. Two live issues were found and fixed instead:
 
-Edge function deployed to both staging and production.
+### 1. Sync-direction binding hole (fixed, both repos)
+`syncData` sent `?external_user_id=<uuid>` for all auth modes (added in PR #27). The learn
+platform's `protosphere-user-data` edge function trusted that param unconditionally
+(`queryUserId = externalUserId ?? userId`) instead of checking it belonged to the JWT-verified
+caller. Any logged-in Protosphere user could substitute another learn user's UUID and read their
+XP/streaks/duel stats/activity. Confirmed exploitable in production before the fix.
 
-### Integration sync — `external_user_id` param for all auth modes
-`syncData` in `supabase-backend.ts` now appends `?external_user_id=<uuid>` for **any** auth mode when `user_integrations.external_user_id` is set (previously only for `auth_bridge`). The `protocode-learn` integration uses `same_domain_cookie` mode, so this fix was needed there too.
+**Fix**: learn's `protosphere-sso-exchange` now persists the Protosphere-UUID ↔ learn-UUID mapping
+it already computes (new `protosphere_user_map` table, migration `006_protosphere_user_map.sql` —
+**not yet applied to the learn Supabase project**, see below). `protosphere-user-data` resolves the
+mapping from that table by the verified JWT `sub` instead of trusting a URL param. protocode-chat's
+`syncData` no longer sends the param at all (dead weight once learn ignores it).
 
-Production DB patched directly: `user_integrations.external_user_id = '5028a487-3285-4ecf-8321-64ddc1375208'` for the existing user.
+Also removed learn's HS256 JWT fallback branch — it verified tokens against a shared secret
+without ever checking `TRUSTED_ISSUERS`, a whitelist bypass independent of the sync fix.
 
-### CI fix
-Integration tests excluded from default `test:run` (they require a live Supabase instance and were failing on every CI push). Run explicitly via `npm run test:integration`.
+### 2. `integrations` table leaked secrets to every client (fixed, protocode-chat, staging + prod)
+Migration 050's RLS policy (`"Anyone can view enabled integrations" USING (enabled = true)`) was
+row-level only, so `signing_key` and `api_key` were readable by any authenticated client doing
+`select('*')` — exactly what `syncData`'s join did. `protocode-learn`'s `signing_key` had been
+non-null (and therefore exposed) since someone generated it via the admin UI in anticipation of the
+auth_mode flip that never happened.
 
-### PRs
-- PR #26 merged: TDD foundation + auth-bridge external_user_id + CI fix
-- PR #27 open: sync external_user_id for all auth modes (pending merge → triggers production build)
+**Fix** (migration `054_integrations_rls_lockdown.sql`, applied to staging + production):
+- Dropped the broad SELECT policy — base table is now owner-only for reads (existing
+  "Community owner can manage integrations" policy already covered this).
+- Added `get_connectable_integrations(p_id)`, a `SECURITY DEFINER` function (`SET row_security =
+  off`, same pattern as `handle_new_user`) returning only non-secret columns for enabled
+  integrations. `syncData`, `getPublicUserData`, and the new `backend.integrations.listConnectable()`
+  (used by `SettingsPage.vue`'s connect flow) all read through this instead of embedding
+  `integrations(*)`.
+- `protocode-learn`'s `signing_key` was nulled out — treated as compromised since it's been
+  client-readable this whole time; nothing consumes it since `auth_bridge` was never activated for
+  this integration.
+- Verified on both environments: a non-owner authenticated session gets 0 rows from
+  `select * from integrations`; `get_connectable_integrations()` still returns the safe columns.
+- Staging was also missing migrations 051–053 (api_key, app_url, signing_key columns) — applied
+  those to catch it up before 054.
+
+### Still to do (learn repo — I don't have deploy access to that Supabase project)
+- Apply `supabase/migrations/006_protosphere_user_map.sql` to the learn platform's Supabase project
+  (dev, and whatever staging/prod it has).
+- Deploy the updated `protosphere-sso-exchange` and `protosphere-user-data` edge functions.
+- Both are already edited in `G:\Projects\code-lang-learning\protocode-learn`, not yet pushed/deployed.
 
 ---
 
-## Open architectural debt — integration auth
+## Auth architecture — current understanding (corrects the 2026-06-04/05 plan)
 
-The `protocode-learn` integration is configured as `same_domain_cookie` but the two platforms have **different UUID namespaces** (Protosphere UUIDs ≠ OAuth/Google UUIDs on the learn side). This is the wrong auth mode for independent platforms. The symptoms were: sync returning all-zeros because the learn endpoint received a Protosphere UUID it couldn't match.
+**Cross-platform login already works today** and doesn't need the auth_bridge cutover the prior
+session planned:
+- protocode-chat's `makeHybridStorage` (`src/lib/supabase.ts`) writes the session to a
+  `.protocode.xyz` cookie.
+- protocode-learn's `src/lib/auth-bridge.ts` (`initFromProtosphere`) reads that cookie and calls
+  its own `protosphere-sso-exchange` edge function, which verifies the Protosphere access token via
+  JWKS (asymmetric, no shared secret) and mints a learn-native session, mirroring the UUID where
+  possible.
+- This matches the product vision (Protosphere as the identity provider, one account, each platform
+  keeps its own data) and is live and wired into learn's client. Previously undocumented on the
+  protocode-chat side — that gap is what caused the prior session to plan around the wrong flow.
 
-### Architecturally correct target setup
-
-**Login direction** (`auth_bridge`):
-- Learn platform redirects user to `chat.protocode.xyz/auth/bridge?token={signed_jwt}`
-- JWT `sub` = learn OAuth UUID
-- Protosphere creates/links account, stores `user_integrations.external_user_id = claims.sub`
-- UUID mapping is explicit and permanent
-
-**Sync direction** (needs both):
-1. Send the Protosphere access token as `Authorization: Bearer {token}` — cryptographic proof of who is making the request
-2. Also append `?external_user_id={learn_uuid}` — tells the endpoint which learn user to look up
-
-Currently `auth_bridge` sync sends **no Bearer token** (neither `token_exchange` nor `same_domain_cookie` branch fires). This means learn data is queryable by anyone with the API key + any valid UUID — no user-identity proof. Fix: add a third branch in `syncData` for `auth_bridge` that sends the current Protosphere access token as Bearer alongside the `external_user_id` param.
-
-### What needs to happen
-1. Merge PR #27 → production dist gets the all-auth-modes fix
-2. Switch `protocode-learn` `auth_mode` from `same_domain_cookie` → `auth_bridge` (requires signing key on the integration + learn platform sending signed JWTs)
-3. Add Bearer token to `auth_bridge` sync requests in `syncData`
-4. Learn platform: wire up their `protosphere-user-data` function to verify the Bearer token OR accept it as proof-of-session alongside `external_user_id`
+**`auth_bridge`** (protocode-chat's `/auth/bridge` route, `signing_key`/HMAC JWT verification) is
+**unreachable in production** — the only configured integration (`protocode-learn`) has `auth_mode
+= 'same_domain_cookie'`, so `handleValidate` rejects it outright. It's also the wrong direction for
+the vision (learn asserts identity → Protosphere provisions, the reverse of "auth via Protosphere").
+**Do not pursue the auth_mode flip to `auth_bridge`** — it was the prior session's plan and is now
+considered dead. If `auth_bridge` code is ever cleaned up/removed, that's a separate, low-priority
+task.
 
 ---
 
@@ -60,10 +91,14 @@ Currently `auth_bridge` sync sends **no Bearer token** (neither `token_exchange`
 
 - Cookie key: `sb-porlhhdajfaamvggcrbi-auth-token` (derived from production Supabase URL)
 - Cookie value: full session JSON minus `identities`, `user_metadata`, `app_metadata` (~1.2 KB)
-- `typescript.protocode.xyz` needs the same hybrid storage configured to read the cookie into its own localStorage on first load
+- `typescript.protocode.xyz` (protocode-learn) already reads this cookie via `src/lib/auth-bridge.ts` — this piece is done, not still-needed as previously noted.
 
 ---
 
 ## MCP access
 
-`.mcp.json` defines `supabase-chat-prod` and `supabase-chat-staging` HTTP MCP servers. Requires `SUPABASE_CHAT_TOKEN` (Supabase personal access token) in the OS environment — set via Windows System Properties. Claude Code must be started **after** the env var is set for the MCP to connect.
+`.mcp.json` defines `supabase-chat-prod` and `supabase-chat-staging` HTTP MCP servers, scoped to
+protocode-chat's two Supabase projects only — no MCP/CLI access to protocode-learn's Supabase
+project from this session. Requires `SUPABASE_CHAT_TOKEN` (Supabase personal access token) in the
+OS environment — set via Windows System Properties. Claude Code must be started **after** the env
+var is set for the MCP to connect.

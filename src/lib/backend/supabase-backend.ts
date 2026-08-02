@@ -1381,6 +1381,12 @@ export function createSupabaseBackend(injectedClient?: SupabaseClient): Backend 
         return data as Integration
       },
 
+      async listConnectable() {
+        const { data, error } = await client.rpc('get_connectable_integrations')
+        if (error) throw error
+        return (data ?? []) as Integration[]
+      },
+
       async create(data) {
         const { data: row, error } = await client
           .from('integrations')
@@ -1501,20 +1507,31 @@ export function createSupabaseBackend(injectedClient?: SupabaseClient): Backend 
       },
 
       async syncData(userIntegrationId) {
-        // Fetch the user integration + its parent integration config
+        // Fetch the user integration row. The parent integration config is
+        // fetched separately via get_connectable_integrations (a SECURITY
+        // DEFINER function excluding signing_key) rather than embedding
+        // integrations(*) here — the base integrations table is owner-only
+        // for SELECT, so a plain embed would return null for regular members
+        // syncing their own connected integration.
         const { data: ui, error: uiErr } = await client
           .from('user_integrations')
-          .select('*, integration:integrations(*)')
+          .select('*')
           .eq('id', userIntegrationId)
           .single()
         if (uiErr) throw uiErr
 
-        const userIntegration = ui as UserIntegration & { integration: Integration }
-        const integration = userIntegration.integration
-        let url = integration.api_base_url.trim().replace(/\/$/, '') + integration.data_endpoint.trim()
-        if (userIntegration.external_user_id) {
-          url += (url.includes('?') ? '&' : '?') + `external_user_id=${encodeURIComponent(userIntegration.external_user_id)}`
-        }
+        const userIntegration = ui as UserIntegration
+        const { data: integrationRows, error: intErr } = await client
+          .rpc('get_connectable_integrations', { p_id: userIntegration.integration_id })
+        if (intErr) throw intErr
+        const integration = (integrationRows as Integration[] | null)?.[0]
+        if (!integration) throw new Error('Integration not found or disabled')
+        // external_user_id is intentionally not sent as a query param: the
+        // receiving endpoint has no way to verify it belongs to the caller
+        // proven by the Bearer token below, so an authenticated caller could
+        // substitute another user's id. Integrations that need the mapping
+        // must resolve it server-side from their own verified identity data.
+        const url = integration.api_base_url.trim().replace(/\/$/, '') + integration.data_endpoint.trim()
 
         // Build fetch options based on auth mode
         const fetchOpts: RequestInit = { method: 'GET', headers: {} }
@@ -1605,19 +1622,39 @@ export function createSupabaseBackend(injectedClient?: SupabaseClient): Backend 
       // ── Profile display ─────────────────────────────────────────
 
       async getPublicUserData(userId) {
-        // Fetch user's connected integrations with nested integration data
+        // Fetch user's connected integrations, then their parent integration
+        // configs separately via get_connectable_integrations (SECURITY
+        // DEFINER, excludes signing_key) — the base integrations table is
+        // owner-only for SELECT, so an embed here would return null for
+        // any non-owner viewer, which is most profile viewers.
         const { data: userIntegrations, error: uiErr } = await client
           .from('user_integrations')
-          .select('*, integration:integrations(*)')
+          .select('*')
           .eq('user_id', userId)
         if (uiErr) throw uiErr
 
         if (!userIntegrations?.length) return []
 
+        const { data: connectable, error: connErr } = await client
+          .rpc('get_connectable_integrations')
+        if (connErr) throw connErr
+        const integrationsById = new Map(
+          ((connectable ?? []) as Integration[]).map((i) => [i.id, i]),
+        )
+
+        const enrichedIntegrations = userIntegrations
+          .map((ui) => {
+            const integration = integrationsById.get((ui as UserIntegration).integration_id)
+            return integration ? { ...(ui as UserIntegration), integration } : null
+          })
+          .filter((d): d is UserIntegration & { integration: Integration } => d !== null)
+
+        if (!enrichedIntegrations.length) return []
+
         // Auto-sync stale integrations
         const now = Date.now()
-        for (const ui of userIntegrations) {
-          const rec = ui as unknown as UserIntegration & { integration: Integration }
+        for (const ui of enrichedIntegrations) {
+          const rec = ui
           if (!rec.integration.enabled) continue
           const syncedAt = rec.synced_at ? new Date(rec.synced_at).getTime() : 0
           if (now - syncedAt > rec.integration.default_ttl_seconds * 1000) {
@@ -1630,7 +1667,7 @@ export function createSupabaseBackend(injectedClient?: SupabaseClient): Backend 
         }
 
         // Fetch all field schemas for connected integrations
-        const integrationIds = userIntegrations.map((ui) => (ui as unknown as { integration: Integration }).integration.id)
+        const integrationIds = enrichedIntegrations.map((ui) => ui.integration.id)
         const { data: schemas, error: schemaErr } = await client
           .from('integration_field_schemas')
           .select('*')
@@ -1646,9 +1683,9 @@ export function createSupabaseBackend(injectedClient?: SupabaseClient): Backend 
 
         const visMap = new Map((visOverrides ?? []).map((v) => [v.field_schema_id, v.visibility]))
 
-        return userIntegrations
+        return enrichedIntegrations
           .map((ui) => {
-            const rec = ui as unknown as UserIntegration & { integration: Integration }
+            const rec = ui
             if (!rec.integration.enabled) return null
             const fieldSchemas = (schemas as IntegrationFieldSchema[]).filter((s) => s.integration_id === rec.integration.id)
             const fields = fieldSchemas.map((schema) => {

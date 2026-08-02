@@ -1718,6 +1718,11 @@ export function createLocalBackend(): Backend {
         return found
       },
 
+      async listConnectable() {
+        const all = readJson<Integration[]>(KEYS.integrations, [])
+        return all.filter((i) => i.enabled).map((i) => ({ ...i, signing_key: null }))
+      },
+
       async create(data) {
         const all = readJson<Integration[]>(KEYS.integrations, [])
         const integration: Integration = {
