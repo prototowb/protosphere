@@ -2,8 +2,8 @@
 
 > **Rolling document.** Replace contents each session — this is "what the next session needs to know," not a permanent log. For long-term project state, see `PROJECT_STATUS.md`.
 
-**Updated**: 2026-07-31
-**Last session focus**: Cross-platform auth review — found and fixed a live data-leak vulnerability, corrected prior session's architectural plan
+**Updated**: 2026-08-04
+**Last session focus**: Cross-platform auth review — found and fixed a live data-leak vulnerability, corrected prior session's architectural plan. Fully closed out: fixed, deployed, verified, committed, PR'd, and merged on both repos.
 
 ---
 
@@ -53,11 +53,13 @@ auth_mode flip that never happened.
 - Staging was also missing migrations 051–053 (api_key, app_url, signing_key columns) — applied
   those to catch it up before 054.
 
-### Still to do (learn repo — I don't have deploy access to that Supabase project)
-- Apply `supabase/migrations/006_protosphere_user_map.sql` to the learn platform's Supabase project
-  (dev, and whatever staging/prod it has).
-- Deploy the updated `protosphere-sso-exchange` and `protosphere-user-data` edge functions.
-- Both are already edited in `G:\Projects\code-lang-learning\protocode-learn`, not yet pushed/deployed.
+### Learn-repo side — done (2026-08-02/04)
+Migration `006_protosphere_user_map.sql` applied and both edge functions redeployed to the `learn`
+project (`exrhpgesaimlgrgygawk`) — it had been paused; needed an admin to unpause via the dashboard
+first. Verified live via `?schema=true`. Committed as two commits on a fresh
+`fix/protosphere-user-map-binding` branch (based off `development`, not the unrelated
+`feature/design-overhaul-guide` branch it was first drafted on) and merged via
+[PR #17](https://github.com/prototowb/protocode-learn/pull/17). Nothing outstanding on that side.
 
 ---
 
