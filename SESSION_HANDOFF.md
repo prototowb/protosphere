@@ -10,7 +10,7 @@
 ## Start here
 
 1. **Production is very likely running a client that predates migration 054.** 054 was applied to the production DB on 2026-08-04, but its client half (`9e21a32`) only reached `development`; `dist-main` is still built from June's `main`. With 054 live, the old client's `integrations(*)` embed returns null for non-owners — integration sync, profile integration data and the Settings connect list should be broken for regular members. **30-second check:** on chat.protocode.xyz, as a non-owner, open Settings → Integrations, or view a profile with a connected integration. **Fix:** promote `development` → `main` (the two commits are independent of this branch).
-2. **Branch `bugfix/PTSPH-206-hardening-pass` (off `development`) holds all changes, UNCOMMITTED.** Nothing pushed, merged or deployed.
+2. **Branch `bugfix/PTSPH-206-hardening-pass` (off `development`) is committed locally but NOT pushed.** Nothing is merged or deployed. Push only after 055 is in production.
 3. **Deploy order for PTSPH-206 matters** (see below): migration 055 → staging smoke test → production → deploy the client → *then* push the branch. This repository is public; push only after production is patched.
 4. `docs/ROADMAP.md` is the new enhancements plan.
 
