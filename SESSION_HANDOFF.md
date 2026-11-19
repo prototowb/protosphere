@@ -10,8 +10,11 @@
 ## Start here
 
 1. **Production is very likely running a client that predates migration 054.** 054 was applied to the production DB on 2026-08-04, but its client half (`9e21a32`) only reached `development`; `dist-main` is still built from June's `main`. With 054 live, the old client's `integrations(*)` embed returns null for non-owners — integration sync, profile integration data and the Settings connect list should be broken for regular members. **30-second check:** on chat.protocode.xyz, as a non-owner, open Settings → Integrations, or view a profile with a connected integration. **Fix:** promote `development` → `main` (the two commits are independent of this branch).
-2. **Branch `bugfix/PTSPH-206-hardening-pass` (off `development`) is committed locally but NOT pushed.** Nothing is merged or deployed. Push only after 055 is in production.
-3. **Deploy order for PTSPH-206 matters** (see below): migration 055 → staging smoke test → production → deploy the client → *then* push the branch. This repository is public; push only after production is patched.
+2. **Migration 055 is LIVE in production (applied 2026-11-20 via the Supabase MCP).** The client half of branch `bugfix/PTSPH-206-hardening-pass` is committed locally but **not pushed or deployed**. Until it ships, the old production client:
+   - shows no integration data on other members' profiles (the new RPC isn't used yet)
+   - still has the client-side rendering fixes outstanding
+   Ship it by pushing, then promoting `development` → `main`. Keep the gap between push and deploy short.
+3. **chat-staging is still paused, and 055 is not applied there.** When you restore it, run `supabase db push` against staging.
 4. `docs/ROADMAP.md` is the new enhancements plan.
 
 ## What PTSPH-206 changed
@@ -29,18 +32,22 @@ Full gate: `vue-tsc -b` clean, lint clean (6 pre-existing `vue/no-v-html` warnin
 
 ## Deploying PTSPH-206
 
-0. As of 2026-11-19 both Supabase projects (`chat`, `chat-staging`) show as **paused (INACTIVE)**. Restore staging first. When you restore production, apply 055 (step 3) straight away, before announcing it's back.
-1. Run the migration test locally (rolls back; see the file header):
-   `supabase/tests/055_access_control_hardening.sql` — every line must start with `PASS`.
-2. `supabase db push` (staging is the linked default). Smoke-test on staging: approve a pending user from the approvals page, start a DM, react to a message, view a profile with a connected integration, sign out/in.
-3. Production: `supabase db push --project-ref porlhhdajfaamvggcrbi`.
-4. Merge to `development` → `main` so the client ships (`getPublicUserData` needs the new RPC).
-5. After deploy, check for legacy reaction rows that would violate the new constraint, then validate it:
-   ```sql
-   select count(*) from reactions where not (char_length(emoji) between 1 and 64 and emoji !~ '[<>"''&\\[:cntrl:]]');
-   alter table reactions validate constraint reactions_emoji_token;
-   ```
-6. Recommended: review `profiles` for unexpected `account_status`/`username` changes and `community_settings.owner_id` against expectations.
+**Production done (2026-11-20):**
+- Read-only prechecks: 054 applied, the policy names 055 drops all exist, 0 reactions violate the new constraint.
+- **Schema drift found:** 024's `auto_join_dm_creator` and its `on_dm_group_created` trigger were missing in production, although 024 is recorded as applied. The committed 055 would have broken DM creation; the negative control fails `DM add members`. 055 now recreates both, and the regression test reproduces the drift. 21/21.
+- A full schema comparison (triggers, functions, policies) against the migrations found no other drift.
+- Dry run inside a rolled-back transaction, then applied, then `VALIDATE CONSTRAINT reactions_emoji_token`. Policies and triggers re-listed to confirm.
+- The remote migration history records 055 under a timestamp version, the same pattern as 050–054. `supabase migration repair` may be needed before the next `db push`.
+
+**Still to do:**
+1. Staging, once restored: `supabase db push`, then smoke-test: approve a pending user, start a DM, react, view a profile with an integration, sign out and in.
+2. Ship the client: push the branch, then merge `development` → `main` so `dist-main` rebuilds.
+3. Recommended: review `profiles` for unexpected `account_status`/`username` changes, and check `community_settings.owner_id` is what you expect.
+4. The security linter still flags older items:
+   - 7 functions without a fixed `search_path`
+   - SECURITY DEFINER helper and trigger functions that `anon` can call over the API (`is_dm_member`, `cleanup_expired_messages`, and others)
+   - leaked-password protection is off
+   All three are ROADMAP Phase 1.
 
 ## Not verified / behaviour changes to know about
 

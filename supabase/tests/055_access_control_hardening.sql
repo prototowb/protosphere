@@ -20,6 +20,10 @@
 \set QUIET on
 BEGIN;
 \i /tmp/054.sql
+-- Reproduce production drift (2026-11-19): 024's DM creator trigger is absent
+-- there. 055 must recreate it, or new DMs lock their creator out.
+DROP TRIGGER IF EXISTS on_dm_group_created ON direct_message_groups;
+DROP FUNCTION IF EXISTS public.auto_join_dm_creator();
 \i /tmp/055.sql
 
 -- Fixtures (as postgres): O = community owner, U and V = ordinary members,

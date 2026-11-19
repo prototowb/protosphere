@@ -44,6 +44,7 @@ Next free ticket: PTSPH-207.
 - Server-written audit trail.
 - Attachment lifecycle aligned with message retention and channel visibility; retention job on `pg_cron` with failure alerting.
 - `SET search_path` on all SECURITY DEFINER functions.
+- Revoke `EXECUTE` from `anon`/`authenticated` on helper and trigger functions that are not meant to be RPCs. Turn on leaked-password protection in Auth.
 - Rate limiting on inserts.
 - One permission model shared by client and SQL.
 

@@ -144,7 +144,33 @@ CREATE TRIGGER guard_community_settings_update
 --
 -- Creating a group already adds the creator as a member (auto_join_dm_creator,
 -- 024), so the client's subsequent member upsert is made by a member.
+--
+-- Production was found WITHOUT 024's trigger and function (schema drift: 024
+-- is recorded as applied there). Recreate both idempotently so the new insert
+-- policy can't lock creators out of their own new DM.
 -- ─────────────────────────────────────────────────────────────────────────────
+CREATE OR REPLACE FUNCTION public.auto_join_dm_creator()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  IF auth.uid() IS NOT NULL THEN
+    INSERT INTO direct_message_members (dm_group_id, user_id)
+    VALUES (NEW.id, auth.uid())
+    ON CONFLICT DO NOTHING;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS on_dm_group_created ON direct_message_groups;
+CREATE TRIGGER on_dm_group_created
+  AFTER INSERT ON direct_message_groups
+  FOR EACH ROW
+  EXECUTE FUNCTION public.auto_join_dm_creator();
+
 DROP POLICY IF EXISTS "dm_members_insert" ON direct_message_members;
 CREATE POLICY "dm_members_insert" ON direct_message_members
   FOR INSERT
