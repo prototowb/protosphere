@@ -152,7 +152,8 @@ src/
   router.ts
   stores/         # Pinia stores
 supabase/
-  migrations/     # SQL migrations (001–053)
+  migrations/     # SQL migrations (001–055)
+  tests/          # SQL regression suites (local stack, rolled back)
 ```
 
 ---
