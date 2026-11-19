@@ -1,5 +1,6 @@
 import { backend } from '@/lib/backend'
 import { useAuthStore } from '@/stores/auth'
+import { resetAppToLogin } from '@/lib/sessionReset'
 
 export function useAuth() {
   const authStore = useAuthStore()
@@ -16,14 +17,25 @@ export function useAuth() {
     await backend.auth.loginWithOAuth(provider)
   }
 
+  // Sign-out always ends with a full reload, even if the network call fails:
+  // a partial client-side clear would leave other stores and realtime
+  // channels holding the previous user's data (see lib/sessionReset).
   async function logout() {
-    await backend.auth.logout()
-    authStore.clear()
+    try {
+      await backend.auth.logout()
+    } finally {
+      authStore.clear()
+      resetAppToLogin()
+    }
   }
 
   async function logoutGlobal() {
-    await backend.auth.logoutGlobal()
-    authStore.clear()
+    try {
+      await backend.auth.logoutGlobal()
+    } finally {
+      authStore.clear()
+      resetAppToLogin()
+    }
   }
 
   async function resetPassword(email: string) {
