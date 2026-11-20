@@ -43,11 +43,7 @@ Full gate: `vue-tsc -b` clean, lint clean (6 pre-existing `vue/no-v-html` warnin
 1. Staging, once restored: `supabase db push`, then smoke-test: approve a pending user, start a DM, react, view a profile with an integration, sign out and in.
 2. Ship the client: push the branch, then merge `development` → `main` so `dist-main` rebuilds.
 3. Recommended: review `profiles` for unexpected `account_status`/`username` changes, and check `community_settings.owner_id` is what you expect.
-4. The security linter still flags older items:
-   - 7 functions without a fixed `search_path`
-   - SECURITY DEFINER helper and trigger functions that `anon` can call over the API (`is_dm_member`, `cleanup_expired_messages`, and others)
-   - leaked-password protection is off
-   All three are ROADMAP Phase 1.
+4. Remaining security-linter items are tracked in ROADMAP Phase 1 (details shared privately).
 
 ## Not verified / behaviour changes to know about
 
@@ -57,7 +53,7 @@ Full gate: `vue-tsc -b` clean, lint clean (6 pre-existing `vue/no-v-html` warnin
 - The only Tiptap component, `src/components/forum/PageEditor.vue`, is **not imported anywhere**, so the `prosemirror-view` bump doesn't reach users. Mounted directly, it works: marks, headings, lists, code block, HTML paste (sanitised), and a save/reload round trip.
   - It logs `[tiptap warn]: Duplicate extension names found: ['link']`, because StarterKit v3 already bundles Link.
   - Either wire it up or delete it.
-- Migration 055 was tested on the **local** schema only. After applying on staging and production, list the policies on `profiles`, `community_settings`, `direct_message_members`, `direct_messages`, `user_integrations` and confirm the old broad policies are gone (`DROP POLICY IF EXISTS` silently no-ops on a name mismatch).
+- Migration 055 is confirmed in **production** (2026-11-20, read-only checks): its functions, triggers and the `reactions_emoji_token` constraint are present, and the old broad policies are gone (`user_integrations` has only the owner policy). Staging still needs it once restored; repeat the policy check there, because `DROP POLICY IF EXISTS` silently no-ops on a name mismatch.
 - Profile/forum **custom CSS** now drops `url()`, at-rules (`@media`, `@import`, …), `position: fixed|sticky` and CSS escapes. Pages relying on those will render plainer.
 - Page images/links accept only `http(s)` (images also same-origin `blob:` / raster `data:`); other schemes now render without the URL.
 - The new `npm audit --audit-level=high` step runs in `quality.yml` only, not in `build-dist.yml`, so a new advisory fails the quality check without blocking deploys.

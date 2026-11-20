@@ -39,13 +39,10 @@ Next free ticket: PTSPH-207.
 - Dependencies: runtime `npm audit` clean (resolved with a ≥2-week package-age cutoff).
 
 ### Phase 1 — Server-side enforcement
-- One enforced write path for messages (trigger or `post_message` RPC) that owns every posting rule — moderation state, space type, pacing and automod — so the client keeps only UX hints.
-- Server-controlled message lifecycle fields; forum promotion through a checked RPC.
+- Move the remaining community rules into the database, so the client keeps only UX hints (details tracked privately).
 - Server-written audit trail.
-- Attachment lifecycle aligned with message retention and channel visibility; retention job on `pg_cron` with failure alerting.
-- `SET search_path` on all SECURITY DEFINER functions.
-- Revoke `EXECUTE` from `anon`/`authenticated` on helper and trigger functions that are not meant to be RPCs. Turn on leaked-password protection in Auth.
-- Rate limiting on inserts.
+- Retention job on `pg_cron` with failure alerting.
+- Resolve the remaining Supabase security-linter items.
 - One permission model shared by client and SQL.
 
 ### Phase 2 — Realtime & state
