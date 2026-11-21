@@ -3,6 +3,12 @@ import type { Backend } from './types'
 import { supabase } from '@/lib/supabase'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { serializePermissions, PermissionPresets, Permission } from '@/lib/permissions'
+import {
+  assertIntegrationUrl,
+  parseIntegrationPayload,
+  isFieldVisibleTo,
+  INTEGRATION_FETCH_TIMEOUT_MS,
+} from '@/lib/integrations'
 
 export function createSupabaseBackend(injectedClient?: SupabaseClient): Backend {
   const client = injectedClient ?? (supabase as SupabaseClient)
@@ -1381,6 +1387,12 @@ export function createSupabaseBackend(injectedClient?: SupabaseClient): Backend 
         return data as Integration
       },
 
+      async listConnectable() {
+        const { data, error } = await client.rpc('get_connectable_integrations')
+        if (error) throw error
+        return (data ?? []) as Integration[]
+      },
+
       async create(data) {
         const { data: row, error } = await client
           .from('integrations')
@@ -1501,20 +1513,35 @@ export function createSupabaseBackend(injectedClient?: SupabaseClient): Backend 
       },
 
       async syncData(userIntegrationId) {
-        // Fetch the user integration + its parent integration config
+        // Fetch the user integration row. The parent integration config is
+        // fetched separately via get_connectable_integrations (a SECURITY
+        // DEFINER function excluding signing_key) rather than embedding
+        // integrations(*) here — the base integrations table is owner-only
+        // for SELECT, so a plain embed would return null for regular members
+        // syncing their own connected integration.
         const { data: ui, error: uiErr } = await client
           .from('user_integrations')
-          .select('*, integration:integrations(*)')
+          .select('*')
           .eq('id', userIntegrationId)
           .single()
         if (uiErr) throw uiErr
 
-        const userIntegration = ui as UserIntegration & { integration: Integration }
-        const integration = userIntegration.integration
-        let url = integration.api_base_url.trim().replace(/\/$/, '') + integration.data_endpoint.trim()
-        if (userIntegration.external_user_id) {
-          url += (url.includes('?') ? '&' : '?') + `external_user_id=${encodeURIComponent(userIntegration.external_user_id)}`
-        }
+        const userIntegration = ui as UserIntegration
+        const { data: integrationRows, error: intErr } = await client
+          .rpc('get_connectable_integrations', { p_id: userIntegration.integration_id })
+        if (intErr) throw intErr
+        const integration = (integrationRows as Integration[] | null)?.[0]
+        if (!integration) throw new Error('Integration not found or disabled')
+        // external_user_id is intentionally not sent as a query param: the
+        // receiving endpoint has no way to verify it belongs to the caller
+        // proven by the Bearer token below, so an authenticated caller could
+        // substitute another user's id. Integrations that need the mapping
+        // must resolve it server-side from their own verified identity data.
+        const url = integration.api_base_url.trim().replace(/\/$/, '') + integration.data_endpoint.trim()
+        // The request may carry the user's session token: never send it in
+        // cleartext or to a non-URL. Plain http is allowed only for localhost
+        // during development.
+        assertIntegrationUrl(url)
 
         // Build fetch options based on auth mode
         const fetchOpts: RequestInit = { method: 'GET', headers: {} }
@@ -1535,14 +1562,16 @@ export function createSupabaseBackend(injectedClient?: SupabaseClient): Backend 
           }
         }
 
+        // A slow or unreachable integration must not hang the caller.
+        fetchOpts.signal = AbortSignal.timeout(INTEGRATION_FETCH_TIMEOUT_MS)
         const resp = await fetch(url, fetchOpts)
         if (!resp.ok) throw new Error(`Integration API returned ${resp.status}`)
-        const payload = await resp.json()
+        const syncedData = parseIntegrationPayload(await resp.text())
 
         // Store synced data
         const { data: updated, error: updateErr } = await client
           .from('user_integrations')
-          .update({ synced_data: payload.fields ?? payload, synced_at: new Date().toISOString() })
+          .update({ synced_data: syncedData, synced_at: new Date().toISOString() })
           .eq('id', userIntegrationId)
           .select()
           .single()
@@ -1605,32 +1634,60 @@ export function createSupabaseBackend(injectedClient?: SupabaseClient): Backend 
       // ── Profile display ─────────────────────────────────────────
 
       async getPublicUserData(userId) {
-        // Fetch user's connected integrations with nested integration data
-        const { data: userIntegrations, error: uiErr } = await client
-          .from('user_integrations')
-          .select('*, integration:integrations(*)')
-          .eq('user_id', userId)
+        // user_integrations is owner-only (migration 055): it holds per-user
+        // credentials and the raw payload. Read through
+        // get_public_user_integrations(), which strips secret columns and
+        // applies field visibility server-side (hidden → nobody, private →
+        // owner only). Parent integration configs come from
+        // get_connectable_integrations (054) for the same reason.
+        const { data: { session } } = await client.auth.getSession()
+        const viewerId = session?.user?.id ?? null
+        const isSelf = viewerId === userId
+
+        const { data: rpcRows, error: uiErr } = await client
+          .rpc('get_public_user_integrations', { p_user_id: userId })
         if (uiErr) throw uiErr
+        // Secret columns (connection_token, external_user_id) are not returned.
+        const userIntegrations = (rpcRows ?? []) as UserIntegration[]
 
         if (!userIntegrations?.length) return []
 
-        // Auto-sync stale integrations
-        const now = Date.now()
-        for (const ui of userIntegrations) {
-          const rec = ui as unknown as UserIntegration & { integration: Integration }
-          if (!rec.integration.enabled) continue
-          const syncedAt = rec.synced_at ? new Date(rec.synced_at).getTime() : 0
-          if (now - syncedAt > rec.integration.default_ttl_seconds * 1000) {
-            try {
-              const refreshed = await this.syncData(rec.id)
-              // Update in-memory record so we don't need to re-fetch
+        const { data: connectable, error: connErr } = await client
+          .rpc('get_connectable_integrations')
+        if (connErr) throw connErr
+        const integrationsById = new Map(
+          ((connectable ?? []) as Integration[]).map((i) => [i.id, i]),
+        )
+
+        const enrichedIntegrations = userIntegrations
+          .map((ui) => {
+            const integration = integrationsById.get((ui as UserIntegration).integration_id)
+            return integration ? { ...(ui as UserIntegration), integration } : null
+          })
+          .filter((d): d is UserIntegration & { integration: Integration } => d !== null)
+
+        if (!enrichedIntegrations.length) return []
+
+        // Auto-sync stale integrations — only on the viewer's OWN profile.
+        // Syncing someone else's row would send the viewer's session token to
+        // that integration and then fail to write (the row isn't theirs).
+        if (isSelf) {
+          const now = Date.now()
+          await Promise.allSettled(
+            enrichedIntegrations.map(async (ui) => {
+              if (!ui.integration.enabled) return
+              const syncedAt = ui.synced_at ? new Date(ui.synced_at).getTime() : 0
+              if (now - syncedAt <= ui.integration.default_ttl_seconds * 1000) return
+              const refreshed = await this.syncData(ui.id)
+              // Re-read through the RPC shape: refreshed.synced_data is the raw payload,
+              // which is fine here because the viewer is the owner.
               Object.assign(ui, { synced_data: refreshed.synced_data, synced_at: refreshed.synced_at })
-            } catch { /* non-critical — use stale data */ }
-          }
+            }),
+          )
         }
 
         // Fetch all field schemas for connected integrations
-        const integrationIds = userIntegrations.map((ui) => (ui as unknown as { integration: Integration }).integration.id)
+        const integrationIds = enrichedIntegrations.map((ui) => ui.integration.id)
         const { data: schemas, error: schemaErr } = await client
           .from('integration_field_schemas')
           .select('*')
@@ -1638,24 +1695,27 @@ export function createSupabaseBackend(injectedClient?: SupabaseClient): Backend 
           .order('sort_order')
         if (schemaErr) throw schemaErr
 
-        // Fetch user's visibility overrides
-        const { data: visOverrides } = await client
+        // Fetch user's visibility overrides. The server already filtered the
+        // payload; this only labels fields for the UI, so a failure must not
+        // silently fall back to "public" — surface it.
+        const { data: visOverrides, error: visErr } = await client
           .from('user_field_visibility')
           .select('*')
           .eq('user_id', userId)
+        if (visErr) throw visErr
 
         const visMap = new Map((visOverrides ?? []).map((v) => [v.field_schema_id, v.visibility]))
 
-        return userIntegrations
+        return enrichedIntegrations
           .map((ui) => {
-            const rec = ui as unknown as UserIntegration & { integration: Integration }
+            const rec = ui
             if (!rec.integration.enabled) return null
             const fieldSchemas = (schemas as IntegrationFieldSchema[]).filter((s) => s.integration_id === rec.integration.id)
             const fields = fieldSchemas.map((schema) => {
               const visibility = visMap.get(schema.id) ?? schema.default_visibility
               const fieldData = rec.synced_data?.[schema.field_key] as Record<string, unknown> | undefined
               return { ...schema, value: fieldData?.value ?? null, visibility }
-            }).filter((f) => f.visibility !== 'hidden')
+            }).filter((f) => isFieldVisibleTo(f.visibility, isSelf))
             return { integration: rec.integration, fields }
           })
           .filter((d): d is NonNullable<typeof d> => d !== null)

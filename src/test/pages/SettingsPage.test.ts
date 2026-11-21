@@ -46,6 +46,7 @@ vi.mock('@/composables/useIntegrations', async () => {
       integrations: ref([]),
       loading: ref(false),
       fetchIntegrations: vi.fn(),
+      fetchConnectableIntegrations: vi.fn(),
       listFieldSchemas: vi.fn().mockResolvedValue([]),
     }),
   }

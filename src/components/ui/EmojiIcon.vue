@@ -21,11 +21,25 @@ const tooltip = computed(() => {
 </script>
 
 <template>
+  <!--
+    Only the SVG fetched from our own /emoji/ assets is rendered as HTML. The
+    fallback (non-emoji or unknown input — e.g. a reaction string read from the
+    database) is rendered as TEXT: it is user-controlled and must never reach
+    v-html.
+  -->
   <span
+    v-if="svg"
     class="emoji-icon"
     :title="tooltip"
     :style="{ display: 'inline-block', width: size, height: size, verticalAlign: '-0.2em', flexShrink: '0' }"
-    v-html="svg || props.emoji"
+    v-html="svg"
     aria-hidden="true"
   />
+  <span
+    v-else
+    class="emoji-icon"
+    :title="tooltip"
+    :style="{ display: 'inline-block', minWidth: size, height: size, verticalAlign: '-0.2em', flexShrink: '0' }"
+    aria-hidden="true"
+  >{{ props.emoji }}</span>
 </template>

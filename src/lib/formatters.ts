@@ -35,8 +35,18 @@ export function formatDateFull(iso: string): string {
   return new Date(iso).toLocaleString()
 }
 
+/**
+ * Escape text for use in HTML — both element content AND attribute values.
+ * Quotes must be escaped too: renderers (e.g. markdown auto-linking) embed
+ * escaped text inside `attr="…"`, where an unescaped `"` ends the attribute.
+ */
 export function escapeHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
 }
 
 export function isExpiringSoon(expiresAt: string | null | undefined): boolean {

@@ -18,7 +18,7 @@ const { profile, loading, error, fetchProfile, updateProfile, uploadAvatar } = u
 const toastStore = useToastStore()
 
 const authStore = useAuthStore()
-const { integrations: allIntegrations, fetchIntegrations, listFieldSchemas } = useIntegrations()
+const { integrations: allIntegrations, fetchConnectableIntegrations, listFieldSchemas } = useIntegrations()
 const { myIntegrations, fetchMyIntegrations, connect, disconnect, syncData, setFieldVisibility, isConnected, getVisibility } = useUserIntegrations()
 
 const isDev = import.meta.env.DEV
@@ -40,7 +40,7 @@ const saving = ref(false)
 onMounted(async () => {
   await fetchProfile()
   // Load integrations data
-  await fetchIntegrations()
+  await fetchConnectableIntegrations()
   if (authStore.user) {
     await fetchMyIntegrations(authStore.user.id)
     // Preload field schemas for connected integrations (parallel)

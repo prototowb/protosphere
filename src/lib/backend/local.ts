@@ -1,6 +1,7 @@
 import type { Profile, Server, Channel, ChannelCategory, Member, Message, Attachment, Reaction, Ban, DirectMessageGroup, DirectMessageMember, DirectMessage, Role, UserRole, ChannelRoleOverride, CommunitySettings, AuditLog, Report, Mute, AutomodRule, Poll, PollOption, PollVote, AppEvent, EventRsvp, CommunityInvite, NotificationPreference, DmNotificationPreference, ForumPost, ForumCollaborator, ForumComment, ForumCommentVote, ForumCommentReaction, ForumVote, PageContent, Integration, IntegrationFieldSchema, UserIntegration, UserFieldVisibility, SpaceIntegrationRequirement } from '@/lib/types'
 import type { AuthSession, Backend } from './types'
 import { serializePermissions, PermissionPresets, Permission } from '@/lib/permissions'
+import { isFieldVisibleTo } from '@/lib/integrations'
 
 const KEYS = {
   users: 'protosphere_users',
@@ -1718,6 +1719,11 @@ export function createLocalBackend(): Backend {
         return found
       },
 
+      async listConnectable() {
+        const all = readJson<Integration[]>(KEYS.integrations, [])
+        return all.filter((i) => i.enabled).map((i) => ({ ...i, signing_key: null }))
+      },
+
       async create(data) {
         const all = readJson<Integration[]>(KEYS.integrations, [])
         const integration: Integration = {
@@ -1917,6 +1923,8 @@ export function createLocalBackend(): Backend {
       // ── Profile display ─────────────────────────────────────────
 
       async getPublicUserData(userId) {
+        const viewer = readJson<AuthSession | null>(KEYS.session, null)
+        const isSelf = viewer?.user?.id === userId
         const integrations = readJson<Integration[]>(KEYS.integrations, []).filter((i) => i.enabled)
         let userIntegrations = readJson<UserIntegration[]>(KEYS.user_integrations, []).filter((u) => u.user_id === userId)
 
@@ -1946,7 +1954,7 @@ export function createLocalBackend(): Backend {
               const visibility = override?.visibility ?? schema.default_visibility
               const fieldData = ui.synced_data?.[schema.field_key] as Record<string, unknown> | undefined
               return { ...schema, value: fieldData?.value ?? null, visibility }
-            }).filter((f) => f.visibility !== 'hidden')
+            }).filter((f) => isFieldVisibleTo(f.visibility, isSelf))
             return { integration, fields }
           })
           .filter((d): d is NonNullable<typeof d> => d !== null)

@@ -1,14 +1,14 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { PageContent, Block, TextBlock } from '@/lib/types'
+import { sanitizeRichText as sanitise, safeHttpUrl, safeImageUrl, backgroundImageStyle, scopeCustomCss } from '@/lib/pageSanitize'
 
 const props = defineProps<{ content: PageContent }>()
 
-// Inline-style helpers — keeps CSS class surface minimal
+// Page content is authored by one user and rendered for every viewer: every
+// HTML string, URL, inline style and stylesheet goes through pageSanitize.
 function heroStyle(b: Extract<Block, { type: 'hero' }>) {
-  return b.backgroundUrl
-    ? `background-image:url(${b.backgroundUrl});background-size:cover;background-position:center`
-    : ''
+  return backgroundImageStyle(b.backgroundUrl)
 }
 
 const calloutClass: Record<string, string> = {
@@ -16,18 +16,6 @@ const calloutClass: Record<string, string> = {
   warning: 'border-amber-500/40 bg-amber-500/10 text-amber-300',
   success: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300',
   error:   'border-red-500/40 bg-red-500/10 text-red-300',
-}
-
-// Sanitise text-block HTML — strip <script>, event attrs, javascript: hrefs
-function sanitise(html: string): string {
-  const div = document.createElement('div')
-  div.innerHTML = html
-  div.querySelectorAll('script,[onclick],[onerror],[onload],[onmouseover]').forEach(el => el.remove())
-  div.querySelectorAll('a[href]').forEach(el => {
-    const href = el.getAttribute('href') ?? ''
-    if (/^javascript:/i.test(href.trim())) el.removeAttribute('href')
-  })
-  return div.innerHTML
 }
 
 const variantWrap: Record<string, string> = {
@@ -40,13 +28,7 @@ function textWrapClass(b: TextBlock): string {
 }
 
 const scopeId = computed(() => `bpe-${Math.random().toString(36).slice(2, 7)}`)
-const scopedCss = computed(() => {
-  const css = props.content?.customCss ?? ''
-  if (!css.trim()) return ''
-  // Prefix every rule with the scope id so it only affects this renderer
-  return css.replace(/([^\r\n,{}]+)(,(?=[^}]*{)|\s*{)/g, (_, sel, sep) =>
-    `#${scopeId.value} ${sel.trim()}${sep}`)
-})
+const scopedCss = computed(() => scopeCustomCss(props.content?.customCss, scopeId.value))
 </script>
 
 <template>
@@ -63,7 +45,7 @@ const scopedCss = computed(() => {
         :class="block.backgroundUrl ? '' : 'bg-gradient-to-br from-accent/30 to-bg-tertiary'"
         :style="heroStyle(block)"
       >
-        <div v-if="block.backgroundUrl" class="absolute inset-0 rounded-xl bg-black/40" />
+        <div v-if="heroStyle(block)" class="absolute inset-0 rounded-xl bg-black/40" />
         <div class="relative" :class="{ 'text-center': block.textAlign === 'center', 'text-right': block.textAlign === 'right' }">
           <h1 class="text-3xl font-bold leading-tight text-white drop-shadow">{{ block.title }}</h1>
           <p v-if="block.subtitle" class="mt-2 text-lg text-white/80 drop-shadow">{{ block.subtitle }}</p>
@@ -80,7 +62,7 @@ const scopedCss = computed(() => {
 
       <!-- Image -->
       <figure v-else-if="block.type === 'image'">
-        <img :src="block.url" :alt="block.caption ?? ''" class="rounded-lg
+        <img :src="safeImageUrl(block.url)" :alt="block.caption ?? ''" class="rounded-lg
         object-cover"  :class="block.fullWidth ? 'w-full' : 'mx-auto max-w-2xl'"
         />
         <figcaption v-if="block.caption" class="mt-2 text-center text-sm text-text-muted">{{ block.caption }}</figcaption>
@@ -115,12 +97,12 @@ const scopedCss = computed(() => {
       <!-- Link card -->
       <a
         v-else-if="block.type === 'link-card'"
-        :href="block.url"
+        :href="safeHttpUrl(block.url)"
         target="_blank"
-        rel="noopener noreferrer"
+        rel="noopener noreferrer nofollow"
         class="flex items-center gap-4 rounded-lg border border-bg-tertiary bg-bg-secondary px-4 py-3 hover:border-accent/40 hover:bg-bg-hover transition-colors"
       >
-        <img v-if="block.imageUrl" :src="block.imageUrl" class="h-12 w-12 flex-shrink-0 rounded object-cover" alt="" />
+        <img v-if="safeImageUrl(block.imageUrl)" :src="safeImageUrl(block.imageUrl)" class="h-12 w-12 flex-shrink-0 rounded object-cover" alt="" />
         <div class="min-w-0 flex-1">
           <p class="truncate font-medium text-text-primary">{{ block.title }}</p>
           <p v-if="block.description" class="truncate text-sm text-text-muted">{{ block.description }}</p>

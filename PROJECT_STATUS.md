@@ -15,7 +15,7 @@ local_supabase: true
 session_handoff: "SESSION_HANDOFF.md — short, rolling, read first each session"
 ```
 
-**Latest deploy state (2026-05-29)**: chat.protocode.xyz + staging-chat.protocode.xyz are running hybrid-storage auth (full session in `localStorage`, compact session in `.protocode.xyz` cookie). CI publishes builds to orphan `dist-development` / `dist-main` branches; Netcup pulls from those. The Protocode Learn integration is registered on both environments and surfaces XP / streak / course progress via TTL-refresh. Migrations 050–053 (integrations framework) applied to both projects. See `SESSION_HANDOFF.md` for the rolling work-in-progress state.
+**Latest deploy state (2026-08-04)**: chat.protocode.xyz + staging-chat.protocode.xyz are running hybrid-storage auth (full session in `localStorage`, compact session in `.protocode.xyz` cookie). CI publishes builds to orphan `dist-development` / `dist-main` branches; Netcup pulls from those. The Protocode Learn integration is registered on both environments and surfaces XP / streak / course progress via TTL-refresh. Migrations 050–054 applied to both projects — 054 closed an RLS secret leak on `integrations.signing_key`/`api_key` and a companion cross-platform UUID-binding hole in the learn platform's sync endpoint (see 2026-08-04 changelog entry). `auth_bridge` mode is implemented but unreachable/deprecated — cross-platform login runs through `protosphere-sso-exchange` on the learn side instead (undocumented here until this session). See `SESSION_HANDOFF.md` for the rolling work-in-progress state.
 
 ## Vision Pivot (2026-02-22)
 
@@ -43,6 +43,11 @@ Backend adapter auto-detects mode via `VITE_SUPABASE_URL` env var. Local mode us
 ---
 
 ## Active Tickets
+
+### PTSPH-206 — Hardening pass (2026-11-17) 🔄
+
+Implemented on `bugfix/PTSPH-206-hardening-pass` (committed, not yet pushed). Real CI type-check (`vue-tsc -b`; the old command checked no files), Node 22, runtime `npm audit` gate; dependency advisories cleared; user-content rendering consolidated and hardened (`lib/formatters`, `lib/pageSanitize`); migration **055** access-control hardening with a rolled-back regression suite (`supabase/tests/055_access_control_hardening.sql`); integration fetch hardening and server-side field visibility (`get_public_user_integrations()`); full reset on user-initiated sign-out. 319 tests. **Needs deploy — order and checks in `SESSION_HANDOFF.md`.** Roadmap: [`docs/ROADMAP.md`](docs/ROADMAP.md).
+
 
 ### Integrations Framework ✅ (post-M25, 2026-05-02)
 
@@ -76,7 +81,15 @@ Backend adapter auto-detects mode via `VITE_SUPABASE_URL` env var. Local mode us
 
 ---
 
-### Auth Bridge (post-Integrations, 2026-05-06)
+### Auth Bridge (post-Integrations, 2026-05-06) — ⚠️ DEPRECATED, unreachable (2026-08-04)
+
+Implemented but never activated: the only configured integration (`protocode-learn`) uses
+`auth_mode = 'same_domain_cookie'`, so `/auth/bridge`'s `handleValidate` rejects it outright. It's
+also the wrong direction for the product vision — this flow has the external app assert identity
+and Protosphere provision from it, the reverse of "auth via Protosphere." The mechanism that
+actually works is `protosphere-sso-exchange` on the learn platform side (Protosphere as identity
+provider, JWKS-verified, no shared secret) — see `SESSION_HANDOFF.md` for the full picture. Do not
+plan further work around activating this flow; removal is a separate low-priority cleanup task.
 
 **Goal:** External apps can send their users to Protosphere via a signed JWT redirect. Protosphere validates the JWT, finds or creates the user account, and logs them in — one-click federated login.
 
@@ -599,6 +612,9 @@ supabase/functions/
 
 ## Recent Updates
 
+- 2026-11-17: **PTSPH-206 — re-assessment + hardening pass (not deployed).** Found that production very likely still serves a pre-054 client (054's client half never reached `main`), which breaks integrations for non-owners — promote `development` → `main`. CI type-check fixed (was checking zero files). Rendering of user content hardened and covered by structural tests plus a real-browser check. Migration 055 tightens several RLS policies to match the features they serve and enforces integration field visibility server-side ("Only me" fields had been visible to profile viewers); validated against the local stack with a negative control. Integration sync no longer runs for other users' rows on profile view and only targets https. User-initiated sign-out now fully resets client state. New `docs/ROADMAP.md` (server-side enforcement → realtime/unread → backend decomposition → identity-provider model).
+
+- 2026-08-04: Cross-platform auth review found and fixed a live vulnerability, and corrected the architectural plan from 2026-06-04/05. (1) `integrations` RLS was row-level only — `signing_key`/`api_key` were readable by any authenticated client; migration 054 restricts base-table SELECT to the community owner and adds `get_connectable_integrations()` (`SECURITY DEFINER`, safe columns only) for member-facing reads (`syncData`, `getPublicUserData`, new `backend.integrations.listConnectable()`); `protocode-learn`'s exposed `signing_key` nulled. Applied to staging + production. (2) `syncData` no longer sends `?external_user_id=` — the learn platform's `protosphere-user-data` endpoint trusted it unconditionally, letting any Protosphere user read another learn user's data by substituting a UUID; fixed server-side on the learn platform (`protosphere_user_map`, PR merged). (3) Documented `protosphere-sso-exchange` as the actual working cross-platform login mechanism (previously undocumented here) and marked `auth_bridge` deprecated/unreachable — see the Auth Bridge section above.
 - 2026-06-02: TDD/DDD foundation established. 226 tests, all green. (1) Vitest coverage config with per-file thresholds on domain layer (90–95%); `test:unit` / `test:watch` scripts. (2) 126 new tests in `src/test/lib/` covering automod, permissions, formatters, mentions, unread, messageSearch, roles, and the local backend (contract test). (3) 5 domain function extractions: `resolveEffectivePermissions`, `isChannelUnread`, `messageMatchesQuery`, `roleUpdateAuditAction`, typing constants — composables now delegate domain logic to `lib/`. (4) Bug: single_use community invites now set `max_uses=1` on create so `validate()` returns null after use. (5) `docs/DDD_CONVENTIONS.md` layer map and migration reference. (6) Pre-existing test failures fixed: stale CommunitySidebar Members-link assertion, SettingsPage missing integration mocks, `supabase.ts` null-safety on `window.location?.hostname`.
 
 - 2026-04-10: DM tabs + split view (PTSPH-205). Individual conversation tabs in the global top bar (context-aware: spaces view shows spaces nav, DM view shows conversation tabs). Clicking the community identity logo navigates back to spaces when in DM view. Drag a tab onto the DM content area to open a split pane with two conversations side-by-side (`DmConversationPane.vue`). Backend fixes: `listGroups` `.single()` → `.maybeSingle()` (406 on orphaned groups); `getOrCreate` member inserts changed to `upsert/ignoreDuplicates` to avoid 409 from the auto-join trigger (migration 024). Presence overhauled: replaced per-server presence channel with a persistent `presence:community` global channel started in AppShell on login (`startGlobalPresence`); DMPage now reads live status from `presenceStore` instead of the DB snapshot.

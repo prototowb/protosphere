@@ -2,68 +2,78 @@
 
 > **Rolling document.** Replace contents each session — this is "what the next session needs to know," not a permanent log. For long-term project state, see `PROJECT_STATUS.md`.
 
-**Updated**: 2026-06-04
-**Last session focus**: SSO auth debugging + integration sync fixes
+**Updated**: 2026-11-17
+**Last session focus**: Re-assessment after a ~3-month pause — hardening pass (PTSPH-206) and an enhancements roadmap (`docs/ROADMAP.md`). Companion pass on Protocode Learn (PROJ-197).
 
 ---
 
-## What shipped this session
+## Start here
 
-### Auth bridge — `external_user_id` in responses
-Both `validate` (existing user) and `completeRegistration` (new user) now return `external_user_id: claims.sub` alongside the session. The learn platform uses this to query their own tables by the correct OAuth UUID instead of decoding the Protosphere JWT sub (which is a different UUID namespace).
+1. **Production is very likely running a client that predates migration 054.** 054 was applied to the production DB on 2026-08-04, but its client half (`9e21a32`) only reached `development`; `dist-main` is still built from June's `main`. With 054 live, the old client's `integrations(*)` embed returns null for non-owners — integration sync, profile integration data and the Settings connect list should be broken for regular members. **30-second check:** on chat.protocode.xyz, as a non-owner, open Settings → Integrations, or view a profile with a connected integration. **Fix:** promote `development` → `main` (the two commits are independent of this branch).
+2. **Migration 055 is LIVE in production (applied 2026-11-20 via the Supabase MCP).** The client half of branch `bugfix/PTSPH-206-hardening-pass` is committed locally but **not pushed or deployed**. Until it ships, the old production client:
+   - shows no integration data on other members' profiles (the new RPC isn't used yet)
+   - still has the client-side rendering fixes outstanding
+   Ship it by pushing, then promoting `development` → `main`. Keep the gap between push and deploy short.
+3. **chat-staging is still paused, and 055 is not applied there.** When you restore it, run `supabase db push` against staging.
+4. `docs/ROADMAP.md` is the new enhancements plan.
 
-Edge function deployed to both staging and production.
+## What PTSPH-206 changed
 
-### Integration sync — `external_user_id` param for all auth modes
-`syncData` in `supabase-backend.ts` now appends `?external_user_id=<uuid>` for **any** auth mode when `user_integrations.external_user_id` is set (previously only for `auth_bridge`). The `protocode-learn` integration uses `same_domain_cookie` mode, so this fix was needed there too.
+| Area | Change | Verified by |
+|---|---|---|
+| CI | `type-check` was `vue-tsc --noEmit` against a references-only root tsconfig → checked **0 files**. Now `vue-tsc -b`; Node 20 (EOL) → 22; runtime `npm audit --audit-level=high` gate | `tsc --listFiles` count |
+| Deps | Runtime audit 10 high → 0, resolved with `--before=2026-11-03` (≥2-week-old packages only). Added `dompurify@3.4.17` (exact) and `jsdom` (dev) | `npm audit --omit=dev` |
+| Rendering | `escapeHtml` now escapes quotes (it is used inside attributes by the markdown auto-linker); `EmojiIcon` renders unknown input as text; page blocks (forum/profile) sanitised by an allowlist (`lib/pageSanitize.ts`: DOMPurify, http(s)/image URL checks, scoped custom CSS) | unit tests (red→green, negative control on `EmojiIcon`); **real Chromium**: 14/14 checks, no injected script executed |
+| Migration 055 | Access-control hardening: profile updates (own row; registration moderators may change `account_status` only), community ownership / setup flag guarded, DM membership requires membership, DM edits can't move conversations, `user_integrations` owner-only + `get_public_user_integrations()` (field visibility enforced server-side — "Only me" fields were visible to profile viewers), reaction value constraint, `search_path` on 054's function | `supabase/tests/055_access_control_hardening.sql` on the local stack: 21/21 with 055 (re-run 2026-11-19); every negative check fails without it |
+| Integrations | `lib/integrations.ts`: https-only targets (http only for loopback), 10 s fetch timeout, payload validation + size cap; profile views no longer sync *other* users' rows (that sent the viewer's token to the integration and then failed to write) | unit tests |
+| Session | User-initiated sign-out (`logout` / `logoutGlobal`) always ends with a full reload (`lib/sessionReset.ts`), so Pinia stores, the presence channel and module caches can't leak into the next account. Sign-out arriving via session expiry or another tab is not covered yet (Phase 2) | unit tests |
 
-Production DB patched directly: `user_integrations.external_user_id = '5028a487-3285-4ecf-8321-64ddc1375208'` for the existing user.
+Full gate: `vue-tsc -b` clean, lint clean (6 pre-existing `vue/no-v-html` warnings, all now reviewed), **319 tests**.
 
-### CI fix
-Integration tests excluded from default `test:run` (they require a live Supabase instance and were failing on every CI push). Run explicitly via `npm run test:integration`.
+## Deploying PTSPH-206
 
-### PRs
-- PR #26 merged: TDD foundation + auth-bridge external_user_id + CI fix
-- PR #27 open: sync external_user_id for all auth modes (pending merge → triggers production build)
+**Production done (2026-11-20):**
+- Read-only prechecks: 054 applied, the policy names 055 drops all exist, 0 reactions violate the new constraint.
+- **Schema drift found:** 024's `auto_join_dm_creator` and its `on_dm_group_created` trigger were missing in production, although 024 is recorded as applied. The committed 055 would have broken DM creation; the negative control fails `DM add members`. 055 now recreates both, and the regression test reproduces the drift. 21/21.
+- A full schema comparison (triggers, functions, policies) against the migrations found no other drift.
+- Dry run inside a rolled-back transaction, then applied, then `VALIDATE CONSTRAINT reactions_emoji_token`. Policies and triggers re-listed to confirm.
+- The remote migration history records 055 under a timestamp version, the same pattern as 050–054. `supabase migration repair` may be needed before the next `db push`.
 
----
+**Still to do:**
+1. Staging, once restored: `supabase db push`, then smoke-test: approve a pending user, start a DM, react, view a profile with an integration, sign out and in.
+2. Ship the client: push the branch, then merge `development` → `main` so `dist-main` rebuilds.
+3. Recommended: review `profiles` for unexpected `account_status`/`username` changes, and check `community_settings.owner_id` is what you expect.
+4. Remaining security-linter items are tracked in ROADMAP Phase 1 (details shared privately).
 
-## Open architectural debt — integration auth
+## Not verified / behaviour changes to know about
 
-The `protocode-learn` integration is configured as `same_domain_cookie` but the two platforms have **different UUID namespaces** (Protosphere UUIDs ≠ OAuth/Google UUIDs on the learn side). This is the wrong auth mode for independent platforms. The symptoms were: sync returning all-zeros because the learn endpoint received a Protosphere UUID it couldn't match.
+- **Browser check (2026-11-19, Playwright, local backend):** these all passed:
+  - Register, setup wizard, chat message with a link (`https`, `rel="noopener noreferrer"`), reaction.
+  - Forum page: create, edit with BlockEditor, save, reload. A safe link got `nofollow`; `javascript:`, `<script>` and `onerror` were stripped.
+- The only Tiptap component, `src/components/forum/PageEditor.vue`, is **not imported anywhere**, so the `prosemirror-view` bump doesn't reach users. Mounted directly, it works: marks, headings, lists, code block, HTML paste (sanitised), and a save/reload round trip.
+  - It logs `[tiptap warn]: Duplicate extension names found: ['link']`, because StarterKit v3 already bundles Link.
+  - Either wire it up or delete it.
+- Migration 055 is confirmed in **production** (2026-11-20, read-only checks): its functions, triggers and the `reactions_emoji_token` constraint are present, and the old broad policies are gone (`user_integrations` has only the owner policy). Staging still needs it once restored; repeat the policy check there, because `DROP POLICY IF EXISTS` silently no-ops on a name mismatch.
+- Profile/forum **custom CSS** now drops `url()`, at-rules (`@media`, `@import`, …), `position: fixed|sticky` and CSS escapes. Pages relying on those will render plainer.
+- Page images/links accept only `http(s)` (images also same-origin `blob:` / raster `data:`); other schemes now render without the URL.
+- The new `npm audit --audit-level=high` step runs in `quality.yml` only, not in `build-dist.yml`, so a new advisory fails the quality check without blocking deploys.
+- `build-dist.yml` and `quality.yml` now use Node 22.
 
-### Architecturally correct target setup
+## Open, and why
 
-**Login direction** (`auth_bridge`):
-- Learn platform redirects user to `chat.protocode.xyz/auth/bridge?token={signed_jwt}`
-- JWT `sub` = learn OAuth UUID
-- Protosphere creates/links account, stores `user_integrations.external_user_id = claims.sub`
-- UUID mapping is explicit and permanent
+- **Server-side enforcement** of the remaining community rules — ROADMAP Phase 1 (details shared privately with the maintainer; needs a design pass for the forum-promotion path).
+- **Unread / realtime redesign** — ROADMAP Phase 2. Includes mention badges: in `ServerPage.vue` the channel-open watcher calls `markRead` before the async `scanForMentions` finishes, so the scan never counts anything; simply reordering would make it notify for the channel being opened — redesign rather than patch.
+- **`auth_bridge` removal** — inventory: `supabase/functions/auth-bridge/`, `[functions.auth-bridge]` in `config.toml`, `AuthBridgePage.vue` + route, `bridge` namespace in `backend/types.ts` / `supabase-backend.ts` / `local.ts`, `IntegrationAuthMode` / `AuthBridgeClaims` / `AuthBridgeResult` / `signing_key` in `types.ts`, signing-key UI in `AdminIntegrationsPage.vue`, `IntegrationCard.vue`, `IntegrationConnectDialog.vue`; forward migration to drop `signing_key`, the `auth_mode` CHECK value and the bridge index; undeploy the function.
+- **CSP / security headers** — none set (hosting config). ROADMAP Phase 3.
+- Tests under `src/test/**` are excluded from type-checking (`tsconfig.app.json`) — add a `tsconfig.vitest.json` as Protocode Learn now has.
 
-**Sync direction** (needs both):
-1. Send the Protosphere access token as `Authorization: Bearer {token}` — cryptographic proof of who is making the request
-2. Also append `?external_user_id={learn_uuid}` — tells the endpoint which learn user to look up
+## Cross-subdomain SSO (unchanged, still true)
 
-Currently `auth_bridge` sync sends **no Bearer token** (neither `token_exchange` nor `same_domain_cookie` branch fires). This means learn data is queryable by anyone with the API key + any valid UUID — no user-identity proof. Fix: add a third branch in `syncData` for `auth_bridge` that sends the current Protosphere access token as Bearer alongside the `external_user_id` param.
+`src/lib/supabase.ts` `makeHybridStorage` writes the session to localStorage and a compact, JS-readable cookie on `.protocode.xyz`; Protocode Learn exchanges it via its `protosphere-sso-exchange` function (JWKS-verified). Because the cookie is script-readable, rendering safety in **either** app protects both — see ROADMAP vision #1 for the long-term fix. Learn's exchange now trusts chat **prod** only by default (secret `PROTOSPHERE_TRUSTED_ISSUERS` to add staging).
 
-### What needs to happen
-1. Merge PR #27 → production dist gets the all-auth-modes fix
-2. Switch `protocode-learn` `auth_mode` from `same_domain_cookie` → `auth_bridge` (requires signing key on the integration + learn platform sending signed JWTs)
-3. Add Bearer token to `auth_bridge` sync requests in `syncData`
-4. Learn platform: wire up their `protosphere-user-data` function to verify the Bearer token OR accept it as proof-of-session alongside `external_user_id`
+## Local tooling
 
----
-
-## Cross-subdomain SSO (cookie layer)
-
-`src/lib/supabase.ts` — `makeHybridStorage`: when on `*.protocode.xyz`, writes session to both `localStorage` (origin-scoped) AND a compact cookie at `.protocode.xyz`. Sibling subdomains read the cookie to restore the session.
-
-- Cookie key: `sb-porlhhdajfaamvggcrbi-auth-token` (derived from production Supabase URL)
-- Cookie value: full session JSON minus `identities`, `user_metadata`, `app_metadata` (~1.2 KB)
-- `typescript.protocode.xyz` needs the same hybrid storage configured to read the cookie into its own localStorage on first load
-
----
-
-## MCP access
-
-`.mcp.json` defines `supabase-chat-prod` and `supabase-chat-staging` HTTP MCP servers. Requires `SUPABASE_CHAT_TOKEN` (Supabase personal access token) in the OS environment — set via Windows System Properties. Claude Code must be started **after** the env var is set for the MCP to connect.
+- A local Supabase stack (`supabase_db_protocode-chat`, port 54322) is at migration **053**; the 055 test applies 054+055 inside a rolled-back transaction, so it leaves the DB unchanged.
+- In Git Bash, prefix `docker exec … -f /tmp/x.sql` with `MSYS_NO_PATHCONV=1`.
+- Sanitiser tests run under jsdom (`// @vitest-environment jsdom`): happy-dom mis-iterates after node removal and leaves elements DOMPurify removed in real browsers.
+- `.mcp.json` MCP servers need `SUPABASE_CHAT_TOKEN`; not used this session (no remote DB access was made).
