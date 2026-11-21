@@ -20,7 +20,9 @@ export function useSpaceRequirements() {
     const reqs = requirementsCache.value[serverId] ?? await fetchRequirements(serverId)
     if (!reqs.length) return []
 
-    const integrations = await backend.integrations.list()
+    // listConnectable, not list: the integrations table itself is readable
+    // only by its owner, so list() is empty for regular members.
+    const integrations = await backend.integrations.listConnectable()
     const userIntegrations = await backend.integrations.listUserIntegrations(userId)
     const connectedIds = new Set(userIntegrations.map((ui) => ui.integration_id))
 
