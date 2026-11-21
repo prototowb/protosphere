@@ -76,7 +76,9 @@ export function createSupabaseBackend(injectedClient?: SupabaseClient): Backend 
       },
 
       async logout() {
-        await signOutAndClearLocal(client)
+        // This device only. supabase-js defaults to scope 'global', which would
+        // also end the user's sessions on every other device.
+        await signOutAndClearLocal(client, { scope: 'local' })
       },
 
       async logoutGlobal() {

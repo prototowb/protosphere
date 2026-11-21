@@ -108,3 +108,30 @@ describe.each([
     expect(storage.map.has(STORAGE_KEY)).toBe(false)
   })
 })
+
+describe('supabase backend sign-out scope', () => {
+  function recordingFetch() {
+    const urls: string[] = []
+    const impl = ((input: RequestInfo | URL) => {
+      urls.push(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url)
+      return Promise.resolve(new Response(null, { status: 204 }))
+    }) as unknown as typeof fetch
+    return { urls, impl }
+  }
+
+  it('logout ends only the session on this device', async () => {
+    const { urls, impl } = recordingFetch()
+    const { backend } = makeClient(impl)
+    await backend.auth.logout()
+    const logoutCall = urls.find((u) => u.includes('/logout'))
+    expect(logoutCall).toContain('scope=local')
+  })
+
+  it('logoutGlobal ends every session', async () => {
+    const { urls, impl } = recordingFetch()
+    const { backend } = makeClient(impl)
+    await backend.auth.logoutGlobal()
+    const logoutCall = urls.find((u) => u.includes('/logout'))
+    expect(logoutCall).toContain('scope=global')
+  })
+})
