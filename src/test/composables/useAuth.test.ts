@@ -95,6 +95,16 @@ describe('useAuth', () => {
     expect(mockResetAppToLogin).toHaveBeenCalledOnce()
   })
 
+  it('logoutGlobal still clears state and resets when the network call fails', async () => {
+    mockLogoutGlobal.mockRejectedValue(new Error('offline'))
+    mockResetAppToLogin.mockClear()
+    const { result, store } = mountComposable()
+    store.user = { id: 'u1', email: 'a@b.com' }
+    await expect(result.logoutGlobal()).rejects.toThrow('offline')
+    expect(store.user).toBeNull()
+    expect(mockResetAppToLogin).toHaveBeenCalledOnce()
+  })
+
   it('logoutGlobal does not call regular logout', async () => {
     mockLogoutGlobal.mockResolvedValue(undefined)
     const { result } = mountComposable()
