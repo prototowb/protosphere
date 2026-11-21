@@ -10,6 +10,42 @@ import {
   INTEGRATION_FETCH_TIMEOUT_MS,
 } from '@/lib/integrations'
 
+/**
+ * Sign out, and always clear the locally stored session.
+ *
+ * When the sign-out request fails (offline, 5xx), supabase-js returns the
+ * error and leaves the stored session in place (checked against auth-js
+ * 2.97.0), so the user would still be signed in after the reload that follows.
+ * In that case remove the session locally the same way a successful sign-out
+ * does: `_removeSession` deletes the session keys from the configured storage
+ * (localStorage plus the shared cookie, via lib/supabase.ts) and emits
+ * SIGNED_OUT. It is internal API; src/test/lib/supabase-logout.test.ts runs
+ * against the real client and fails if a supabase-js upgrade changes it.
+ *
+ * The error is still rethrown: the server-side session was not revoked.
+ */
+async function signOutAndClearLocal(
+  client: SupabaseClient,
+  options?: Parameters<SupabaseClient['auth']['signOut']>[0],
+): Promise<void> {
+  let failure: unknown
+  try {
+    const { error } = await client.auth.signOut(options)
+    failure = error
+  } catch (err) {
+    failure = err ?? new Error('Sign-out failed')
+  }
+  if (!failure) return
+
+  const auth = client.auth as unknown as { _removeSession?: () => Promise<void> }
+  try {
+    await auth._removeSession?.()
+  } catch {
+    // Keep the original sign-out error.
+  }
+  throw failure
+}
+
 export function createSupabaseBackend(injectedClient?: SupabaseClient): Backend {
   const client = injectedClient ?? (supabase as SupabaseClient)
 
@@ -40,13 +76,13 @@ export function createSupabaseBackend(injectedClient?: SupabaseClient): Backend 
       },
 
       async logout() {
-        const { error } = await client.auth.signOut()
-        if (error) throw error
+        // This device only. supabase-js defaults to scope 'global', which would
+        // also end the user's sessions on every other device.
+        await signOutAndClearLocal(client, { scope: 'local' })
       },
 
       async logoutGlobal() {
-        const { error } = await client.auth.signOut({ scope: 'global' })
-        if (error) throw error
+        await signOutAndClearLocal(client, { scope: 'global' })
       },
 
       async resetPassword(email: string) {

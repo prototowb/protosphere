@@ -2,14 +2,14 @@
 
 > **Rolling document.** Replace contents each session — this is "what the next session needs to know," not a permanent log. For long-term project state, see `PROJECT_STATUS.md`.
 
-**Updated**: 2026-11-17
+**Updated**: 2026-11-21
 **Last session focus**: Re-assessment after a ~3-month pause — hardening pass (PTSPH-206) and an enhancements roadmap (`docs/ROADMAP.md`). Companion pass on Protocode Learn (PROJ-197).
 
 ---
 
 ## Start here
 
-1. **Production is very likely running a client that predates migration 054.** 054 was applied to the production DB on 2026-08-04, but its client half (`9e21a32`) only reached `development`; `dist-main` is still built from June's `main`. With 054 live, the old client's `integrations(*)` embed returns null for non-owners — integration sync, profile integration data and the Settings connect list should be broken for regular members. **30-second check:** on chat.protocode.xyz, as a non-owner, open Settings → Integrations, or view a profile with a connected integration. **Fix:** promote `development` → `main` (the two commits are independent of this branch).
+1. **PTSPH-206 is deployed (2026-11-21).** Merged via #28 → `development` and #29 → `main`; `dist-main` rebuilt from `1e5cf9a`, and chat.protocode.xyz serves that bundle. The release also carried 054's client half (`9e21a32`), so production now runs a client that matches migrations 054 and 055. **Smoke check still to do:** as a non-owner, open Settings → Integrations and view a profile with a connected integration.
 2. **Migration 055 is LIVE in production (applied 2026-11-20 via the Supabase MCP).** The client half of branch `bugfix/PTSPH-206-hardening-pass` is committed locally but **not pushed or deployed**. Until it ships, the old production client:
    - shows no integration data on other members' profiles (the new RPC isn't used yet)
    - still has the client-side rendering fixes outstanding
@@ -41,7 +41,7 @@ Full gate: `vue-tsc -b` clean, lint clean (6 pre-existing `vue/no-v-html` warnin
 
 **Still to do:**
 1. Staging, once restored: `supabase db push`, then smoke-test: approve a pending user, start a DM, react, view a profile with an integration, sign out and in.
-2. Ship the client: push the branch, then merge `development` → `main` so `dist-main` rebuilds.
+2. Open tickets: PTSPH-207 (space-requirements banner) and PTSPH-208 (logout fallback); see `PROJECT_STATUS.md`.
 3. Recommended: review `profiles` for unexpected `account_status`/`username` changes, and check `community_settings.owner_id` is what you expect.
 4. Remaining security-linter items are tracked in ROADMAP Phase 1 (details shared privately).
 
