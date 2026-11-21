@@ -12,6 +12,9 @@ const { mockLogin, mockRegister, mockLogout, mockLogoutGlobal, mockUpdatePasswor
   mockInit: vi.fn(),
 }))
 
+const { mockResetAppToLogin } = vi.hoisted(() => ({ mockResetAppToLogin: vi.fn() }))
+vi.mock('@/lib/sessionReset', () => ({ resetAppToLogin: mockResetAppToLogin }))
+
 vi.mock('@/lib/backend', () => ({
   isLocalMode: true,
   backend: {
@@ -72,6 +75,24 @@ describe('useAuth', () => {
     expect(mockLogoutGlobal).toHaveBeenCalledOnce()
     expect(mockLogout).not.toHaveBeenCalled()
     expect(store.user).toBeNull()
+  })
+
+  it('logout ends with a full app reset', async () => {
+    mockLogout.mockResolvedValue(undefined)
+    mockResetAppToLogin.mockClear()
+    const { result } = mountComposable()
+    await result.logout()
+    expect(mockResetAppToLogin).toHaveBeenCalledOnce()
+  })
+
+  it('logout still clears state and resets when the network call fails', async () => {
+    mockLogout.mockRejectedValue(new Error('offline'))
+    mockResetAppToLogin.mockClear()
+    const { result, store } = mountComposable()
+    store.user = { id: 'u1', email: 'a@b.com' }
+    await expect(result.logout()).rejects.toThrow('offline')
+    expect(store.user).toBeNull()
+    expect(mockResetAppToLogin).toHaveBeenCalledOnce()
   })
 
   it('logoutGlobal does not call regular logout', async () => {
