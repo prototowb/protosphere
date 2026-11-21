@@ -44,10 +44,18 @@ Backend adapter auto-detects mode via `VITE_SUPABASE_URL` env var. Local mode us
 
 ## Active Tickets
 
-### PTSPH-206 — Hardening pass (2026-11-17) 🔄
+### PTSPH-206 — Hardening pass (2026-11-17) ✅ deployed 2026-11-21
 
-Implemented on `bugfix/PTSPH-206-hardening-pass` (committed, not yet pushed). Real CI type-check (`vue-tsc -b`; the old command checked no files), Node 22, runtime `npm audit` gate; dependency advisories cleared; user-content rendering consolidated and hardened (`lib/formatters`, `lib/pageSanitize`); migration **055** access-control hardening with a rolled-back regression suite (`supabase/tests/055_access_control_hardening.sql`); integration fetch hardening and server-side field visibility (`get_public_user_integrations()`); full reset on user-initiated sign-out. 319 tests. **Needs deploy — order and checks in `SESSION_HANDOFF.md`.** Roadmap: [`docs/ROADMAP.md`](docs/ROADMAP.md).
+Merged via #28 (→ `development`) and #29 (→ `main`); `dist-main` rebuilt 2026-11-21. Migration 055 applied in production first; staging still pending. Real CI type-check (`vue-tsc -b`; the old command checked no files), Node 22, runtime `npm audit` gate; dependency advisories cleared; user-content rendering consolidated and hardened (`lib/formatters`, `lib/pageSanitize`); migration **055** access-control hardening with a rolled-back regression suite (`supabase/tests/055_access_control_hardening.sql`); integration fetch hardening and server-side field visibility (`get_public_user_integrations()`); full reset on user-initiated sign-out. 319 tests. Roadmap: [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
+
+### PTSPH-207 — Space-requirements banner never shows for members 📋
+
+`useSpaceRequirements.getMissingRequirements` loads integrations with `backend.integrations.list()`, which reads the `integrations` table directly. Since migration 054 that table is readable only by its owner, so regular members get an empty list and never see which integrations a space requires. Fix: use `listConnectable()` (`get_connectable_integrations()`), and add a test for a non-admin member.
+
+### PTSPH-208 — Logout: always clear the local session 📋
+
+If the sign-out request fails (e.g. offline), `useAuth.logout()` still resets the app to `/login`, but the stored session may survive. Clear the local session (localStorage and the shared `.protocode.xyz` cookie) in a fallback, so the user is really signed out locally even when the request fails. Verify with a test that simulates a failing `signOut()`.
 
 ### Integrations Framework ✅ (post-M25, 2026-05-02)
 
