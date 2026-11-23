@@ -6,39 +6,47 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undef
 /**
  * Hybrid session storage for cross-subdomain SSO on protocode.xyz.
  *
- * Two stores, written together, read in order:
- *   - localStorage (origin-scoped) — full session, used by this app and not
- *     sent over the wire.
- *   - cookie on `.protocode.xyz` — *compact* session (heavy nested fields
- *     stripped) so sibling subdomains can read it via their own auth-bridge
- *     and call `setSession()`. Supabase refetches the full user via the API
- *     after restoring tokens, so dropping `identities` and metadata is safe.
+ *   - localStorage (origin-scoped) holds the full session. It is the only
+ *     store this app reads its own session from.
+ *   - A cookie on `.protocode.xyz` holds a minimal, short-lived copy for
+ *     sibling subdomains, which exchange the access token server-side for a
+ *     session of their own (Protocode Learn's auth-bridge):
  *
- * Why compact: the full session JSON routinely runs 3–5 KB. Once stored in
- * a cookie at `.protocode.xyz`, that bloat rides along on every request to
- * chat.protocode.xyz, blowing past Apache's `LimitRequestFieldSize` (~8 KB
- * default on Netcup) and producing 400s on dynamic-import chunks. Compacting
- * trims the cookie to ~1.5 KB.
+ *       <key> = encodeURIComponent('{"access_token":"<jwt>","expires_at":<unix s>}')
+ *       path=/; domain=.protocode.xyz; max-age=<expires_at - now>; SameSite=Lax; Secure (https)
  *
- * The cookie is still chunked (`<key>.0`, `<key>.1`, ...) as a defensive
- * fallback in case the compact value still exceeds the per-cookie 4 KB
- * limit, matching the `@supabase/ssr` scheme.
+ *     It is rewritten on every setItem (sign-in and each token refresh) and
+ *     expires together with the access token it carries.
  *
- * Off-domain (localhost dev, vercel previews, etc.) this returns undefined
- * → supabase-js defaults to localStorage. No behavior change.
+ * When the storage is created, the cookie is brought in line with the
+ * localStorage session: rewritten in the minimal format, or removed when
+ * there is no session. supabase-js doesn't call setItem on a load where the
+ * stored session is still valid, so this is also what replaces a cookie
+ * written by an earlier build.
+ *
+ * A value over the per-cookie 4 KB limit is chunked (`<key>.0`, `<key>.1`,
+ * ...), matching the `@supabase/ssr` scheme. The minimal value is about
+ * 1 KB, so in practice it is a single cookie, which also keeps the Cookie
+ * header on every protocode.xyz request small.
+ *
+ * Off-domain (localhost dev, vercel previews, etc.) this isn't used and
+ * supabase-js defaults to localStorage.
  */
 const CHUNK_SIZE = 3180
 
-function makeHybridStorage(domain: string) {
-  const baseAttrs = [
-    'path=/',
-    `domain=${domain}`,
-    'max-age=31536000',
-    'SameSite=Lax',
-    location.protocol === 'https:' ? 'Secure' : '',
-  ].filter(Boolean).join('; ')
-
+export function makeHybridStorage(domain: string, sessionKey: string) {
+  const secure = location.protocol === 'https:'
   const expireAttrs = ['path=/', `domain=${domain}`, 'max-age=0'].join('; ')
+
+  function sharedAttrs(maxAge: number): string {
+    return [
+      'path=/',
+      `domain=${domain}`,
+      `max-age=${maxAge}`,
+      'SameSite=Lax',
+      secure ? 'Secure' : '',
+    ].filter(Boolean).join('; ')
+  }
 
   function readCookieMap(): Map<string, string> {
     const map = new Map<string, string>()
@@ -61,79 +69,72 @@ function makeHybridStorage(domain: string) {
     }
   }
 
-  function readCookie(key: string): string | null {
-    const map = readCookieMap()
-    if (map.has(key)) return map.get(key)!
-    if (!map.has(`${key}.0`)) return null
-    let acc = ''
-    for (let i = 0; map.has(`${key}.${i}`); i++) {
-      acc += map.get(`${key}.${i}`)!
-    }
-    return acc
-  }
-
-  function writeCookie(key: string, value: string) {
-    // Clear stale single + chunked forms before writing
-    document.cookie = `${key}=; ${expireAttrs}`
-    clearCookieChunks(key)
-
-    if (value.length <= CHUNK_SIZE) {
-      document.cookie = `${key}=${encodeURIComponent(value)}; ${baseAttrs}`
-      return
-    }
-    for (let i = 0, off = 0; off < value.length; i++, off += CHUNK_SIZE) {
-      const chunk = value.slice(off, off + CHUNK_SIZE)
-      document.cookie = `${key}.${i}=${encodeURIComponent(chunk)}; ${baseAttrs}`
-    }
-  }
-
   function removeCookie(key: string) {
     document.cookie = `${key}=; ${expireAttrs}`
     clearCookieChunks(key)
   }
 
-  /**
-   * Drop the heavy nested fields from a session JSON. Supabase will refetch
-   * the user via the API after `setSession()`, so identities and metadata
-   * aren't load-bearing for auth.
-   */
-  function compactSession(value: string): string {
-    try {
-      const session = JSON.parse(value)
-      if (
-        !session ||
-        typeof session !== 'object' ||
-        typeof session.access_token !== 'string' ||
-        typeof session.refresh_token !== 'string'
-      ) {
-        return value
-      }
-      const out: Record<string, unknown> = { ...session }
-      if (session.user && typeof session.user === 'object') {
-        const u = { ...(session.user as Record<string, unknown>) }
-        delete u.identities
-        delete u.user_metadata
-        delete u.app_metadata
-        out.user = u
-      }
-      return JSON.stringify(out)
-    } catch {
-      return value
+  function writeCookie(key: string, value: string, maxAge: number) {
+    // Clear stale single + chunked forms before writing
+    removeCookie(key)
+
+    const attrs = sharedAttrs(maxAge)
+    if (value.length <= CHUNK_SIZE) {
+      document.cookie = `${key}=${encodeURIComponent(value)}; ${attrs}`
+      return
     }
+    for (let i = 0, off = 0; off < value.length; i++, off += CHUNK_SIZE) {
+      const chunk = value.slice(off, off + CHUNK_SIZE)
+      document.cookie = `${key}.${i}=${encodeURIComponent(chunk)}; ${attrs}`
+    }
+  }
+
+  /**
+   * The shared-cookie payload for a stored value: only the access token and
+   * its expiry, with the seconds left until that expiry. Null for values
+   * that aren't a session (PKCE code verifier, etc.).
+   */
+  function sharedPayload(value: string): { payload: string; maxAge: number } | null {
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(value)
+    } catch {
+      return null
+    }
+    if (!parsed || typeof parsed !== 'object') return null
+    const { access_token, expires_at } = parsed as Record<string, unknown>
+    if (typeof access_token !== 'string' || access_token === '') return null
+    if (typeof expires_at !== 'number' || !Number.isFinite(expires_at)) return null
+    return {
+      payload: JSON.stringify({ access_token, expires_at }),
+      maxAge: Math.max(0, Math.floor(expires_at - Date.now() / 1000)),
+    }
+  }
+
+  function syncSharedCookie(key: string, value: string | null) {
+    const shared = value === null ? null : sharedPayload(value)
+    if (!shared || shared.maxAge === 0) {
+      removeCookie(key)
+      return
+    }
+    writeCookie(key, shared.payload, shared.maxAge)
+  }
+
+  try {
+    syncSharedCookie(sessionKey, window.localStorage.getItem(sessionKey))
+  } catch {
+    // Storage or cookies unavailable; supabase-js surfaces that on first use.
   }
 
   return {
     getItem(key: string): string | null {
-      // localStorage holds the full session for this app.
-      const local = window.localStorage.getItem(key)
-      if (local !== null) return local
-      // Fall back to the cross-subdomain cookie (compact session) on first
-      // visit after coming from a sibling subdomain.
-      return readCookie(key)
+      // localStorage only. The shared cookie carries no refresh token, so a
+      // session restored from it couldn't be refreshed.
+      return window.localStorage.getItem(key)
     },
     setItem(key: string, value: string): void {
       window.localStorage.setItem(key, value)
-      writeCookie(key, compactSession(value))
+      syncSharedCookie(key, value)
     },
     removeItem(key: string): void {
       window.localStorage.removeItem(key)
@@ -142,14 +143,27 @@ function makeHybridStorage(domain: string) {
   }
 }
 
+/**
+ * supabase-js's default storage key, `sb-<project ref>-auth-token`. Passed
+ * explicitly so the shared cookie name stays fixed across supabase-js
+ * upgrades.
+ */
+function sessionStorageKey(url: string): string {
+  return `sb-${new URL(url).hostname.split('.')[0]}-auth-token`
+}
+
 const hostname = typeof window !== 'undefined' ? window.location?.hostname : undefined
 const cookieDomain = hostname && (hostname.endsWith('.protocode.xyz') || hostname === 'protocode.xyz')
   ? '.protocode.xyz'
   : null
 
+function authOptions(url: string) {
+  if (!cookieDomain) return undefined
+  const storageKey = sessionStorageKey(url)
+  return { storage: makeHybridStorage(cookieDomain, storageKey), storageKey }
+}
+
 export const supabase: SupabaseClient | null =
   supabaseUrl && supabaseAnonKey
-    ? createClient(supabaseUrl, supabaseAnonKey, {
-        auth: cookieDomain ? { storage: makeHybridStorage(cookieDomain) } : undefined,
-      })
+    ? createClient(supabaseUrl, supabaseAnonKey, { auth: authOptions(supabaseUrl) })
     : null
