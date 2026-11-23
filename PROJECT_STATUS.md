@@ -15,7 +15,15 @@ local_supabase: true
 session_handoff: "SESSION_HANDOFF.md — short, rolling, read first each session"
 ```
 
-**Latest deploy state (2026-08-04)**: chat.protocode.xyz + staging-chat.protocode.xyz are running hybrid-storage auth (full session in `localStorage`, compact session in `.protocode.xyz` cookie). CI publishes builds to orphan `dist-development` / `dist-main` branches; Netcup pulls from those. The Protocode Learn integration is registered on both environments and surfaces XP / streak / course progress via TTL-refresh. Migrations 050–054 applied to both projects — 054 closed an RLS secret leak on `integrations.signing_key`/`api_key` and a companion cross-platform UUID-binding hole in the learn platform's sync endpoint (see 2026-08-04 changelog entry). `auth_bridge` mode is implemented but unreachable/deprecated — cross-platform login runs through `protosphere-sso-exchange` on the learn side instead (undocumented here until this session). See `SESSION_HANDOFF.md` for the rolling work-in-progress state.
+**Latest deploy state (2026-11-23)**:
+- chat.protocode.xyz serves `dist-main` built from `d402d79` (#36): PTSPH-206…210. staging-chat.protocode.xyz serves `dist-development` from `1445d12`, the same code.
+- Migrations 050–055 are applied to both Supabase projects. Staging was restored from pause and got 055 on 2026-11-23.
+- Auth uses hybrid storage: the full session in `localStorage`, plus a shared `.protocode.xyz` cookie that Protocode Learn exchanges through its `protosphere-sso-exchange` function. Since PTSPH-210 (2026-11-23) that cookie holds only the access token and its expiry.
+- CI publishes builds to the orphan `dist-development` / `dist-main` branches, and Netcup pulls from those.
+- The Protocode Learn integration is registered on both environments.
+- `auth_bridge` mode is implemented but unreachable and deprecated.
+
+See `SESSION_HANDOFF.md` for the rolling work-in-progress state.
 
 ## Vision Pivot (2026-02-22)
 
@@ -46,20 +54,26 @@ Backend adapter auto-detects mode via `VITE_SUPABASE_URL` env var. Local mode us
 
 ### PTSPH-206 — Hardening pass (2026-11-17) ✅ deployed 2026-11-21
 
-Merged via #28 (→ `development`) and #29 (→ `main`); `dist-main` rebuilt 2026-11-21. Migration 055 applied in production first; staging still pending. Real CI type-check (`vue-tsc -b`; the old command checked no files), Node 22, runtime `npm audit` gate; dependency advisories cleared; user-content rendering consolidated and hardened (`lib/formatters`, `lib/pageSanitize`); migration **055** access-control hardening with a rolled-back regression suite (`supabase/tests/055_access_control_hardening.sql`); integration fetch hardening and server-side field visibility (`get_public_user_integrations()`); full reset on user-initiated sign-out. 319 tests. Roadmap: [`docs/ROADMAP.md`](docs/ROADMAP.md).
+Merged via #28 (→ `development`) and #29 (→ `main`); `dist-main` rebuilt 2026-11-21. Migration 055 applied in production first (2026-11-20), and on staging on 2026-11-23. Real CI type-check (`vue-tsc -b`; the old command checked no files), Node 22, runtime `npm audit` gate; dependency advisories cleared; user-content rendering consolidated and hardened (`lib/formatters`, `lib/pageSanitize`); migration **055** access-control hardening with a rolled-back regression suite (`supabase/tests/055_access_control_hardening.sql`); integration fetch hardening and server-side field visibility (`get_public_user_integrations()`); full reset on user-initiated sign-out. 319 tests. Roadmap: [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 
-### PTSPH-207 — Space-requirements banner never shows for members ✅ (#31)
+### PTSPH-207 — Space-requirements banner never shows for members ✅ deployed 2026-11-21 (#31, #34)
 
 `useSpaceRequirements.getMissingRequirements` loads integrations with `backend.integrations.list()`, which reads the `integrations` table directly. Since migration 054 that table is readable only by its owner, so regular members get an empty list and never see which integrations a space requires. Fix: use `listConnectable()` (`get_connectable_integrations()`), and add a test for a non-admin member.
 
-### PTSPH-208 — Logout: always clear the local session ✅ (#32)
+### PTSPH-208 — Logout: always clear the local session ✅ deployed 2026-11-21 (#32, #34)
 
 If the sign-out request fails (e.g. offline), `useAuth.logout()` still resets the app to `/login`, but the stored session may survive. Clear the local session (localStorage and the shared `.protocode.xyz` cookie) in a fallback, so the user is really signed out locally even when the request fails. Verify with a test that simulates a failing `signOut()`.
 
-### PTSPH-209 — "Sign out" ends only this device's session ✅
+### PTSPH-209 — "Sign out" ends only this device's session ✅ deployed 2026-11-21 (#33, #34)
 
 `logout()` called `signOut()` without options, and supabase-js defaults that to scope `global`, so "Sign out" also ended the user's sessions on every other device, the same as "Sign out everywhere". `logout` now passes `scope: 'local'`; `logoutGlobal` stays global. Covered in `src/test/lib/supabase-logout.test.ts`.
+
+### PTSPH-210 — Minimal, short-lived shared session cookie ✅ deployed 2026-11-23 (#35, #36)
+
+The `.protocode.xyz` cookie now holds only `{access_token, expires_at}`, and its `max-age` matches the token's expiry. Chat reads its own session from localStorage only, and every page load re-syncs the cookie, which also replaces cookies written by earlier builds. 20 new tests in `src/test/lib/supabase-session-cookie.test.ts` (354 in total).
+
+Shipped after Protocode Learn's reader for this format (PROJ-205) went live. If chat hasn't refreshed its token within the token lifetime (supabase-js refreshes only in a visible tab), the cookie is gone and learn shows its own sign-in.
 
 ### Integrations Framework ✅ (post-M25, 2026-05-02)
 
