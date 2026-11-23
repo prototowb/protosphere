@@ -3,24 +3,29 @@
 > **Rolling document.** Replace contents each session — this is "what the next session needs to know," not a permanent log. For long-term project state, see `PROJECT_STATUS.md`.
 
 **Updated**: 2026-11-23
-**Last session focus**: Post-release bookkeeping after the November hardening pass (PTSPH-206…209 all live), chat-staging restored and brought to migration 055, and PTSPH-210 (minimal shared SSO cookie) started.
+**Last session focus**: Post-release bookkeeping after the November hardening pass (PTSPH-206…209 all live), chat-staging restored and brought to migration 055, and PTSPH-210 (minimal shared SSO cookie) **deployed 2026-11-23**.
 
 ---
 
 ## Start here
 
-1. **Everything from the hardening pass is live (2026-11-21).**
+1. **Everything from the hardening pass is live (2026-11-21), and PTSPH-210 since 2026-11-23.**
    - PTSPH-206 via #28 → `development`, #29 → `main`.
    - PTSPH-207 (#31), 208 (#32) and 209 (#33) via #34 → `main`.
-   - `dist-main` was rebuilt from `36155a6` (`41e2f5c`), and chat.protocode.xyz serves it. `development` = `main`.
+   - PTSPH-210 via #35 → `development`, #36 → `main` (`d402d79`). `build-dist.yml` rebuilt `dist-main`, and chat.protocode.xyz serves it. staging-chat.protocode.xyz serves `dist-development` from `1445d12`, the same code.
 2. **Migration 055 is applied in production (2026-11-20) and on staging (2026-11-23).**
    - Staging was restored from pause on 2026-11-23.
    - Before applying, its schema (policies, triggers, functions, constraints, columns) was compared with production. The only differences were 055's own changes, plus line endings in six function bodies.
    - 055 was dry-run in an aborted transaction, then applied with `055b` (`VALIDATE CONSTRAINT reactions_emoji_token`). Afterwards staging matches production.
    - Still to do on staging-chat.protocode.xyz: approve a pending user, start a DM, react, view a profile with an integration, sign out and in.
-3. **PTSPH-210 is in progress, local only:** branch `feature/PTSPH-210-minimal-sso-cookie` (`5514087`). The shared cookie holds only `{access_token, expires_at}` and expires with the token; chat reads its own session from localStorage only; every page load re-syncs the cookie, which replaces cookies written by earlier builds. Gate on the branch: `vue-tsc -b` clean, lint 0 errors (6 known warnings), 354/354 tests (20 new in `src/test/lib/supabase-session-cookie.test.ts`), build OK. It ships **after** Protocode Learn's reader for the new format (PROJ-205) is live. Keep the gap between push and deploy short.
+3. **What PTSPH-210 changed** (`5514087`):
+   - The shared cookie holds only `{access_token, expires_at}` and expires with the token.
+   - Chat reads its own session from localStorage only.
+   - Every page load re-syncs the cookie, which replaces cookies written by earlier builds.
+   - 20 new tests in `src/test/lib/supabase-session-cookie.test.ts` (354 in total).
+   - Protocode Learn's reader for this format (PROJ-205) went live first, on 2026-11-23.
 4. **Live smoke checks still to do (maintainer):**
-   - one real SSO sign-in, chat → learn;
+   - one real SSO sign-in, chat → learn, now with the minimal cookie;
    - as a non-admin member: Settings → Integrations, a profile with learn data, and a space with a required integration (the PTSPH-207 banner);
    - "Sign out" on one device keeps the other devices signed in (PTSPH-209).
 
@@ -44,7 +49,7 @@
 
 ## Cross-subdomain SSO
 
-`src/lib/supabase.ts` `makeHybridStorage` keeps the full session in localStorage and writes a script-readable cookie on `.protocode.xyz`; Protocode Learn exchanges it through its `protosphere-sso-exchange` function (JWKS-verified). Until PTSPH-210 ships, the cookie holds a compact copy of the session. With PTSPH-210 it holds `encodeURIComponent(JSON.stringify({access_token, expires_at}))`, `max-age` = seconds until `expires_at`, `path=/; domain=.protocode.xyz; SameSite=Lax; Secure`. It's chunked as `<key>.0…` only above 3180 characters. Chat never restores its own session from the cookie. Learn's exchange trusts chat **prod** only by default (secret `PROTOSPHERE_TRUSTED_ISSUERS` to add staging). Rendering safety in either app matters to both.
+`src/lib/supabase.ts` `makeHybridStorage` keeps the full session in localStorage and writes a script-readable cookie on `.protocode.xyz`; Protocode Learn exchanges it through its `protosphere-sso-exchange` function (JWKS-verified). Since PTSPH-210 (2026-11-23) it holds `encodeURIComponent(JSON.stringify({access_token, expires_at}))`, `max-age` = seconds until `expires_at`, `path=/; domain=.protocode.xyz; SameSite=Lax; Secure`. It's chunked as `<key>.0…` only above 3180 characters. Chat never restores its own session from the cookie. Learn's exchange trusts chat **prod** only by default (secret `PROTOSPHERE_TRUSTED_ISSUERS` to add staging). Rendering safety in either app matters to both.
 
 ## Local tooling
 

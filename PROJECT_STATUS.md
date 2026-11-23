@@ -16,9 +16,9 @@ session_handoff: "SESSION_HANDOFF.md — short, rolling, read first each session
 ```
 
 **Latest deploy state (2026-11-23)**:
-- chat.protocode.xyz serves `dist-main` built from `36155a6` (#34): PTSPH-206…209. staging-chat.protocode.xyz serves `dist-development` from `9986a0d`, the same code.
+- chat.protocode.xyz serves `dist-main` built from `d402d79` (#36): PTSPH-206…210. staging-chat.protocode.xyz serves `dist-development` from `1445d12`, the same code.
 - Migrations 050–055 are applied to both Supabase projects. Staging was restored from pause and got 055 on 2026-11-23.
-- Auth uses hybrid storage: the full session in `localStorage`, plus a shared `.protocode.xyz` cookie that Protocode Learn exchanges through its `protosphere-sso-exchange` function. PTSPH-210 (in progress) reduces that cookie to the access token and its expiry.
+- Auth uses hybrid storage: the full session in `localStorage`, plus a shared `.protocode.xyz` cookie that Protocode Learn exchanges through its `protosphere-sso-exchange` function. Since PTSPH-210 (2026-11-23) that cookie holds only the access token and its expiry.
 - CI publishes builds to the orphan `dist-development` / `dist-main` branches, and Netcup pulls from those.
 - The Protocode Learn integration is registered on both environments.
 - `auth_bridge` mode is implemented but unreachable and deprecated.
@@ -69,11 +69,11 @@ If the sign-out request fails (e.g. offline), `useAuth.logout()` still resets th
 
 `logout()` called `signOut()` without options, and supabase-js defaults that to scope `global`, so "Sign out" also ended the user's sessions on every other device, the same as "Sign out everywhere". `logout` now passes `scope: 'local'`; `logoutGlobal` stays global. Covered in `src/test/lib/supabase-logout.test.ts`.
 
-### PTSPH-210 — Minimal, short-lived shared session cookie 🔄 in progress (`feature/PTSPH-210-minimal-sso-cookie`, local)
+### PTSPH-210 — Minimal, short-lived shared session cookie ✅ deployed 2026-11-23 (#35, #36)
 
 The `.protocode.xyz` cookie now holds only `{access_token, expires_at}`, and its `max-age` matches the token's expiry. Chat reads its own session from localStorage only, and every page load re-syncs the cookie, which also replaces cookies written by earlier builds. 20 new tests in `src/test/lib/supabase-session-cookie.test.ts` (354 in total).
 
-Ships **after** Protocode Learn's reader for this format (PROJ-205) is live. If chat hasn't refreshed its token within the token lifetime (supabase-js refreshes only in a visible tab), the cookie is gone and learn shows its own sign-in.
+Shipped after Protocode Learn's reader for this format (PROJ-205) went live. If chat hasn't refreshed its token within the token lifetime (supabase-js refreshes only in a visible tab), the cookie is gone and learn shows its own sign-in.
 
 ### Integrations Framework ✅ (post-M25, 2026-05-02)
 
