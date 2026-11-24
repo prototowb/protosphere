@@ -162,6 +162,11 @@ export function createLocalBackend(): Backend {
         setSession(null)
       },
 
+      isSignedOutElsewhere() {
+        // Local mode has no session shared with other apps.
+        return false
+      },
+
       async resetPassword(_email: string) {
         // No-op in local mode
       },

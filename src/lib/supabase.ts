@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import { isSessionSignedOut, markSessionSignedOut, sessionIdOfStoredSession } from '@/lib/singleSignOut'
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined
@@ -23,6 +24,11 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undef
  * there is no session. supabase-js doesn't call setItem on a load where the
  * stored session is still valid, so this is also what replaces a cookie
  * written by an earlier build.
+ *
+ * Single sign-out across protocode.xyz apps (see lib/singleSignOut.ts):
+ * removing the stored session adds its session id to the shared
+ * `protocode-signout` marker, and the shared cookie is never written for a
+ * session the marker lists.
  *
  * A value over the per-cookie 4 KB limit is chunked (`<key>.0`, `<key>.1`,
  * ...), matching the `@supabase/ssr` scheme. The minimal value is about
@@ -113,7 +119,7 @@ export function makeHybridStorage(domain: string, sessionKey: string) {
 
   function syncSharedCookie(key: string, value: string | null) {
     const shared = value === null ? null : sharedPayload(value)
-    if (!shared || shared.maxAge === 0) {
+    if (!shared || shared.maxAge === 0 || isSessionSignedOut(sessionIdOfStoredSession(value))) {
       removeCookie(key)
       return
     }
@@ -137,6 +143,11 @@ export function makeHybridStorage(domain: string, sessionKey: string) {
       syncSharedCookie(key, value)
     },
     removeItem(key: string): void {
+      if (key === sessionKey) {
+        // The session ends in this browser: tell sibling apps.
+        const sid = sessionIdOfStoredSession(window.localStorage.getItem(key))
+        if (sid) markSessionSignedOut(sid, domain)
+      }
       window.localStorage.removeItem(key)
       removeCookie(key)
     },
