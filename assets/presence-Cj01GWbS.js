@@ -1,0 +1,1 @@
+import{d as o}from"./pinia-C1-3gPgF.js";import{q as a}from"./runtime-core.esm-bundler-BIiQGzAH.js";const i=o("presence",()=>{const e=a({});function n(t,r){e.value[t]=r}function s(t,r){return e.value[t]??r}function u(){e.value={}}return{liveStatuses:e,setStatus:n,getStatus:s,clear:u}});export{i as u};
