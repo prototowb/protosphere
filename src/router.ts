@@ -1,5 +1,6 @@
-import { createRouter, createWebHistory } from 'vue-router'
+import { createRouter, createWebHistory, type RouteLocationNormalized, type RouteLocationRaw } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { resolveLoginRedirect } from '@/lib/loginRedirect'
 
 const publicRoutes = ['login', 'register', 'landing', 'reset-password', 'confirm-email', 'not-found', 'error', 'join-community', 'auth-bridge']
 
@@ -136,7 +137,7 @@ const router = createRouter({
   ],
 })
 
-router.beforeEach((to) => {
+export function authGuard(to: RouteLocationNormalized): boolean | RouteLocationRaw {
   const authStore = useAuthStore()
 
   // While loading auth state, allow navigation (prevents flash)
@@ -149,12 +150,21 @@ router.beforeEach((to) => {
     return { name: 'login', query: { redirect: to.fullPath } }
   }
 
-  // Redirect authenticated users away from public pages
+  // Redirect authenticated users away from public pages. On /login, honour
+  // `?redirect=` (lib/loginRedirect.ts), which may point at a sibling app.
   if (authStore.isAuthenticated && isPublic) {
-    return { name: 'dms' }
+    if (to.name !== 'login') return { name: 'dms' }
+    const target = resolveLoginRedirect(to.query.redirect)
+    if (target.external) {
+      window.location.assign(target.href)
+      return false
+    }
+    return target.href
   }
 
   return true
-})
+}
+
+router.beforeEach(authGuard)
 
 export default router
