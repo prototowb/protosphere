@@ -52,6 +52,14 @@ Backend adapter auto-detects mode via `VITE_SUPABASE_URL` env var. Local mode us
 
 ## Active Tickets
 
+### PTSPH-211 — Single sign-out across protocode.xyz 📋 Open (2026-11-24)
+
+Signing out in chat or in Protocode Learn should sign this browser out of both, the same way one sign-in covers both. Today each app keeps its own session. Chat's side: when the stored session ends (sign-out, or a refresh the server rejects), record the ended session in a small shared sign-out marker on `.protocode.xyz`. On load and when the tab becomes visible, sign out locally if a sibling app has marked this session as ended. Learn's side is PROJ-209. The protocol goes into the workspace contracts before either side ships.
+
+### PTSPH-212 — Return to the sibling app after sign-in 📋 Open (2026-11-24)
+
+Protocode Learn's "Sign in via Protosphere" opens `/login`, which then lands on `/channels/@me`, so the user has to find their way back to learn. `/login?redirect=` accepts in-app paths only. Also accept `https://*.protocode.xyz` targets through a strict allowlist (exact host suffix, https only, no other schemes or hosts), so that a sign-in started on learn returns there.
+
 ### PTSPH-206 — Hardening pass (2026-11-17) ✅ deployed 2026-11-21
 
 Merged via #28 (→ `development`) and #29 (→ `main`); `dist-main` rebuilt 2026-11-21. Migration 055 applied in production first (2026-11-20), and on staging on 2026-11-23. Real CI type-check (`vue-tsc -b`; the old command checked no files), Node 22, runtime `npm audit` gate; dependency advisories cleared; user-content rendering consolidated and hardened (`lib/formatters`, `lib/pageSanitize`); migration **055** access-control hardening with a rolled-back regression suite (`supabase/tests/055_access_control_hardening.sql`); integration fetch hardening and server-side field visibility (`get_public_user_integrations()`); full reset on user-initiated sign-out. 319 tests. Roadmap: [`docs/ROADMAP.md`](docs/ROADMAP.md).

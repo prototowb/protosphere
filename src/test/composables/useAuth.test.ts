@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { createApp } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
 
-const { mockLogin, mockRegister, mockLogout, mockLogoutGlobal, mockUpdatePassword, mockResetPassword, mockInit } = vi.hoisted(() => ({
+const { mockLogin, mockRegister, mockLogout, mockLogoutGlobal, mockUpdatePassword, mockResetPassword, mockInit, mockSignedOutElsewhere } = vi.hoisted(() => ({
   mockLogin: vi.fn(),
   mockRegister: vi.fn(),
   mockLogout: vi.fn(),
@@ -10,6 +10,7 @@ const { mockLogin, mockRegister, mockLogout, mockLogoutGlobal, mockUpdatePasswor
   mockUpdatePassword: vi.fn(),
   mockResetPassword: vi.fn(),
   mockInit: vi.fn(),
+  mockSignedOutElsewhere: vi.fn(() => false),
 }))
 
 const { mockResetAppToLogin } = vi.hoisted(() => ({ mockResetAppToLogin: vi.fn() }))
@@ -27,6 +28,7 @@ vi.mock('@/lib/backend', () => ({
       resetPassword: mockResetPassword,
       updatePassword: mockUpdatePassword,
       init: mockInit,
+      isSignedOutElsewhere: mockSignedOutElsewhere,
     },
   },
 }))
@@ -117,6 +119,43 @@ describe('useAuth', () => {
     const { result } = mountComposable()
     await result.updatePassword('newpass')
     expect(mockUpdatePassword).toHaveBeenCalledWith('newpass')
+  })
+
+  describe('single sign-out across protocode.xyz apps', () => {
+    beforeEach(() => {
+      mockSignedOutElsewhere.mockReturnValue(false)
+      mockResetAppToLogin.mockClear()
+    })
+
+    it('starts the auth listener when the session was not ended elsewhere', () => {
+      const { result } = mountComposable()
+      result.initAuthListener()
+      expect(mockInit).toHaveBeenCalledOnce()
+      expect(mockLogout).not.toHaveBeenCalled()
+    })
+
+    it('signs out locally on start, without publishing the session, when it was ended elsewhere', async () => {
+      mockSignedOutElsewhere.mockReturnValue(true)
+      mockLogout.mockRejectedValue(new Error('offline'))
+      const { result, store } = mountComposable()
+      result.initAuthListener()
+      expect(mockInit).not.toHaveBeenCalled()
+      expect(mockLogout).toHaveBeenCalledOnce()
+      expect(mockLogoutGlobal).not.toHaveBeenCalled()
+      await vi.waitFor(() => expect(mockResetAppToLogin).toHaveBeenCalledOnce())
+      expect(store.isAuthenticated).toBe(false)
+    })
+
+    it('starts only one sign-out when several events arrive together', async () => {
+      mockLogout.mockResolvedValue(undefined)
+      const { result } = mountComposable()
+      result.initAuthListener()
+      mockSignedOutElsewhere.mockReturnValue(true)
+      document.dispatchEvent(new Event('visibilitychange'))
+      window.dispatchEvent(new Event('pageshow'))
+      await vi.waitFor(() => expect(mockResetAppToLogin).toHaveBeenCalledOnce())
+      expect(mockLogout).toHaveBeenCalledOnce()
+    })
   })
 
   it('resetPassword delegates to backend.auth.resetPassword', async () => {

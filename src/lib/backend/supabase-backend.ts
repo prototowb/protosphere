@@ -9,6 +9,7 @@ import {
   isFieldVisibleTo,
   INTEGRATION_FETCH_TIMEOUT_MS,
 } from '@/lib/integrations'
+import { isSessionSignedOut, sessionIdOfStoredSession } from '@/lib/singleSignOut'
 
 /**
  * Sign out, and always clear the locally stored session.
@@ -44,6 +45,28 @@ async function signOutAndClearLocal(
     // Keep the original sign-out error.
   }
   throw failure
+}
+
+/**
+ * Whether the session in the client's storage is listed in the single
+ * sign-out marker. Reads the stored value directly, without the refresh
+ * that getSession() may start. `storage` and `storageKey` are internal
+ * auth-js fields (like `_removeSession` above);
+ * src/test/lib/supabase-session-cookie.test.ts runs this against the real
+ * client.
+ */
+function storedSessionSignedOut(client: SupabaseClient): boolean {
+  const auth = client.auth as unknown as {
+    storage?: { getItem(key: string): unknown }
+    storageKey?: string
+  }
+  try {
+    if (!auth.storage || !auth.storageKey) return false
+    const stored = auth.storage.getItem(auth.storageKey)
+    return typeof stored === 'string' && isSessionSignedOut(sessionIdOfStoredSession(stored))
+  } catch {
+    return false
+  }
 }
 
 export function createSupabaseBackend(injectedClient?: SupabaseClient): Backend {
@@ -83,6 +106,10 @@ export function createSupabaseBackend(injectedClient?: SupabaseClient): Backend 
 
       async logoutGlobal() {
         await signOutAndClearLocal(client, { scope: 'global' })
+      },
+
+      isSignedOutElsewhere() {
+        return storedSessionSignedOut(client)
       },
 
       async resetPassword(email: string) {

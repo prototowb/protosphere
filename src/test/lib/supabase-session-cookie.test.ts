@@ -12,9 +12,24 @@
  * writes or removes the session is caught here too.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { createPinia, setActivePinia } from 'pinia'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { makeHybridStorage } from '@/lib/supabase'
 import { createSupabaseBackend } from '@/lib/backend/supabase-backend'
+import { useAuth } from '@/composables/useAuth'
+import { useAuthStore } from '@/stores/auth'
+
+// useAuth reads the app backend from '@/lib/backend'; the single sign-out
+// tests point it at a backend built on a real client and the cookie jar.
+const appBackend = vi.hoisted(() => ({ current: null as unknown }))
+vi.mock('@/lib/backend', () => ({
+  isLocalMode: false,
+  get backend() {
+    return appBackend.current
+  },
+}))
+const { mockResetAppToLogin } = vi.hoisted(() => ({ mockResetAppToLogin: vi.fn() }))
+vi.mock('@/lib/sessionReset', () => ({ resetAppToLogin: mockResetAppToLogin }))
 
 // supabase-js uses addEventListener on its BroadcastChannel; the global test
 // mock (src/test/setup.ts) only implements onmessage. Hoisted because importing
@@ -469,6 +484,357 @@ describe('hybrid session storage: shared cookie', () => {
 
       expect(window.localStorage.getItem(KEY)).toBeNull()
       expect(jar.sharedNames()).toEqual([])
+    })
+  })
+})
+
+// ── Single sign-out across protocode.xyz apps ───────────────────────────────
+
+const MARKER = 'protocode-signout'
+const MARKER_MAX_AGE = 2592000
+
+function sessionWithSid(sid: string, opts: { expiresAt?: number; refreshToken?: string } = {}) {
+  const expiresAt = opts.expiresAt ?? nowSec() + 3600
+  return fullSession({ ...opts, expiresAt, accessToken: jwt('u1', expiresAt, { session_id: sid }) })
+}
+
+function markerValue(sids: unknown[], v: unknown = 1): string {
+  return encodeURIComponent(JSON.stringify({ v, sids }))
+}
+
+/** Write a marker cookie the way a sibling app does (raw, already encoded). */
+function plantMarker(raw: string) {
+  document.cookie = `${MARKER}=${raw}; path=/; domain=${DOMAIN}; max-age=${MARKER_MAX_AGE}; SameSite=Lax; Secure`
+}
+
+function markerJson(jar: Jar): unknown {
+  const raw = jar.rawValue(MARKER)
+  return raw === undefined ? undefined : JSON.parse(decodeURIComponent(raw))
+}
+
+function markerSids(jar: Jar): unknown {
+  return (markerJson(jar) as { sids?: unknown } | undefined)?.sids
+}
+
+function urlOf(input: RequestInfo | URL): string {
+  return typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+}
+
+function jsonResponse(body: unknown, status: number): Response {
+  return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
+}
+
+const rejectedRefresh = ((input: RequestInfo | URL) => Promise.resolve(
+  urlOf(input).includes('grant_type=refresh_token')
+    ? jsonResponse({ code: 400, error_code: 'refresh_token_not_found', msg: 'Invalid Refresh Token: Refresh Token Not Found' }, 400)
+    : jsonResponse({}, 404),
+)) as unknown as typeof fetch
+
+describe('single sign-out across protocode.xyz apps', () => {
+  let jar: Jar
+  const originalLocation = window.location
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(NOW)
+    window.localStorage.clear()
+    Object.defineProperty(window, 'location', {
+      value: { ...originalLocation, protocol: 'https:', hostname: HOST, reload: vi.fn() },
+      writable: true,
+      configurable: true,
+    })
+    jar = installCookieJar(HOST)
+    mockResetAppToLogin.mockClear()
+    appBackend.current = null
+  })
+
+  afterEach(() => {
+    jar.restore()
+    Object.defineProperty(window, 'location', { value: originalLocation, writable: true, configurable: true })
+    window.localStorage.clear()
+    vi.useRealTimers()
+  })
+
+  describe('marking an ended session', () => {
+    it('adds the session id to the shared marker when the stored session is removed', () => {
+      window.localStorage.setItem(KEY, JSON.stringify(sessionWithSid('s1')))
+      const storage = makeHybridStorage(DOMAIN, KEY)
+
+      storage.removeItem(KEY)
+
+      expect(window.localStorage.getItem(KEY)).toBeNull()
+      expect(jar.rawValue(MARKER)).toBe(markerValue(['s1']))
+      expect(markerJson(jar)).toEqual({ v: 1, sids: ['s1'] })
+      expect(attrsOf(jar.lastWrite(MARKER))).toEqual([
+        'path=/',
+        `domain=${DOMAIN}`,
+        `max-age=${MARKER_MAX_AGE}`,
+        'SameSite=Lax',
+        'Secure',
+      ])
+    })
+
+    it('omits Secure off https', () => {
+      Object.defineProperty(window, 'location', {
+        value: { ...window.location, protocol: 'http:' },
+        writable: true,
+        configurable: true,
+      })
+      window.localStorage.setItem(KEY, JSON.stringify(sessionWithSid('s1')))
+      makeHybridStorage(DOMAIN, KEY).removeItem(KEY)
+
+      expect(attrsOf(jar.lastWrite(MARKER))).not.toContain('Secure')
+    })
+
+    it('appends newest last and keeps at most 5 entries', () => {
+      plantMarker(markerValue(['a', 'b', 'c', 'd', 'e']))
+      window.localStorage.setItem(KEY, JSON.stringify(sessionWithSid('s6')))
+
+      makeHybridStorage(DOMAIN, KEY).removeItem(KEY)
+
+      expect(markerSids(jar)).toEqual(['b', 'c', 'd', 'e', 's6'])
+    })
+
+    it('lists a session id once, as the newest entry', () => {
+      plantMarker(markerValue(['s1', 's2']))
+      window.localStorage.setItem(KEY, JSON.stringify(sessionWithSid('s1')))
+
+      makeHybridStorage(DOMAIN, KEY).removeItem(KEY)
+
+      expect(markerSids(jar)).toEqual(['s2', 's1'])
+    })
+
+    it.each([
+      ['not JSON', encodeURIComponent('not-json')],
+      ['broken percent-encoding', '%E0%A4%A'],
+      ['sids not an array', encodeURIComponent(JSON.stringify({ v: 1, sids: 's0' }))],
+      ['an unknown version', markerValue(['s0'], 2)],
+      ['a JSON array', encodeURIComponent('[1,2]')],
+      ['an oversized entry', markerValue(['x'.repeat(500)])],
+    ])('replaces a malformed marker (%s) without throwing', (_label, raw) => {
+      plantMarker(raw)
+      window.localStorage.setItem(KEY, JSON.stringify(sessionWithSid('s1')))
+      const storage = makeHybridStorage(DOMAIN, KEY)
+
+      expect(() => storage.removeItem(KEY)).not.toThrow()
+
+      expect(window.localStorage.getItem(KEY)).toBeNull()
+      expect(jar.sharedNames()).toEqual([MARKER])
+      expect(markerJson(jar)).toEqual({ v: 1, sids: ['s1'] })
+    })
+
+    it('keeps the valid entries of a marker with some invalid ones', () => {
+      plantMarker(markerValue([1, null, {}, '', 'ok']))
+      window.localStorage.setItem(KEY, JSON.stringify(sessionWithSid('s1')))
+
+      makeHybridStorage(DOMAIN, KEY).removeItem(KEY)
+
+      expect(markerSids(jar)).toEqual(['ok', 's1'])
+    })
+
+    it.each([
+      ['an access token without session_id', JSON.stringify(fullSession())],
+      ['an access token that is not a JWT', JSON.stringify(fullSession({ accessToken: 'opaque' }))],
+      ['a value that is not JSON', 'not-json'],
+    ])('writes no marker for %s', (_label, stored) => {
+      window.localStorage.setItem(KEY, stored)
+      const storage = makeHybridStorage(DOMAIN, KEY)
+
+      expect(() => storage.removeItem(KEY)).not.toThrow()
+
+      expect(window.localStorage.getItem(KEY)).toBeNull()
+      expect(jar.rawValue(MARKER)).toBeUndefined()
+    })
+
+    it('does not mark anything when other keys are removed', () => {
+      window.localStorage.setItem(KEY, JSON.stringify(sessionWithSid('s1')))
+      const storage = makeHybridStorage(DOMAIN, KEY)
+
+      storage.removeItem(`${KEY}-code-verifier`)
+      storage.removeItem(`${KEY}-user`)
+
+      expect(jar.rawValue(MARKER)).toBeUndefined()
+      expect(window.localStorage.getItem(KEY)).not.toBeNull()
+    })
+
+    it.each([
+      ['logout', (b: ReturnType<typeof createSupabaseBackend>) => b.auth.logout()],
+      ['logoutGlobal', (b: ReturnType<typeof createSupabaseBackend>) => b.auth.logoutGlobal()],
+    ] as const)('%s marks the session, also when the request cannot be sent', async (_name, signOut) => {
+      window.localStorage.setItem(KEY, JSON.stringify(sessionWithSid('s1')))
+      const backend = createSupabaseBackend(makeClient(makeHybridStorage(DOMAIN, KEY), offline))
+
+      await expect(signOut(backend)).rejects.toThrow()
+
+      expect(markerSids(jar)).toEqual(['s1'])
+    })
+
+    it('marks the session when the server rejects its refresh', async () => {
+      window.localStorage.setItem(KEY, JSON.stringify(sessionWithSid('s1', { expiresAt: nowSec() + 600 })))
+      const client = makeClient(makeHybridStorage(DOMAIN, KEY), rejectedRefresh)
+
+      const { error } = await client.auth.refreshSession()
+
+      expect(error).not.toBeNull()
+      expect(window.localStorage.getItem(KEY)).toBeNull()
+      expect(markerSids(jar)).toEqual(['s1'])
+    })
+  })
+
+  describe('the shared access-token cookie for a marked session', () => {
+    it('is not written by setItem, and an existing one is removed', () => {
+      plantMarker(markerValue(['s1']))
+      const storage = makeHybridStorage(DOMAIN, KEY)
+      jar.plant(KEY, 'stale')
+
+      storage.setItem(KEY, JSON.stringify(sessionWithSid('s1')))
+
+      expect(jar.sharedNames()).toEqual([MARKER])
+      expect(window.localStorage.getItem(KEY)).not.toBeNull()
+    })
+
+    it('is removed when the storage is created', () => {
+      const session = sessionWithSid('s1')
+      window.localStorage.setItem(KEY, JSON.stringify(session))
+      jar.plant(KEY, JSON.stringify({ access_token: session.access_token, expires_at: session.expires_at }))
+      plantMarker(markerValue(['s1']))
+
+      makeHybridStorage(DOMAIN, KEY)
+
+      expect(jar.sharedNames()).toEqual([MARKER])
+    })
+
+    it('is not written after a token refresh of that session', async () => {
+      window.localStorage.setItem(KEY, JSON.stringify(sessionWithSid('s1', { expiresAt: nowSec() + 600 })))
+      plantMarker(markerValue(['s1']))
+      const refreshed = sessionWithSid('s1', { refreshToken: 'refresh-token-2' })
+      const fetchImpl = ((input: RequestInfo | URL) => Promise.resolve(
+        urlOf(input).includes('grant_type=refresh_token') ? jsonResponse(refreshed, 200) : jsonResponse({}, 404),
+      )) as unknown as typeof fetch
+      const client = makeClient(makeHybridStorage(DOMAIN, KEY), fetchImpl)
+
+      const { error } = await client.auth.refreshSession()
+
+      expect(error).toBeNull()
+      expect(JSON.parse(window.localStorage.getItem(KEY)!).refresh_token).toBe('refresh-token-2')
+      expect(jar.sharedNames()).toEqual([MARKER])
+    })
+  })
+
+  describe('a new session', () => {
+    it('is not affected by earlier marker entries', () => {
+      plantMarker(markerValue(['old-1', 'old-2']))
+      window.localStorage.setItem(KEY, JSON.stringify(sessionWithSid('new')))
+      const storage = makeHybridStorage(DOMAIN, KEY)
+      const backend = createSupabaseBackend(makeClient(storage, offline))
+
+      storage.setItem(KEY, JSON.stringify(sessionWithSid('new')))
+
+      expect(jar.sharedNames()).toEqual([MARKER, KEY])
+      expect(backend.auth.isSignedOutElsewhere()).toBe(false)
+    })
+  })
+
+  describe('backend.auth.isSignedOutElsewhere', () => {
+    function backendWith(stored: string | null) {
+      if (stored !== null) window.localStorage.setItem(KEY, stored)
+      return createSupabaseBackend(makeClient(makeHybridStorage(DOMAIN, KEY), offline))
+    }
+
+    it('is true when the stored session is listed in the marker', () => {
+      plantMarker(markerValue(['other', 's1']))
+      expect(backendWith(JSON.stringify(sessionWithSid('s1'))).auth.isSignedOutElsewhere()).toBe(true)
+    })
+
+    it.each([
+      ['there is no marker', null, JSON.stringify(sessionWithSid('s1'))],
+      ['the marker is malformed', '%E0%A4%A', JSON.stringify(sessionWithSid('s1'))],
+      ['there is no stored session', markerValue(['s1']), null],
+      ['the stored session has no session id', markerValue(['s1']), JSON.stringify(fullSession())],
+    ])('is false when %s', (_label, marker, stored) => {
+      if (marker !== null) plantMarker(marker)
+      expect(backendWith(stored).auth.isSignedOutElsewhere()).toBe(false)
+    })
+  })
+
+  describe('following a sign-out from a sibling app', () => {
+    function setVisibility(state: DocumentVisibilityState) {
+      Object.defineProperty(document, 'visibilityState', { value: state, configurable: true })
+    }
+
+    function startApp(sid: string) {
+      window.localStorage.setItem(KEY, JSON.stringify(sessionWithSid(sid)))
+      // Offline: the sign-out request fails, so the local clear (PTSPH-208) runs.
+      appBackend.current = createSupabaseBackend(makeClient(makeHybridStorage(DOMAIN, KEY), offline))
+      setActivePinia(createPinia())
+      const store = useAuthStore()
+      useAuth().initAuthListener()
+      return store
+    }
+
+    afterEach(() => {
+      setVisibility('visible')
+    })
+
+    it('signs out on start when the stored session is listed', async () => {
+      plantMarker(markerValue(['s1']))
+
+      const store = startApp('s1')
+
+      await vi.waitFor(() => expect(mockResetAppToLogin).toHaveBeenCalledOnce())
+      expect(window.localStorage.getItem(KEY)).toBeNull()
+      expect(store.isAuthenticated).toBe(false)
+      expect(jar.sharedNames()).toEqual([MARKER])
+    })
+
+    it('keeps an unlisted session signed in on start', async () => {
+      plantMarker(markerValue(['old']))
+
+      const store = startApp('s1')
+
+      await vi.waitFor(() => expect(store.loading).toBe(false))
+      expect(store.isAuthenticated).toBe(true)
+      expect(mockResetAppToLogin).not.toHaveBeenCalled()
+    })
+
+    it('signs out when the tab becomes visible after a sign-out elsewhere', async () => {
+      const store = startApp('s1')
+      await vi.waitFor(() => expect(store.isAuthenticated).toBe(true))
+
+      plantMarker(markerValue(['s1']))
+      setVisibility('hidden')
+      document.dispatchEvent(new Event('visibilitychange'))
+      expect(mockResetAppToLogin).not.toHaveBeenCalled()
+
+      setVisibility('visible')
+      document.dispatchEvent(new Event('visibilitychange'))
+
+      await vi.waitFor(() => expect(mockResetAppToLogin).toHaveBeenCalledOnce())
+      expect(window.localStorage.getItem(KEY)).toBeNull()
+      expect(store.isAuthenticated).toBe(false)
+    })
+
+    it('signs out on pageshow after a sign-out elsewhere', async () => {
+      const store = startApp('s1')
+      await vi.waitFor(() => expect(store.isAuthenticated).toBe(true))
+
+      plantMarker(markerValue(['s1']))
+      window.dispatchEvent(new Event('pageshow'))
+
+      await vi.waitFor(() => expect(mockResetAppToLogin).toHaveBeenCalledOnce())
+      expect(window.localStorage.getItem(KEY)).toBeNull()
+    })
+
+    it('stays signed in on those events while the session is not listed', async () => {
+      const store = startApp('s1')
+      await vi.waitFor(() => expect(store.isAuthenticated).toBe(true))
+
+      plantMarker(markerValue(['someone-else']))
+      document.dispatchEvent(new Event('visibilitychange'))
+      window.dispatchEvent(new Event('pageshow'))
+
+      expect(mockResetAppToLogin).not.toHaveBeenCalled()
+      expect(store.isAuthenticated).toBe(true)
     })
   })
 })

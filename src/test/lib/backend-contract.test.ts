@@ -47,6 +47,14 @@ function describeBackendContract(label: string, getBackend: () => Backend) {
       })
     })
 
+    describe('auth.isSignedOutElsewhere', () => {
+      it('is false for a fresh session', async () => {
+        const b = getBackend()
+        await b.auth.register('a@b.com', 'pass123', 'alice')
+        expect(b.auth.isSignedOutElsewhere()).toBe(false)
+      })
+    })
+
     describe('auth.login', () => {
       it('succeeds with correct credentials', async () => {
         const b = getBackend()
