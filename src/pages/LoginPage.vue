@@ -1,11 +1,19 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
 import { isLocalMode } from '@/lib/backend'
+import { useAuthStore } from '@/stores/auth'
+import {
+  clearLoginRedirect,
+  followLoginRedirect,
+  rememberLoginRedirect,
+  resolveLoginRedirect,
+} from '@/lib/loginRedirect'
 
 const router = useRouter()
 const route = useRoute()
+const authStore = useAuthStore()
 const { login, loginWithOAuth, resetPassword } = useAuth()
 
 const email = ref('')
@@ -15,13 +23,30 @@ const loading = ref(false)
 const resetSent = ref(false)
 const showResetForm = ref(false)
 
+// Leave /login once signed in, for `?redirect=` (lib/loginRedirect.ts):
+// after a password sign-in, and for a visitor who is already signed in.
+let leaving = false
+function leaveAfterSignIn() {
+  if (leaving) return
+  leaving = true
+  clearLoginRedirect()
+  followLoginRedirect(router, resolveLoginRedirect(route.query.redirect))
+}
+
+watch(
+  () => authStore.isAuthenticated,
+  (signedIn) => {
+    if (signedIn) leaveAfterSignIn()
+  },
+  { immediate: true },
+)
+
 async function handleLogin() {
   error.value = ''
   loading.value = true
   try {
     await login(email.value, password.value)
-    const redirect = (route.query.redirect as string) || '/channels/@me'
-    router.push(redirect)
+    leaveAfterSignIn()
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : 'Login failed'
   } finally {
@@ -33,6 +58,9 @@ async function handleOAuth(provider: 'github' | 'google') {
   if (isLocalMode) return
   error.value = ''
   try {
+    // The provider returns to the app's default page; the target is kept in
+    // sessionStorage and followed once the session arrives (useLoginRedirect).
+    rememberLoginRedirect(route.query.redirect)
     await loginWithOAuth(provider)
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : 'OAuth login failed'
