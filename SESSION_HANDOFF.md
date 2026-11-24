@@ -2,31 +2,30 @@
 
 > **Rolling document.** Replace contents each session — this is "what the next session needs to know," not a permanent log. For long-term project state, see `PROJECT_STATUS.md`.
 
-**Updated**: 2026-11-23
-**Last session focus**: Post-release bookkeeping after the November hardening pass (PTSPH-206…209 all live), chat-staging restored and brought to migration 055, and PTSPH-210 (minimal shared SSO cookie) **deployed 2026-11-23**.
+**Updated**: 2026-11-24
+**Last session focus**: PTSPH-211 (single sign-out across protocode.xyz) and PTSPH-212 (return to the sibling app after sign-in), **deployed 2026-11-24** (#39, #40 → #42).
 
 ---
 
 ## Start here
 
-1. **Everything from the hardening pass is live (2026-11-21), and PTSPH-210 since 2026-11-23.**
-   - PTSPH-206 via #28 → `development`, #29 → `main`.
-   - PTSPH-207 (#31), 208 (#32) and 209 (#33) via #34 → `main`.
-   - PTSPH-210 via #35 → `development`, #36 → `main` (`d402d79`). `build-dist.yml` rebuilt `dist-main`, and chat.protocode.xyz serves it. staging-chat.protocode.xyz serves `dist-development` from `1445d12`, the same code.
-2. **Migration 055 is applied in production (2026-11-20) and on staging (2026-11-23).**
-   - Staging was restored from pause on 2026-11-23.
-   - Before applying, its schema (policies, triggers, functions, constraints, columns) was compared with production. The only differences were 055's own changes, plus line endings in six function bodies.
-   - 055 was dry-run in an aborted transaction, then applied with `055b` (`VALIDATE CONSTRAINT reactions_emoji_token`). Afterwards staging matches production.
-   - Still to do on staging-chat.protocode.xyz: approve a pending user, start a DM, react, view a profile with an integration, sign out and in.
-3. **What PTSPH-210 changed** (`5514087`):
-   - The shared cookie holds only `{access_token, expires_at}` and expires with the token.
-   - Chat reads its own session from localStorage only.
-   - Every page load re-syncs the cookie, which replaces cookies written by earlier builds.
-   - 20 new tests in `src/test/lib/supabase-session-cookie.test.ts` (354 in total).
-   - Protocode Learn's reader for this format (PROJ-205) went live first, on 2026-11-23.
-4. **Live smoke checks still to do (maintainer):**
-   - one real SSO sign-in, chat → learn, now with the minimal cookie;
-   - as a non-admin member: Settings → Integrations, a profile with learn data, and a space with a required integration (the PTSPH-207 banner);
+1. **Live since 2026-11-24:** PTSPH-211 and PTSPH-212.
+   - PRs #39 and #40 (plus the tickets in #41) went into `development`, and #42 went to `main` (`47be7b5`). `dist-main` is `42142fd`, live bundle `index-CNSV80A4.js`, with lazy chunks `singleSignOut-*.js` and `loginRedirect-*.js`.
+   - A live sign-in/sign-out test passed in both directions:
+     - chat → learn sign-in;
+     - a learn sign-out signs chat out;
+     - "Sign in via Protosphere" returns to learn;
+     - a chat sign-out signs learn out.
+2. **What PTSPH-211 changed:**
+   - **Marker:** `src/lib/singleSignOut.ts` reads and writes the shared marker `protocode-signout` (`{v:1, sids:[...]}`, at most 5 chat `session_id`s, `.protocode.xyz`, 30 days).
+   - **Marking:** `makeHybridStorage` (`src/lib/supabase.ts`) adds the stored session's id whenever the session is removed. It never writes the shared access-token cookie for a listed session.
+   - **Sign-out:** `useAuth` signs out locally when the stored session is listed, on start, on `visibilitychange` and on `pageshow`.
+   - **Reset:** `resetAppToLogin` keeps the query string when it already is on `/login`, so a sibling app's `?redirect=` survives.
+   - **Tests:** 393.
+3. **What PTSPH-212 changed:** `src/lib/loginRedirect.ts` is the allowlist for `/login?redirect=`. It accepts in-app paths that start with a single `/`, or `https:` on protocode.xyz and its subdomains. The target is kept across OAuth (sessionStorage, 10 min) and followed for an already signed-in visitor (router guard). Tests: 435.
+4. **Contract:** both are part of the cross-subdomain contract shared with Protocode Learn. If the marker's name, attributes or format change, change learn's reader too.
+5. **Live smoke checks still to do (maintainer):**
+   - as a non-admin member, a space with a required integration (the PTSPH-207 banner). First add a requirement to a space as its owner;
    - "Sign out" on one device keeps the other devices signed in (PTSPH-209).
 
 ## Not verified / behaviour changes to know about
@@ -41,7 +40,7 @@
 
 - **Server-side enforcement** of the remaining community rules — ROADMAP Phase 1 (details shared privately with the maintainer; needs a design pass for the forum-promotion path).
 - **Unread / realtime redesign** — ROADMAP Phase 2. Includes mention badges: in `ServerPage.vue` the channel-open watcher calls `markRead` before the async `scanForMentions` finishes, so the scan never counts anything; simply reordering would make it notify for the channel being opened — redesign rather than patch.
-- **Sign-out via session expiry or another tab** doesn't run the full reset yet (`lib/sessionReset.ts` covers user-initiated sign-out only). ROADMAP Phase 2.
+- **Sign-out via session expiry** doesn't run the full reset yet. `lib/sessionReset.ts` covers user-initiated sign-out and, since PTSPH-211, a sign-out made in a sibling app. ROADMAP Phase 2.
 - **`auth_bridge` removal** — inventory: `supabase/functions/auth-bridge/`, `[functions.auth-bridge]` in `config.toml`, `AuthBridgePage.vue` + route, `bridge` namespace in `backend/types.ts` / `supabase-backend.ts` / `local.ts`, `IntegrationAuthMode` / `AuthBridgeClaims` / `AuthBridgeResult` / `signing_key` in `types.ts`, signing-key UI in `AdminIntegrationsPage.vue`, `IntegrationCard.vue`, `IntegrationConnectDialog.vue`; forward migration to drop `signing_key`, the `auth_mode` CHECK value and the bridge index; undeploy the function.
 - **Cross-subdomain sign-in, long term** — a redirect-based sign-in with chat as the identity provider (ROADMAP vision #1) would replace the shared cookie entirely. Supabase Auth's OAuth 2.1 server (beta) is the candidate; spike it on staging first.
 - **CSP / security headers** — none set (hosting config). ROADMAP Phase 3.
@@ -50,6 +49,8 @@
 ## Cross-subdomain SSO
 
 `src/lib/supabase.ts` `makeHybridStorage` keeps the full session in localStorage and writes a script-readable cookie on `.protocode.xyz`; Protocode Learn exchanges it through its `protosphere-sso-exchange` function (JWKS-verified). Since PTSPH-210 (2026-11-23) it holds `encodeURIComponent(JSON.stringify({access_token, expires_at}))`, `max-age` = seconds until `expires_at`, `path=/; domain=.protocode.xyz; SameSite=Lax; Secure`. It's chunked as `<key>.0…` only above 3180 characters. Chat never restores its own session from the cookie. Learn's exchange trusts chat **prod** only by default (secret `PROTOSPHERE_TRUSTED_ISSUERS` to add staging). Rendering safety in either app matters to both.
+
+Since PTSPH-211, both apps also share the sign-out marker `protocode-signout` (see above). Signing out of either app signs the browser out of both. Learn only exchanges the access-token cookie when it has no session of its own.
 
 ## Local tooling
 

@@ -15,8 +15,9 @@ local_supabase: true
 session_handoff: "SESSION_HANDOFF.md — short, rolling, read first each session"
 ```
 
-**Latest deploy state (2026-11-23)**:
-- chat.protocode.xyz serves `dist-main` built from `d402d79` (#36): PTSPH-206…210. staging-chat.protocode.xyz serves `dist-development` from `1445d12`, the same code.
+**Latest deploy state (2026-11-24)**:
+- **Live:** chat.protocode.xyz serves `dist-main` `42142fd`, built from `47be7b5` (#42): PTSPH-206…212. staging-chat.protocode.xyz serves `dist-development` from `252ac13`, the same code.
+- **Single sign-out across protocode.xyz** (PTSPH-211) and **return to the sibling app after sign-in** (PTSPH-212) are live. A live sign-in/sign-out test in both directions passed on 2026-11-24.
 - Migrations 050–055 are applied to both Supabase projects. Staging was restored from pause and got 055 on 2026-11-23.
 - Auth uses hybrid storage: the full session in `localStorage`, plus a shared `.protocode.xyz` cookie that Protocode Learn exchanges through its `protosphere-sso-exchange` function. Since PTSPH-210 (2026-11-23) that cookie holds only the access token and its expiry.
 - CI publishes builds to the orphan `dist-development` / `dist-main` branches, and Netcup pulls from those.
@@ -52,11 +53,11 @@ Backend adapter auto-detects mode via `VITE_SUPABASE_URL` env var. Local mode us
 
 ## Active Tickets
 
-### PTSPH-211 — Single sign-out across protocode.xyz 📋 Open (2026-11-24)
+### PTSPH-211 — Single sign-out across protocode.xyz ✅ deployed 2026-11-24 (#39, #42)
 
 Signing out in chat or in Protocode Learn should sign this browser out of both, the same way one sign-in covers both. Today each app keeps its own session. Chat's side: when the stored session ends (sign-out, or a refresh the server rejects), record the ended session in a small shared sign-out marker on `.protocode.xyz`. On load and when the tab becomes visible, sign out locally if a sibling app has marked this session as ended. Learn's side is PROJ-209. The protocol goes into the workspace contracts before either side ships.
 
-### PTSPH-212 — Return to the sibling app after sign-in 📋 Open (2026-11-24)
+### PTSPH-212 — Return to the sibling app after sign-in ✅ deployed 2026-11-24 (#40, #42)
 
 Protocode Learn's "Sign in via Protosphere" opens `/login`, which then lands on `/channels/@me`, so the user has to find their way back to learn. `/login?redirect=` accepts in-app paths only. Also accept `https://*.protocode.xyz` targets through a strict allowlist (exact host suffix, https only, no other schemes or hosts), so that a sign-in started on learn returns there.
 
