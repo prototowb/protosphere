@@ -1,6 +1,12 @@
 import { backend } from '@/lib/backend'
 import { useAuthStore } from '@/stores/auth'
 import { resetAppToLogin } from '@/lib/sessionReset'
+import { watchSignOutMarker } from '@/lib/singleSignOut'
+
+// Single sign-out across protocode.xyz apps (lib/singleSignOut.ts). One
+// listener set per page, and one sign-out at a time.
+let stopSignOutWatch: (() => void) | null = null
+let followingSignOut = false
 
 export function useAuth() {
   const authStore = useAuthStore()
@@ -38,6 +44,26 @@ export function useAuth() {
     }
   }
 
+  /**
+   * When another protocode.xyz app has ended this browser's session, sign
+   * out here too: locally only (the session has already ended), with the
+   * same local clear and reload to /login as a manual sign-out, even when
+   * the request fails. Returns whether a sign-out was started.
+   */
+  function followSignOutElsewhere(): boolean {
+    if (followingSignOut) return true
+    if (!backend.auth.isSignedOutElsewhere()) return false
+    followingSignOut = true
+    logout()
+      .catch(() => {
+        // logout() has already cleared the session and reset the app.
+      })
+      .finally(() => {
+        followingSignOut = false
+      })
+    return true
+  }
+
   async function resetPassword(email: string) {
     await backend.auth.resetPassword(email)
   }
@@ -47,6 +73,14 @@ export function useAuth() {
   }
 
   function initAuthListener() {
+    stopSignOutWatch?.()
+    stopSignOutWatch = watchSignOutMarker(() => {
+      followSignOutElsewhere()
+    })
+    // On start, don't publish a session that has already ended elsewhere;
+    // the sign-out reloads the app at /login.
+    if (followSignOutElsewhere()) return
+
     backend.auth.init((session) => {
       authStore.setSession(session)
       authStore.loading = false

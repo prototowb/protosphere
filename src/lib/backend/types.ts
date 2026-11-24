@@ -22,6 +22,12 @@ export interface Backend {
     loginWithOAuth(provider: string): Promise<void>
     logout(): Promise<void>
     logoutGlobal(): Promise<void>
+    /**
+     * Whether the stored session was ended in this browser by another
+     * protocode.xyz app (single sign-out, see lib/singleSignOut.ts).
+     * Synchronous and never throws; false when it can't tell.
+     */
+    isSignedOutElsewhere(): boolean
     resetPassword(email: string): Promise<void>
     updatePassword(newPassword: string): Promise<void>
     init(onSession: (session: AuthSession | null) => void): void
