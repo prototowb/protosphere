@@ -1,0 +1,1 @@
+import{d as t}from"./pinia-C1-3gPgF.js";import{q as e}from"./runtime-core.esm-bundler-BIiQGzAH.js";const m=t("servers",()=>{const r=e([]),s=e(null),o=e({});return{servers:r,activeServerId:s,myRoles:o}});export{m as u};

@@ -1,0 +1,1 @@
+import{d as a}from"./pinia-C1-3gPgF.js";import{q as t,s as c}from"./runtime-core.esm-bundler-BIiQGzAH.js";const d=a("auth",()=>{const e=t(null),u=t(null),s=t(!0),l=c(()=>!!u.value);function o(n){u.value=n,e.value=n?.user??null}function r(){u.value=null,e.value=null}return{user:e,session:u,loading:s,isAuthenticated:l,setSession:o,clear:r}});export{d as u};
